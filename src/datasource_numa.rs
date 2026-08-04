@@ -58,8 +58,9 @@ fn parse_meminfo(content: &str, node_name: &str) {
             Err(_) => continue,
         };
 
-        // Convert kB to bytes
-        let bytes = value * 1024;
+        // Convert kB to bytes. A corrupt or absurd value would otherwise panic
+        // a debug build and wrap silently in a release build.
+        let bytes = value.saturating_mul(1024);
 
         metrics
             .meminfo
@@ -200,6 +201,13 @@ other_node 789
     #[test]
     fn test_parse_meminfo_handles_malformed() {
         parse_meminfo("invalid line\nno data here", "node0");
+    }
+
+    #[test]
+    fn test_parse_meminfo_handles_absurd_value() {
+        // u64::MAX kB overflows the conversion to bytes.
+        let line = format!("Node 0 MemTotal: {} kB", u64::MAX);
+        parse_meminfo(&line, "node0");
     }
 
     #[test]
