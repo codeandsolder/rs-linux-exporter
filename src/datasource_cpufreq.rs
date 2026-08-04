@@ -58,6 +58,9 @@ pub fn update_metrics() {
         Err(_) => return,
     };
 
+    // CPUs can be taken offline, which removes their cpufreq directory.
+    metrics().cpu_frequency_hz.reset();
+
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name = match name.to_str() {

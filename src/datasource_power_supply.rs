@@ -231,6 +231,19 @@ pub fn update_metrics() {
         Err(_) => return,
     };
 
+    // Batteries and USB supplies are hot-pluggable.
+    let metrics = metrics();
+    metrics.info.reset();
+    metrics.online.reset();
+    metrics.status.reset();
+    metrics.capacity_percent.reset();
+    metrics.voltage_volts.reset();
+    metrics.current_amps.reset();
+    metrics.power_watts.reset();
+    metrics.energy_wh.reset();
+    metrics.charge_ah.reset();
+    metrics.temperature_celsius.reset();
+
     for entry in entries.flatten() {
         let name = match entry.file_name().into_string() {
             Ok(name) => name,

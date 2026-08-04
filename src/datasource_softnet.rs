@@ -39,6 +39,9 @@ pub fn update_metrics() {
         Err(_) => return,
     };
 
+    // The number of rows follows CPU hotplug.
+    metrics().softnet.reset();
+
     for (cpu, line) in contents.lines().enumerate() {
         let columns: Vec<&str> = line.split_whitespace().collect();
         if columns.is_empty() {

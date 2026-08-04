@@ -180,6 +180,15 @@ pub fn update_metrics(config: &AppConfig) {
 
     let metrics = metrics();
 
+    // Interfaces are created and destroyed constantly on container hosts.
+    metrics.operstate.reset();
+    metrics.carrier.reset();
+    metrics.carrier_changes.reset();
+    metrics.dormant.reset();
+    metrics.speed_mbps.reset();
+    metrics.duplex.reset();
+    metrics.autoneg.reset();
+
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
         if should_skip_interface(&name, config) {

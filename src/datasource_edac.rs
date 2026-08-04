@@ -216,6 +216,14 @@ fn update_metrics_from_path(base: &Path) {
         Err(_) => return,
     };
 
+    // dimm_label is part of the label set, so a relabelled or replaced DIMM
+    // would otherwise leave its old counters behind permanently.
+    let metrics = metrics();
+    metrics.mc_info.reset();
+    metrics.dimm_ce_count.reset();
+    metrics.dimm_ue_count.reset();
+    metrics.dimm_size_mb.reset();
+
     for entry in entries.flatten() {
         let name = match entry.file_name().into_string() {
             Ok(name) => name,

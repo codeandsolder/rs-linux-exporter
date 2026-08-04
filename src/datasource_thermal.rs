@@ -148,6 +148,13 @@ pub fn update_metrics() {
     };
 
     let metrics = metrics();
+
+    // Zones and trip points appear and disappear with driver state.
+    metrics.zone_temperature_celsius.reset();
+    metrics.zone_trip_point_celsius.reset();
+    metrics.cooling_device_cur_state.reset();
+    metrics.cooling_device_max_state.reset();
+
     let mut zone_count = 0;
     let mut cooling_count = 0;
 

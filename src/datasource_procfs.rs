@@ -303,6 +303,9 @@ fn update_kernel_stats(metrics: &ProcfsMetrics, stats: &KernelStats) {
 }
 
 fn update_diskstats(metrics: &ProcfsMetrics, stats: &[procfs::DiskStat], config: &AppConfig) {
+    // Devices come and go (hotplug, loop/dm teardown). Without this the series
+    // for a removed device is served forever at its last value.
+    metrics.diskstats.reset();
     for stat in stats {
         let device = stat.name.as_str();
         if config.ignore_loop_devices && device.starts_with("loop") {
@@ -381,6 +384,8 @@ fn update_netdev(
     devs: &std::collections::HashMap<String, procfs::net::DeviceStatus>,
     config: &AppConfig,
 ) {
+    // Interfaces are created and destroyed constantly on container hosts.
+    metrics.netdev.reset();
     for (name, dev) in devs {
         if config.ignore_ppp_interfaces && name.starts_with("ppp") {
             continue;

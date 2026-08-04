@@ -72,6 +72,12 @@ fn update_metrics_from_path(base: &Path) {
         Err(_) => return,
     };
 
+    // Drop controllers that are gone, and stale nvme_info series left behind by
+    // a firmware upgrade (the revision is a label).
+    let metrics = metrics();
+    metrics.info.reset();
+    metrics.state.reset();
+
     for entry in entries.flatten() {
         let name = match entry.file_name().into_string() {
             Ok(name) => name,

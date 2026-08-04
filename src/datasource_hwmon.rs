@@ -162,6 +162,15 @@ fn update_metrics_from_path(base: &Path) {
         Err(_) => return,
     };
 
+    // Chips and sensors disappear when a module is unloaded or a device is
+    // unplugged; rebuild so their readings do not stay frozen.
+    let metrics = metrics();
+    metrics.temperature_celsius.reset();
+    metrics.fan_rpm.reset();
+    metrics.voltage_volts.reset();
+    metrics.power_watts.reset();
+    metrics.current_amps.reset();
+
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() || path.is_symlink() {

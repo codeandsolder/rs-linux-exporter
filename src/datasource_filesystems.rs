@@ -107,14 +107,14 @@ fn is_pseudo_fs(fstype: &str) -> bool {
     pseudo_filesystems().contains(fstype)
 }
 
-fn remove_metrics(metrics: &FilesystemMetrics, labels: &[&str; 3]) {
-    let _ = metrics.filesystem_size_bytes.remove_label_values(labels);
-    let _ = metrics.filesystem_free_bytes.remove_label_values(labels);
-    let _ = metrics.filesystem_avail_bytes.remove_label_values(labels);
-    let _ = metrics.filesystem_used_bytes.remove_label_values(labels);
-    let _ = metrics.filesystem_files.remove_label_values(labels);
-    let _ = metrics.filesystem_files_free.remove_label_values(labels);
-    let _ = metrics.filesystem_files_used.remove_label_values(labels);
+fn reset_metrics(metrics: &FilesystemMetrics) {
+    metrics.filesystem_size_bytes.reset();
+    metrics.filesystem_free_bytes.reset();
+    metrics.filesystem_avail_bytes.reset();
+    metrics.filesystem_used_bytes.reset();
+    metrics.filesystem_files.reset();
+    metrics.filesystem_files_free.reset();
+    metrics.filesystem_files_used.reset();
 }
 
 pub fn update_metrics(config: &AppConfig) {
@@ -124,6 +124,12 @@ pub fn update_metrics(config: &AppConfig) {
     };
 
     let metrics = metrics();
+
+    // Rebuild from scratch so unmounted filesystems stop being reported. The
+    // previous per-mount removal only covered mounts that were filtered out,
+    // not mounts that had gone away since the last scrape.
+    reset_metrics(metrics);
+
     for mount in mounts {
         let labels = [
             mount.fs_file.as_str(),
@@ -133,13 +139,11 @@ pub fn update_metrics(config: &AppConfig) {
         if is_pseudo_fs(&mount.fs_vfstype)
             || (config.ignore_ramfs_filesystems && mount.fs_vfstype == "ramfs")
         {
-            remove_metrics(metrics, &labels);
             continue;
         }
         if config.ignore_loop_devices
             && (mount.fs_spec.starts_with("/dev/loop") || mount.fs_spec == "loop")
         {
-            remove_metrics(metrics, &labels);
             continue;
         }
 

@@ -104,6 +104,10 @@ pub fn update_metrics() {
         Err(_) => return,
     };
 
+    let metrics = metrics();
+    metrics.energy_joules.reset();
+    metrics.max_energy_joules.reset();
+
     for entry in entries.flatten() {
         let name = match entry.file_name().into_string() {
             Ok(name) => name,
