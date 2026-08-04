@@ -47,6 +47,18 @@ fn open_ipmi() -> Option<Ipmi<File>> {
     }
 }
 
+/// Interprets a byte as a signed ones' complement value.
+///
+/// A clear sign bit means the value is the byte itself. A set sign bit means
+/// the magnitude is the bitwise complement, negated - so 0xFE is -1, not +1.
+fn ones_complement(reading: u8) -> i16 {
+    if reading & 0x80 == 0 {
+        reading as i16
+    } else {
+        -((!reading) as i16)
+    }
+}
+
 fn convert_reading(sensor: &FullSensorRecord, reading: u8) -> Option<f64> {
     let format = sensor.analog_data_format?;
     let m = sensor.m as f64;
@@ -55,7 +67,7 @@ fn convert_reading(sensor: &FullSensorRecord, reading: u8) -> Option<f64> {
 
     let reading_value = match format {
         DataFormat::Unsigned => reading as f64,
-        DataFormat::OnesComplement => (!reading as i8) as f64,
+        DataFormat::OnesComplement => ones_complement(reading) as f64,
         DataFormat::TwosComplement => (reading as i8) as f64,
     };
 
@@ -115,5 +127,25 @@ pub fn update_metrics() {
             .sensor_reading
             .with_label_values(&[&sensor_label, &sensor_type, &unit])
             .set(value);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ones_complement;
+
+    #[test]
+    fn ones_complement_positive_values_are_unchanged() {
+        assert_eq!(ones_complement(0x00), 0);
+        assert_eq!(ones_complement(0x01), 1);
+        assert_eq!(ones_complement(0x7F), 127);
+    }
+
+    #[test]
+    fn ones_complement_negative_values_keep_their_sign() {
+        // 0xFF is negative zero, 0xFE is -1, 0x80 is the most negative value.
+        assert_eq!(ones_complement(0xFF), 0);
+        assert_eq!(ones_complement(0xFE), -1);
+        assert_eq!(ones_complement(0x80), -127);
     }
 }
