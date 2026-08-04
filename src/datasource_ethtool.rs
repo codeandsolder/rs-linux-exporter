@@ -218,7 +218,13 @@ fn parse_attrs(mut data: &[u8]) -> Vec<(u16, &[u8])> {
         let payload = &data[mem::size_of::<NlAttr>()..len];
         let attr_type = header.nla_type & !NLA_F_NESTED;
         attrs.push((attr_type, payload));
-        data = &data[nla_align(len)..];
+        // The final attribute of a message need not be padded out, so the
+        // aligned length can run past the end of the buffer.
+        let advance = nla_align(len);
+        if advance >= data.len() {
+            break;
+        }
+        data = &data[advance..];
     }
     attrs
 }
@@ -332,13 +338,16 @@ fn recv_messages(fd: i32, seq: u32) -> io::Result<Vec<Vec<u8>>> {
         while offset + mem::size_of::<NlMsgHdr>() <= len {
             let hdr: NlMsgHdr =
                 unsafe { std::ptr::read_unaligned(buffer.as_ptr().add(offset) as *const NlMsgHdr) };
-            if hdr.nlmsg_seq != seq {
-                offset += nlmsg_align(hdr.nlmsg_len as usize);
-                continue;
-            }
+            // Validate the length before using it to advance, otherwise a
+            // message claiming nlmsg_len == 0 never moves the cursor and the
+            // loop spins forever.
             let msg_len = hdr.nlmsg_len as usize;
             if msg_len < mem::size_of::<NlMsgHdr>() || offset + msg_len > len {
                 break;
+            }
+            if hdr.nlmsg_seq != seq {
+                offset += nlmsg_align(msg_len);
+                continue;
             }
             if hdr.nlmsg_type == NLMSG_DONE {
                 return Ok(responses);
@@ -613,6 +622,44 @@ fn stringset_name(stringsets: &HashMap<u32, Vec<String>>, ss_id: u32, stat_id: u
         return name.clone();
     }
     format!("stat_{}", stat_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn attr_bytes(attr_type: u16, payload: &[u8]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        add_attr(&mut buf, attr_type, payload);
+        buf
+    }
+
+    #[test]
+    fn parse_attrs_reads_a_well_formed_attribute() {
+        let buf = attr_bytes(7, &[1, 2, 3, 4]);
+        let attrs = parse_attrs(&buf);
+        assert_eq!(attrs.len(), 1);
+        assert_eq!(attrs[0].0, 7);
+        assert_eq!(attrs[0].1, &[1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn parse_attrs_handles_unpadded_trailing_attribute() {
+        // A 3-byte payload makes nla_len 7, whose aligned length is 8 - past
+        // the end of the buffer. This used to panic on the slice.
+        let mut buf = attr_bytes(7, &[1, 2, 3]);
+        buf.truncate(7);
+        let attrs = parse_attrs(&buf);
+        assert_eq!(attrs.len(), 1);
+        assert_eq!(attrs[0].1, &[1, 2, 3]);
+    }
+
+    #[test]
+    fn parse_attrs_stops_on_a_truncated_header() {
+        assert!(parse_attrs(&[0, 0, 0]).is_empty());
+        // nla_len smaller than the header itself must not loop.
+        assert!(parse_attrs(&[1, 0, 0, 0, 0, 0, 0, 0]).is_empty());
+    }
 }
 
 fn list_ethernet_interfaces() -> Vec<String> {
