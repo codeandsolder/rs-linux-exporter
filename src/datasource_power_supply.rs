@@ -50,14 +50,14 @@ impl PowerSupplyMetrics {
             voltage_volts: prometheus::register_gauge_vec!(
                 "power_supply_voltage_volts",
                 "Power supply voltage in Volts",
-                &["name", "type"]
+                &["name", "measurement"]
             )
             .expect("register power_supply_voltage_volts"),
 
             current_amps: prometheus::register_gauge_vec!(
                 "power_supply_current_amps",
                 "Power supply current in Amps",
-                &["name", "type"]
+                &["name", "measurement"]
             )
             .expect("register power_supply_current_amps"),
 
@@ -71,14 +71,14 @@ impl PowerSupplyMetrics {
             energy_wh: prometheus::register_gauge_vec!(
                 "power_supply_energy_wh",
                 "Battery energy in Watt-hours",
-                &["name", "type"]
+                &["name", "measurement"]
             )
             .expect("register power_supply_energy_wh"),
 
             charge_ah: prometheus::register_gauge_vec!(
                 "power_supply_charge_ah",
                 "Battery charge in Amp-hours",
-                &["name", "type"]
+                &["name", "measurement"]
             )
             .expect("register power_supply_charge_ah"),
 

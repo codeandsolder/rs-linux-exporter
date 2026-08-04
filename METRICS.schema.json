@@ -1304,7 +1304,7 @@
       "description": "Power supply voltage in Volts",
       "labels": [
         "name",
-        "type"
+        "measurement"
       ]
     },
     {
@@ -1314,7 +1314,7 @@
       "description": "Power supply current in Amps",
       "labels": [
         "name",
-        "type"
+        "measurement"
       ]
     },
     {
@@ -1333,7 +1333,7 @@
       "description": "Battery energy in Watt-hours",
       "labels": [
         "name",
-        "type"
+        "measurement"
       ]
     },
     {
@@ -1343,7 +1343,7 @@
       "description": "Battery charge in Amp-hours",
       "labels": [
         "name",
-        "type"
+        "measurement"
       ]
     },
     {

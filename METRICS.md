@@ -980,9 +980,9 @@ Common section prefixes:
 `power_supply_online`: `name`, `type`
 `power_supply_status`: `name`, `status`
 `power_supply_capacity_percent`: `name`
-`power_supply_voltage_volts`: `name`, `type`
-`power_supply_current_amps`: `name`, `type`
+`power_supply_voltage_volts`: `name`, `measurement`
+`power_supply_current_amps`: `name`, `measurement`
 `power_supply_power_watts`: `name`
-`power_supply_energy_wh`: `name`, `type`
-`power_supply_charge_ah`: `name`, `type`
+`power_supply_energy_wh`: `name`, `measurement`
+`power_supply_charge_ah`: `name`, `measurement`
 `power_supply_temperature_celsius`: `name`
