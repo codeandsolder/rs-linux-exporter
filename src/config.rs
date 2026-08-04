@@ -84,6 +84,20 @@ const SUBSYSTEM_CHECKS: &[SubsystemCheck] = &[
     },
 ];
 
+/// Converts an IPv4-mapped IPv6 address back to plain IPv4.
+///
+/// A dual-stack listener reports IPv4 clients as ::ffff:a.b.c.d, which never
+/// matches an IPv4 CIDR in allowed_ip and would deny legitimate scrapes.
+fn unmap_ipv4(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => IpAddr::V4(v4),
+            None => IpAddr::V6(v6),
+        },
+        other => other,
+    }
+}
+
 /// Compares two byte strings without returning early on the first difference.
 ///
 /// `==` on strings stops at the first mismatching byte, which makes the time it
@@ -190,6 +204,7 @@ impl AppConfig {
     }
 
     pub fn is_metrics_ip_allowed(&self, ip: IpAddr) -> bool {
+        let ip = unmap_ipv4(ip);
         self.allowed_metrics_nets
             .iter()
             .any(|net| net.contains(&ip))
@@ -345,6 +360,34 @@ mod tests {
         let denied_ip: IpAddr = "192.168.1.10".parse().unwrap();
         assert!(config.is_metrics_ip_allowed(allowed_ip));
         assert!(!config.is_metrics_ip_allowed(denied_ip));
+    }
+
+    #[test]
+    fn test_allowed_ip_matches_ipv4_mapped_ipv6() {
+        let mut config = AppConfig {
+            allowed_ip: vec!["127.0.0.0/8".to_string()],
+            ..Default::default()
+        };
+        config.build_allowed_metrics_nets();
+
+        // What a dual-stack listener reports for a loopback IPv4 client.
+        let mapped: IpAddr = "::ffff:127.0.0.1".parse().unwrap();
+        assert!(config.is_metrics_ip_allowed(mapped));
+
+        let mapped_denied: IpAddr = "::ffff:10.1.2.3".parse().unwrap();
+        assert!(!config.is_metrics_ip_allowed(mapped_denied));
+    }
+
+    #[test]
+    fn test_allowed_ip_still_matches_real_ipv6() {
+        let mut config = AppConfig {
+            allowed_ip: vec!["fd00::/8".to_string()],
+            ..Default::default()
+        };
+        config.build_allowed_metrics_nets();
+
+        assert!(config.is_metrics_ip_allowed("fd00::1".parse().unwrap()));
+        assert!(!config.is_metrics_ip_allowed("2001:db8::1".parse().unwrap()));
     }
 
     #[test]
