@@ -90,6 +90,19 @@ fn read_i64(path: &Path) -> Option<i64> {
     read_string(path)?.parse::<i64>().ok()
 }
 
+/// Maps the numeric autonegotiation flag onto the exported label values.
+///
+/// Where sysfs exposes `autoneg` at all it holds 0 or 1, so comparing against
+/// "off"/"on" always fell through to "unknown". Drivers that report the words
+/// directly are passed through unchanged.
+fn normalized_autoneg(value: &str) -> &str {
+    match value {
+        "0" => "off",
+        "1" => "on",
+        other => other,
+    }
+}
+
 fn normalized_state<'a>(value: &'a str, known: &[&'a str]) -> &'a str {
     if known.iter().any(|state| *state == value) {
         value
@@ -168,7 +181,12 @@ fn update_interface(metrics: &NetdevSysfsMetrics, iface_path: &Path, iface: &str
     if let Some(autoneg) =
         read_string(&iface_path.join("autoneg")).map(|value| value.to_lowercase())
     {
-        set_state_metric(&metrics.autoneg, iface, &autoneg, &AUTONEG_STATES);
+        set_state_metric(
+            &metrics.autoneg,
+            iface,
+            normalized_autoneg(&autoneg),
+            &AUTONEG_STATES,
+        );
     }
 }
 
@@ -195,5 +213,70 @@ pub fn update_metrics(config: &AppConfig) {
             continue;
         }
         update_interface(metrics, &entry.path(), &name);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn autoneg_numeric_flag_maps_to_a_known_state() {
+        assert_eq!(normalized_autoneg("0"), "off");
+        assert_eq!(normalized_autoneg("1"), "on");
+        // Anything else is left for normalized_state to classify.
+        assert_eq!(normalized_autoneg("on"), "on");
+        assert_eq!(normalized_autoneg("garbage"), "garbage");
+    }
+
+    #[test]
+    fn autoneg_numeric_flag_is_no_longer_unknown() {
+        assert_eq!(
+            normalized_state(normalized_autoneg("1"), &AUTONEG_STATES),
+            "on"
+        );
+        assert_eq!(
+            normalized_state(normalized_autoneg("garbage"), &AUTONEG_STATES),
+            "unknown"
+        );
+    }
+
+    #[test]
+    fn operstate_and_duplex_are_classified() {
+        assert_eq!(normalized_state("up", &OPERSTATES), "up");
+        assert_eq!(normalized_state("weird", &OPERSTATES), "unknown");
+        assert_eq!(normalized_state("full", &DUPLEX_STATES), "full");
+    }
+
+    #[test]
+    fn update_interface_reads_sysfs_attributes() {
+        let dir = TempDir::new().unwrap();
+        let iface = dir.path().join("eth0");
+        fs::create_dir_all(&iface).unwrap();
+        fs::write(iface.join("operstate"), "up\n").unwrap();
+        fs::write(iface.join("carrier"), "1\n").unwrap();
+        fs::write(iface.join("speed"), "1000\n").unwrap();
+        fs::write(iface.join("duplex"), "full\n").unwrap();
+        fs::write(iface.join("autoneg"), "1\n").unwrap();
+
+        let metrics = metrics();
+        update_interface(metrics, &iface, "eth0");
+
+        assert_eq!(
+            metrics.autoneg.with_label_values(&["eth0", "on"]).get(),
+            1.0
+        );
+        assert_eq!(
+            metrics.autoneg.with_label_values(&["eth0", "off"]).get(),
+            0.0
+        );
+        assert_eq!(metrics.speed_mbps.with_label_values(&["eth0"]).get(), 1000.0);
+        assert_eq!(metrics.operstate.with_label_values(&["eth0", "up"]).get(), 1.0);
+        assert_eq!(
+            metrics.operstate.with_label_values(&["eth0", "down"]).get(),
+            0.0
+        );
     }
 }
