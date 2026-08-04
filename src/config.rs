@@ -8,6 +8,10 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::str::FromStr;
 
+/// Read relative to the working directory; the packaged unit sets
+/// WorkingDirectory=/etc/rs-linux-exporter.
+const CONFIG_PATH: &str = "config.toml";
+
 /// Subsystem availability checks
 struct SubsystemCheck {
     name: &'static str,
@@ -199,15 +203,29 @@ impl AppConfig {
     }
 
     pub fn load() -> Self {
-        let mut config = match fs::read_to_string("config.toml") {
-            Ok(contents) => toml::from_str(&contents).unwrap_or_else(|err| {
-                eprintln!("Failed to parse config.toml: {err}");
+        // A config that exists but cannot be used must not be silently replaced
+        // by the defaults: that would drop auth_token and the operator's
+        // allowed_ip list while the exporter carried on serving metrics.
+        let mut config = match fs::read_to_string(CONFIG_PATH) {
+            Ok(contents) => match toml::from_str(&contents) {
+                Ok(config) => config,
+                Err(err) => {
+                    eprintln!("Failed to parse {CONFIG_PATH}: {err}");
+                    eprintln!("Refusing to start with default settings; fix the config file.");
+                    std::process::exit(1);
+                }
+            },
+            Err(err) if err.kind() == ErrorKind::NotFound => {
+                eprintln!(
+                    "No {CONFIG_PATH} in the working directory, using defaults \
+                     (bind 127.0.0.1:9100, allowed_ip 127.0.0.0/8, no auth token)."
+                );
                 Self::default()
-            }),
-            Err(err) if err.kind() == ErrorKind::NotFound => Self::default(),
+            }
             Err(err) => {
-                eprintln!("Failed to read config.toml: {err}");
-                Self::default()
+                eprintln!("Failed to read {CONFIG_PATH}: {err}");
+                eprintln!("Refusing to start with default settings; fix the config file.");
+                std::process::exit(1);
             }
         };
 
