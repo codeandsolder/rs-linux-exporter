@@ -106,6 +106,15 @@ pub fn update_metrics() {
     };
 
     let metrics = metrics();
+
+    // Arrays, their states and their sync actions all come and go. Drop the
+    // previous scrape's series so a stale array or a state the array has since
+    // left does not keep reporting 1.
+    metrics.array_state.reset();
+    metrics.array_disks.reset();
+    metrics.array_degraded.reset();
+    metrics.array_sync_progress.reset();
+
     let mut lines = contents.lines().peekable();
 
     while let Some(line) = lines.next() {
