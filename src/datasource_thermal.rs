@@ -72,6 +72,18 @@ fn read_i64(path: &Path) -> Option<i64> {
     read_string(path)?.parse::<i64>().ok()
 }
 
+/// Extracts N from a `trip_point_N_temp` filename.
+///
+/// The prefix and suffix can overlap - `trip_point_temp` starts with one and
+/// ends with the other - so slicing on fixed offsets can produce an inverted
+/// range and panic. Strip both ends instead.
+fn trip_point_index(file_name: &str) -> Option<&str> {
+    file_name
+        .strip_prefix("trip_point_")
+        .and_then(|rest| rest.strip_suffix("_temp"))
+        .filter(|index| !index.is_empty())
+}
+
 fn update_thermal_zone(zone_path: &Path, zone_name: &str) {
     let metrics = metrics();
 
@@ -99,8 +111,7 @@ fn update_thermal_zone(zone_path: &Path, zone_name: &str) {
         };
 
         // Match trip_point_N_temp files
-        if file_name.starts_with("trip_point_") && file_name.ends_with("_temp") {
-            let index = &file_name[11..file_name.len() - 5];
+        if let Some(index) = trip_point_index(&file_name) {
             if let Some(millidegrees) = read_i64(&entry.path()) {
                 // Try to get the trip point type
                 let trip_type_path = zone_path.join(format!("trip_point_{}_type", index));
@@ -263,6 +274,32 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let dev = create_cooling_device(dir.path(), "cooling_device0", "Processor", 0, 10);
         update_cooling_device(&dev, "cooling_device0");
+    }
+
+    #[test]
+    fn test_trip_point_index_extracts_number() {
+        assert_eq!(trip_point_index("trip_point_0_temp"), Some("0"));
+        assert_eq!(trip_point_index("trip_point_12_temp"), Some("12"));
+    }
+
+    #[test]
+    fn test_trip_point_index_rejects_overlapping_name() {
+        // Starts with the prefix and ends with the suffix, but has no index
+        // between them; slicing on fixed offsets used to panic here.
+        assert_eq!(trip_point_index("trip_point_temp"), None);
+        // The prefix and suffix consume the whole name, leaving no index.
+        assert_eq!(trip_point_index("trip_point__temp"), None);
+        assert_eq!(trip_point_index("trip_point_0_type"), None);
+        assert_eq!(trip_point_index("temp"), None);
+    }
+
+    #[test]
+    fn test_update_thermal_zone_survives_overlapping_filename() {
+        let dir = TempDir::new().unwrap();
+        let zone = create_thermal_zone(dir.path(), "thermal_zone0", "x86_pkg_temp", 55000);
+        fs::write(zone.join("trip_point_temp"), "100000\n").unwrap();
+
+        update_thermal_zone(&zone, "thermal_zone0");
     }
 
     #[test]
