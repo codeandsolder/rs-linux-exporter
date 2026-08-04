@@ -22,8 +22,8 @@ mod runtime;
 
 use crate::config::AppConfig;
 use prometheus::{Encoder, IntCounter, TextEncoder};
-use rocket::config::TlsConfig;
 use rocket::Config;
+use rocket::config::TlsConfig;
 use rocket::http::{ContentType, Status};
 use rocket::request::{FromRequest, Outcome, Request};
 use rocket::response::status;

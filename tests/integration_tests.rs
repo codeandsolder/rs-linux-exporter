@@ -205,7 +205,11 @@ fn json_endpoint_returns_the_same_metrics() {
     let (status, body) = get(server.port, "/metrics.json", &[]);
 
     assert_eq!(status, 200);
-    assert!(body.starts_with('['), "body was {:?}", &body[..40.min(body.len())]);
+    assert!(
+        body.starts_with('['),
+        "body was {:?}",
+        &body[..40.min(body.len())]
+    );
     assert!(body.contains("\"_name_\""));
     assert!(body.contains("\"_value_\""));
     assert!(body.contains("uptime_seconds"));
@@ -245,8 +249,11 @@ fn unknown_path_is_not_found() {
 #[test]
 fn unparseable_config_is_fatal() {
     let dir = TempDir::new().expect("tempdir");
-    std::fs::write(dir.path().join("config.toml"), "allowed_ip = [ unterminated\n")
-        .expect("write config");
+    std::fs::write(
+        dir.path().join("config.toml"),
+        "allowed_ip = [ unterminated\n",
+    )
+    .expect("write config");
 
     let output = Command::new(EXE)
         .current_dir(dir.path())

@@ -624,44 +624,6 @@ fn stringset_name(stringsets: &HashMap<u32, Vec<String>>, ss_id: u32, stat_id: u
     format!("stat_{}", stat_id)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn attr_bytes(attr_type: u16, payload: &[u8]) -> Vec<u8> {
-        let mut buf = Vec::new();
-        add_attr(&mut buf, attr_type, payload);
-        buf
-    }
-
-    #[test]
-    fn parse_attrs_reads_a_well_formed_attribute() {
-        let buf = attr_bytes(7, &[1, 2, 3, 4]);
-        let attrs = parse_attrs(&buf);
-        assert_eq!(attrs.len(), 1);
-        assert_eq!(attrs[0].0, 7);
-        assert_eq!(attrs[0].1, &[1, 2, 3, 4]);
-    }
-
-    #[test]
-    fn parse_attrs_handles_unpadded_trailing_attribute() {
-        // A 3-byte payload makes nla_len 7, whose aligned length is 8 - past
-        // the end of the buffer. This used to panic on the slice.
-        let mut buf = attr_bytes(7, &[1, 2, 3]);
-        buf.truncate(7);
-        let attrs = parse_attrs(&buf);
-        assert_eq!(attrs.len(), 1);
-        assert_eq!(attrs[0].1, &[1, 2, 3]);
-    }
-
-    #[test]
-    fn parse_attrs_stops_on_a_truncated_header() {
-        assert!(parse_attrs(&[0, 0, 0]).is_empty());
-        // nla_len smaller than the header itself must not loop.
-        assert!(parse_attrs(&[1, 0, 0, 0, 0, 0, 0, 0]).is_empty());
-    }
-}
-
 fn list_ethernet_interfaces() -> Vec<String> {
     let mut ifaces = Vec::new();
     let base = Path::new("/sys/class/net");
@@ -769,5 +731,43 @@ pub fn update_metrics() {
         if debug_enabled() {
             eprintln!("ethtool: emitted {emitted} metrics for {iface}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn attr_bytes(attr_type: u16, payload: &[u8]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        add_attr(&mut buf, attr_type, payload);
+        buf
+    }
+
+    #[test]
+    fn parse_attrs_reads_a_well_formed_attribute() {
+        let buf = attr_bytes(7, &[1, 2, 3, 4]);
+        let attrs = parse_attrs(&buf);
+        assert_eq!(attrs.len(), 1);
+        assert_eq!(attrs[0].0, 7);
+        assert_eq!(attrs[0].1, &[1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn parse_attrs_handles_unpadded_trailing_attribute() {
+        // A 3-byte payload makes nla_len 7, whose aligned length is 8 - past
+        // the end of the buffer. This used to panic on the slice.
+        let mut buf = attr_bytes(7, &[1, 2, 3]);
+        buf.truncate(7);
+        let attrs = parse_attrs(&buf);
+        assert_eq!(attrs.len(), 1);
+        assert_eq!(attrs[0].1, &[1, 2, 3]);
+    }
+
+    #[test]
+    fn parse_attrs_stops_on_a_truncated_header() {
+        assert!(parse_attrs(&[0, 0, 0]).is_empty());
+        // nla_len smaller than the header itself must not loop.
+        assert!(parse_attrs(&[1, 0, 0, 0, 0, 0, 0, 0]).is_empty());
     }
 }

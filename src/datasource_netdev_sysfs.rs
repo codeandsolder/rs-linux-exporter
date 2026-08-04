@@ -272,8 +272,14 @@ mod tests {
             metrics.autoneg.with_label_values(&["eth0", "off"]).get(),
             0.0
         );
-        assert_eq!(metrics.speed_mbps.with_label_values(&["eth0"]).get(), 1000.0);
-        assert_eq!(metrics.operstate.with_label_values(&["eth0", "up"]).get(), 1.0);
+        assert_eq!(
+            metrics.speed_mbps.with_label_values(&["eth0"]).get(),
+            1000.0
+        );
+        assert_eq!(
+            metrics.operstate.with_label_values(&["eth0", "up"]).get(),
+            1.0
+        );
         assert_eq!(
             metrics.operstate.with_label_values(&["eth0", "down"]).get(),
             0.0
