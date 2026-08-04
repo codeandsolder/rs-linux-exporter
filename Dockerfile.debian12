@@ -27,7 +27,7 @@ RUN cargo build --release
 
 RUN install -d /pkg/DEBIAN /pkg/usr/bin /pkg/etc/rs-linux-exporter /pkg/lib/systemd/system /out
 RUN install -m 0755 target/release/rs-linux-exporter /pkg/usr/bin/rs-linux-exporter
-RUN install -m 0644 packaging/config.toml /pkg/etc/rs-linux-exporter/config.toml
+RUN install -m 0640 packaging/config.toml /pkg/etc/rs-linux-exporter/config.toml
 RUN install -m 0644 packaging/rs-linux-exporter.service /pkg/lib/systemd/system/rs-linux-exporter.service
 RUN install -m 0755 packaging/postinst /pkg/DEBIAN/postinst
 RUN install -m 0755 packaging/prerm /pkg/DEBIAN/prerm

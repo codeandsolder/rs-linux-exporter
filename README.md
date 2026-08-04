@@ -175,6 +175,13 @@ head -c 32 /dev/urandom | base64
 # Example output: K7gNU3sdo+OL0wNhqoVWhr3g6s1xYv72ol/pe/Unols=
 ```
 
+Because `config.toml` then holds a secret, keep it unreadable by other
+users. The Debian package installs it mode 0640; if you deploy it yourself:
+
+```bash
+chmod 0640 /etc/rs-linux-exporter/config.toml
+```
+
 ### Testing with curl
 
 ```bash
