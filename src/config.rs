@@ -84,6 +84,24 @@ const SUBSYSTEM_CHECKS: &[SubsystemCheck] = &[
     },
 ];
 
+/// Compares two byte strings without returning early on the first difference.
+///
+/// `==` on strings stops at the first mismatching byte, which makes the time it
+/// takes depend on how many leading bytes a guess got right. The length is not
+/// protected - it is not secret - but the contents are.
+#[inline(never)]
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    std::hint::black_box(diff) == 0
+}
+
 fn check_path_available(path: &Path, require_entries: bool) -> bool {
     if !path.exists() {
         return false;
@@ -162,9 +180,12 @@ impl AppConfig {
     }
 
     pub fn is_token_valid(&self, token: Option<&str>) -> bool {
-        match &self.auth_token {
-            Some(expected) => token == Some(expected.as_str()),
-            None => true, // No token configured, allow all
+        match (&self.auth_token, token) {
+            (Some(expected), Some(provided)) => {
+                constant_time_eq(expected.as_bytes(), provided.as_bytes())
+            }
+            (Some(_), None) => false,
+            (None, _) => true, // No token configured, allow all
         }
     }
 
@@ -332,6 +353,17 @@ mod tests {
         // When no token is configured, all requests should be allowed
         assert!(config.is_token_valid(None));
         assert!(config.is_token_valid(Some("any-token")));
+    }
+
+    #[test]
+    fn test_constant_time_eq() {
+        assert!(constant_time_eq(b"", b""));
+        assert!(constant_time_eq(b"secret", b"secret"));
+        assert!(!constant_time_eq(b"secret", b"secreT"));
+        // Differs only in the first byte, and only in the last.
+        assert!(!constant_time_eq(b"secret", b"Secret"));
+        assert!(!constant_time_eq(b"secret", b"secrets"));
+        assert!(!constant_time_eq(b"secret", b""));
     }
 
     #[test]
