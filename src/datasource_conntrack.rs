@@ -13,6 +13,9 @@ use std::sync::OnceLock;
 // Netlink protocol constants
 const NETLINK_NETFILTER: i32 = 12;
 
+/// Upper bound on how long a single scrape will wait for the kernel.
+const RECV_TIMEOUT_SECS: i64 = 2;
+
 // Netlink message flags
 const NLM_F_REQUEST: u16 = 0x0001;
 const NLM_F_DUMP: u16 = 0x0300;
@@ -216,6 +219,29 @@ fn create_netlink_socket() -> io::Result<i32> {
         return Err(Error::last_os_error());
     }
 
+    // Without a receive timeout a dump that never reaches NLMSG_DONE - for
+    // instance because a malformed message aborted the parse loop early -
+    // would block the scrape forever.
+    let timeout = libc::timeval {
+        tv_sec: RECV_TIMEOUT_SECS,
+        tv_usec: 0,
+    };
+    let ret = unsafe {
+        libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_RCVTIMEO,
+            &timeout as *const libc::timeval as *const libc::c_void,
+            mem::size_of::<libc::timeval>() as u32,
+        )
+    };
+
+    if ret < 0 {
+        let err = Error::last_os_error();
+        unsafe { libc::close(fd) };
+        return Err(err);
+    }
+
     // Bind the socket
     let mut addr: libc::sockaddr_nl = unsafe { mem::zeroed() };
     addr.nl_family = libc::AF_NETLINK as u16;
@@ -293,24 +319,37 @@ pub fn collect_stats() -> Result<Vec<CpuStats>, String> {
     let mut buffer = vec![0u8; 16384];
 
     loop {
+        // Read the sender address so replies that did not come from the kernel
+        // can be discarded rather than parsed as statistics.
+        let mut addr: libc::sockaddr_nl = unsafe { mem::zeroed() };
+        let mut addr_len = mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t;
         let len = unsafe {
-            libc::recv(
+            libc::recvfrom(
                 fd,
                 buffer.as_mut_ptr() as *mut libc::c_void,
                 buffer.len(),
                 0,
+                &mut addr as *mut libc::sockaddr_nl as *mut libc::sockaddr,
+                &mut addr_len,
             )
         };
 
         if len < 0 {
-            return Err(format!(
-                "Failed to receive netlink response: {}",
-                Error::last_os_error()
-            ));
+            let err = Error::last_os_error();
+            if err.kind() == io::ErrorKind::WouldBlock || err.kind() == io::ErrorKind::TimedOut {
+                // Timed out waiting for NLMSG_DONE; return what we have.
+                return Ok(all_stats);
+            }
+            return Err(format!("Failed to receive netlink response: {err}"));
         }
 
         if len == 0 {
             break;
+        }
+
+        // The kernel always sends from port id 0.
+        if addr.nl_pid != 0 {
+            continue;
         }
 
         let len = len as usize;
