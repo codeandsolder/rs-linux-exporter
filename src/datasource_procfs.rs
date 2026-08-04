@@ -441,6 +441,27 @@ fn update_netdev(
     }
 }
 
+/// Every label value `tcp_state_label` can return. Counts are seeded from this
+/// list so a state that drops to zero reports zero instead of keeping its last
+/// value.
+const TCP_STATE_LABELS: [&str; 12] = [
+    "established",
+    "syn_sent",
+    "syn_recv",
+    "fin_wait_1",
+    "fin_wait_2",
+    "time_wait",
+    "close",
+    "close_wait",
+    "last_ack",
+    "listen",
+    "closing",
+    "new_syn_recv",
+];
+
+/// Every label value `udp_state_label` can return.
+const UDP_STATE_LABELS: [&str; 2] = ["established", "close"];
+
 fn tcp_state_label(state: &TcpState) -> &'static str {
     match state {
         TcpState::Established => "established",
@@ -466,7 +487,8 @@ fn udp_state_label(state: &UdpState) -> &'static str {
 }
 
 fn update_tcp(metrics: &ProcfsMetrics, entries: &[procfs::net::TcpNetEntry]) {
-    let mut counts: std::collections::HashMap<&'static str, u64> = std::collections::HashMap::new();
+    let mut counts: HashMap<&'static str, u64> =
+        TCP_STATE_LABELS.iter().map(|state| (*state, 0)).collect();
     for entry in entries {
         *counts.entry(tcp_state_label(&entry.state)).or_insert(0) += 1;
     }
@@ -480,7 +502,8 @@ fn update_tcp(metrics: &ProcfsMetrics, entries: &[procfs::net::TcpNetEntry]) {
 }
 
 fn update_udp(metrics: &ProcfsMetrics, entries: &[procfs::net::UdpNetEntry]) {
-    let mut counts: std::collections::HashMap<&'static str, u64> = std::collections::HashMap::new();
+    let mut counts: HashMap<&'static str, u64> =
+        UDP_STATE_LABELS.iter().map(|state| (*state, 0)).collect();
     for entry in entries {
         *counts.entry(udp_state_label(&entry.state)).or_insert(0) += 1;
     }
@@ -494,11 +517,14 @@ fn update_udp(metrics: &ProcfsMetrics, entries: &[procfs::net::UdpNetEntry]) {
 }
 
 fn update_arp(metrics: &ProcfsMetrics, entries: &[procfs::net::ARPEntry]) {
-    let mut counts: std::collections::HashMap<&str, u64> = std::collections::HashMap::new();
+    let mut counts: HashMap<&str, u64> = HashMap::new();
     for entry in entries {
         *counts.entry(entry.device.as_str()).or_insert(0) += 1;
     }
 
+    // The set of devices is dynamic, so drop the previous scrape's series
+    // rather than leaving entries for devices that no longer exist.
+    metrics.arp_entries.reset();
     for (device, count) in counts {
         metrics
             .arp_entries
@@ -788,4 +814,50 @@ pub fn update_metrics(config: &AppConfig) {
     }
 
     update_netstat(metrics);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The seeded label lists must stay in sync with the label functions,
+    /// otherwise a state that drops to zero would keep its previous value.
+    #[test]
+    fn tcp_state_labels_cover_every_variant() {
+        let all = [
+            TcpState::Established,
+            TcpState::SynSent,
+            TcpState::SynRecv,
+            TcpState::FinWait1,
+            TcpState::FinWait2,
+            TcpState::TimeWait,
+            TcpState::Close,
+            TcpState::CloseWait,
+            TcpState::LastAck,
+            TcpState::Listen,
+            TcpState::Closing,
+            TcpState::NewSynRecv,
+        ];
+        assert_eq!(all.len(), TCP_STATE_LABELS.len());
+        for state in &all {
+            let label = tcp_state_label(state);
+            assert!(
+                TCP_STATE_LABELS.contains(&label),
+                "{label} missing from TCP_STATE_LABELS"
+            );
+        }
+    }
+
+    #[test]
+    fn udp_state_labels_cover_every_variant() {
+        let all = [UdpState::Established, UdpState::Close];
+        assert_eq!(all.len(), UDP_STATE_LABELS.len());
+        for state in &all {
+            let label = udp_state_label(state);
+            assert!(
+                UDP_STATE_LABELS.contains(&label),
+                "{label} missing from UDP_STATE_LABELS"
+            );
+        }
+    }
 }
