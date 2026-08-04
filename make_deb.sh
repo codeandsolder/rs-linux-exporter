@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 <ubuntu2204|ubuntu2404|debian12|debian13> [more targets...]" >&2
+  echo "Usage: $0 <ubuntu2204|ubuntu2404|ubuntu2604|debian12|debian13> [more targets...]" >&2
   exit 1
 fi
 
@@ -16,7 +16,7 @@ mkdir -p dist
 
 for target in "$@"; do
   case "${target}" in
-    ubuntu2204|ubuntu2404|debian12|debian13)
+    ubuntu2204|ubuntu2404|ubuntu2604|debian12|debian13)
       dockerfile="Dockerfile.${target}"
       ;;
     *)

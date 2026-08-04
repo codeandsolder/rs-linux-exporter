@@ -12,7 +12,7 @@ jobs:
       contents: write
     strategy:
       matrix:
-        distro: [ubuntu2204, ubuntu2404, debian12, debian13]
+        distro: [ubuntu2204, ubuntu2404, ubuntu2604, debian12, debian13]
     steps:
       - uses: actions/checkout@v4
       - name: Build deb

@@ -92,7 +92,7 @@ Configuration is optional. Create a `config.toml` file in the working directory.
 
 The `.deb` packages include a systemd unit and a default config file.
 
-Targets: Debian 12/13 and Ubuntu 22.04/24.04.
+Targets: Debian 12/13 and Ubuntu 22.04/24.04/26.04.
 
 Defaults when installed from `.deb`:
 - Service name: `rs-linux-exporter.service`
