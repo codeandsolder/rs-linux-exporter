@@ -27,8 +27,10 @@ use rocket::Config;
 use rocket::http::{ContentType, Status};
 use rocket::request::{FromRequest, Outcome, Request};
 use rocket::response::status;
+use rocket::tokio::task::spawn_blocking;
 use serde_json::Value as JsonValue;
 use std::net::IpAddr;
+use std::sync::Mutex;
 
 /// Extracts Bearer token from Authorization header
 pub struct BearerToken(Option<String>);
@@ -52,6 +54,11 @@ static METRICS_REQUESTS_TOTAL: OnceLock<IntCounter> = OnceLock::new();
 static METRICS_REQUESTS_DENIED_TOTAL: OnceLock<IntCounter> = OnceLock::new();
 static APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
 static IS_ROOT: OnceLock<bool> = OnceLock::new();
+
+/// Serialises scrapes. Collectors reset their vecs and repopulate them, so two
+/// concurrent scrapes would let one observe the other's half-rebuilt state. It
+/// also stops N simultaneous requests from doing N times the hardware polling.
+static SCRAPE_LOCK: Mutex<()> = Mutex::new(());
 
 fn metrics_requests_total() -> &'static IntCounter {
     METRICS_REQUESTS_TOTAL.get_or_init(|| {
@@ -228,8 +235,40 @@ fn metrics_json_payload() -> String {
     serde_json::to_string(&samples).unwrap_or_else(|_| "[]".to_string())
 }
 
+/// Refreshes every enabled datasource and renders the result.
+///
+/// Runs on the blocking pool: collectors do synchronous filesystem and netlink
+/// I/O, and `statvfs` on an unresponsive network mount or an IPMI controller
+/// that is slow to answer can block for seconds. Doing that directly in the
+/// handler would tie up a Rocket worker thread for the duration.
+fn refresh_and_render<T>(render: impl FnOnce() -> T) -> T {
+    let _guard = SCRAPE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    update_metrics();
+    render()
+}
+
+fn render_text() -> String {
+    let encoder = TextEncoder::new();
+    let metric_families = prometheus::gather();
+    let mut buffer = Vec::new();
+    if let Err(err) = encoder.encode(&metric_families, &mut buffer) {
+        eprintln!("Failed to encode metrics: {err}");
+        return String::new();
+    }
+    String::from_utf8(buffer).unwrap_or_default()
+}
+
+fn collection_failed() -> status::Custom<(ContentType, String)> {
+    status::Custom(
+        Status::InternalServerError,
+        (ContentType::Plain, "collection failed".to_string()),
+    )
+}
+
 #[get("/metrics")]
-fn metrics(
+async fn metrics(
     client_ip: Option<IpAddr>,
     token: BearerToken,
 ) -> Result<(ContentType, String), status::Custom<(ContentType, String)>> {
@@ -273,23 +312,17 @@ fn metrics(
         ));
     }
 
-    update_metrics();
-
-    let encoder = TextEncoder::new();
-    let metric_families = prometheus::gather();
-    let mut buffer = Vec::new();
-    encoder
-        .encode(&metric_families, &mut buffer)
-        .expect("encode metrics");
-
-    Ok((
-        ContentType::Plain,
-        String::from_utf8(buffer).unwrap_or_default(),
-    ))
+    match spawn_blocking(|| refresh_and_render(render_text)).await {
+        Ok(body) => Ok((ContentType::Plain, body)),
+        Err(err) => {
+            eprintln!("Metrics collection task failed: {err}");
+            Err(collection_failed())
+        }
+    }
 }
 
 #[get("/metrics.json")]
-fn metrics_json(
+async fn metrics_json(
     client_ip: Option<IpAddr>,
     token: BearerToken,
 ) -> Result<(ContentType, String), status::Custom<(ContentType, String)>> {
@@ -333,9 +366,13 @@ fn metrics_json(
         ));
     }
 
-    update_metrics();
-
-    Ok((ContentType::JSON, metrics_json_payload()))
+    match spawn_blocking(|| refresh_and_render(metrics_json_payload)).await {
+        Ok(body) => Ok((ContentType::JSON, body)),
+        Err(err) => {
+            eprintln!("Metrics collection task failed: {err}");
+            Err(collection_failed())
+        }
+    }
 }
 
 #[get("/")]
