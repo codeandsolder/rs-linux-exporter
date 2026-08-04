@@ -1,6 +1,6 @@
 [package]
 name = "rs-linux-exporter"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 description = "Linux monitoring exporter"
 repository = "https://github.com/nuclearcat/rs-linux-exporter"
