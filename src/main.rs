@@ -375,7 +375,8 @@ fn rocket() -> _ {
     let bind = app_config().bind_addr();
     let mut figment = Config::figment()
         .merge(("address", bind.ip().to_string()))
-        .merge(("port", bind.port()));
+        .merge(("port", bind.port()))
+        .merge(("ip_header", false));
 
     if let Some((cert, key)) = app_config().tls_config() {
         figment = figment.merge(("tls", TlsConfig::from_paths(cert, key)));
