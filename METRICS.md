@@ -228,6 +228,7 @@ The datasource follows `/proc/net/rpc/nfsd` dynamically with the same healthy/no
 | `netdev` | GaugeVec | Raw network device stats from /proc/net/dev |
 | `tcp_sockets` | GaugeVec | TCP socket counts by state from /proc/net/tcp |
 | `udp_sockets` | GaugeVec | UDP socket counts by state from /proc/net/udp |
+| `udp_queues` | GaugeVec | Queued UDP datagram bytes by transmit/receive queue and IP family |
 | `arp_entries` | GaugeVec | ARP table entries by device from /proc/net/arp |
 | `snmp` | GaugeVec | SNMP counters from /proc/net/snmp |
 | `netstat` | GaugeVec | Extended netstat counters from /proc/net/netstat |
@@ -994,7 +995,9 @@ The exporter also exposes a future/unknown systemd active state as an additive o
 - `sent_carrier`
 - `sent_compressed`
 
-`tcp_sockets` `state` values:
+### tcp_sockets labels: `state`
+
+`state` values:
 
 - `established`
 - `syn_sent`
@@ -1009,14 +1012,28 @@ The exporter also exposes a future/unknown systemd active state as an additive o
 - `closing`
 - `new_syn_recv`
 
-`udp_sockets` `state` values:
+### udp_sockets labels: `state`
+
+`state` values:
 
 - `established`
 - `close`
 
-`arp_entries` label values:
+### udp_queues labels: `queue`, `ip`
 
-- `device`: interface name from ARP table (`lo`, `eth0`, etc.)
+`queue` values:
+
+- `tx`
+- `rx`
+
+`ip` values:
+
+- `v4`
+- `v6`
+
+### arp_entries labels: `device`
+
+`device` values are interface names from the ARP table (`lo`, `eth0`, etc.).
 
 `snmp` field values (`field`):
 

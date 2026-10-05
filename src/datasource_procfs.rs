@@ -9,6 +9,8 @@ use procfs::{CpuTime, KernelStats, LoadAverage, Meminfo, Uptime};
 use prometheus::{Gauge, GaugeVec};
 use std::collections::HashMap;
 use std::fs;
+use std::io::ErrorKind;
+use std::path::Path;
 use std::sync::OnceLock;
 
 struct ProcfsMetrics {
@@ -28,6 +30,7 @@ struct ProcfsMetrics {
     netdev: GaugeVec,
     tcp_sockets: GaugeVec,
     udp_sockets: GaugeVec,
+    udp_queues: GaugeVec,
     arp_entries: GaugeVec,
     snmp: GaugeVec,
     netstat: GaugeVec,
@@ -129,6 +132,12 @@ impl ProcfsMetrics {
                 &["state"]
             )
             .or_exit("udp_sockets"),
+            udp_queues: prometheus::register_gauge_vec!(
+                "udp_queues",
+                "Number of queued UDP datagram bytes in the kernel.",
+                &["queue", "ip"]
+            )
+            .or_exit("udp_queues"),
             arp_entries: prometheus::register_gauge_vec!(
                 "arp_entries",
                 "ARP table entries by device from /proc/net/arp",
@@ -160,6 +169,7 @@ impl ProcfsMetrics {
         self.netdev.reset();
         self.tcp_sockets.reset();
         self.udp_sockets.reset();
+        self.udp_queues.reset();
         self.arp_entries.reset();
         self.snmp.reset();
         self.netstat.reset();
@@ -532,6 +542,73 @@ fn update_tcp(metrics: &ProcfsMetrics, entries: &[procfs::net::TcpNetEntry]) {
     }
 }
 
+fn udp_queue_lengths(queues: impl Iterator<Item = (u32, u32)>) -> (u64, u64) {
+    queues.fold((0_u64, 0_u64), |(tx, rx), (entry_tx, entry_rx)| {
+        (tx + u64::from(entry_tx), rx + u64::from(entry_rx))
+    })
+}
+
+fn update_udp_queue_values(metrics: &ProcfsMetrics, tx: u64, rx: u64, ip: &str) {
+    metrics
+        .udp_queues
+        .with_label_values(&["tx", ip])
+        .set(prometheus_u64(tx));
+    metrics
+        .udp_queues
+        .with_label_values(&["rx", ip])
+        .set(prometheus_u64(rx));
+}
+
+fn update_udp_queues(metrics: &ProcfsMetrics, entries: &[procfs::net::UdpNetEntry], ip: &str) {
+    let (tx, rx) = udp_queue_lengths(entries.iter().map(|entry| (entry.tx_queue, entry.rx_queue)));
+    update_udp_queue_values(metrics, tx, rx, ip);
+}
+
+fn parse_udp_queue_table(contents: &str) -> Result<(u64, u64), String> {
+    let mut lines = contents.lines();
+    let header = lines
+        .next()
+        .ok_or_else(|| "UDP socket table is missing its header".to_string())?;
+    let columns = header.split_whitespace().collect::<Vec<_>>();
+    if columns.get(4) != Some(&"tx_queue") || columns.get(5) != Some(&"rx_queue") {
+        return Err(format!("unexpected UDP socket-table header: {header:?}"));
+    }
+
+    let mut tx_total = 0_u64;
+    let mut rx_total = 0_u64;
+    for (index, line) in lines.enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let queue = line
+            .split_whitespace()
+            .nth(4)
+            .ok_or_else(|| format!("line {}: missing tx_queue:rx_queue field", index + 2))?;
+        let (tx, rx) = queue
+            .split_once(':')
+            .ok_or_else(|| format!("line {}: malformed queue field {queue:?}", index + 2))?;
+        let tx = u64::from_str_radix(tx, 16)
+            .map_err(|error| format!("line {}: invalid tx queue {tx:?}: {error}", index + 2))?;
+        let rx = u64::from_str_radix(rx, 16)
+            .map_err(|error| format!("line {}: invalid rx queue {rx:?}: {error}", index + 2))?;
+        tx_total = tx_total
+            .checked_add(tx)
+            .ok_or_else(|| "UDP transmit queue total overflowed u64".to_string())?;
+        rx_total = rx_total
+            .checked_add(rx)
+            .ok_or_else(|| "UDP receive queue total overflowed u64".to_string())?;
+    }
+    Ok((tx_total, rx_total))
+}
+
+fn read_udp_queue_table(path: &Path) -> Result<Option<(u64, u64)>, String> {
+    match fs::read_to_string(path) {
+        Ok(contents) => parse_udp_queue_table(&contents).map(Some),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("failed to read {}: {error}", path.display())),
+    }
+}
+
 fn update_udp(metrics: &ProcfsMetrics, entries: &[procfs::net::UdpNetEntry]) {
     let mut counts: HashMap<&'static str, u64> =
         UDP_STATE_LABELS.iter().map(|state| (*state, 0)).collect();
@@ -545,6 +622,7 @@ fn update_udp(metrics: &ProcfsMetrics, entries: &[procfs::net::UdpNetEntry]) {
             .with_label_values(&[state])
             .set(prometheus_u64(count));
     }
+    update_udp_queues(metrics, entries, "v4");
 }
 
 fn update_arp(metrics: &ProcfsMetrics, entries: &[procfs::net::ARPEntry]) {
@@ -828,6 +906,11 @@ pub fn update_metrics(config: &AppConfig) -> CollectionReport {
         Ok(entries) => update_udp(metrics, &entries),
         Err(error) => record_collection_error(&mut report, "udp", &error),
     }
+    match read_udp_queue_table(Path::new("/proc/net/udp6")) {
+        Ok(Some((tx, rx))) => update_udp_queue_values(metrics, tx, rx, "v6"),
+        Ok(None) => {}
+        Err(error) => record_collection_error(&mut report, "udp6 queues", &error),
+    }
     match procfs::net::arp() {
         Ok(entries) => update_arp(metrics, &entries),
         Err(error) => record_collection_error(&mut report, "arp", &error),
@@ -928,6 +1011,27 @@ mod tests {
         let error = parse_sectioned_integer_table("Udp: InDatagrams NoPorts\n")
             .expect_err("header without values must fail");
         assert!(error.contains("missing value rows"), "{error}");
+    }
+
+    #[test]
+    fn udp_queue_table_parser_reads_only_queue_totals() {
+        let table = "  sl  local_address remote_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode\n  1: 00000000000000000000000001000000:1234 00000000000000000000000000000000:0000 07 00000002:00000003 00:00000000 00000000 0 0 1\n  2: 00000000000000000000000001000000:1235 00000000000000000000000000000000:0000 07 FFFFFFFF:00000004 00:00000000 00000000 0 0 2\n";
+        assert_eq!(
+            parse_udp_queue_table(table),
+            Ok((u64::from(u32::MAX) + 2, 7))
+        );
+        assert!(parse_udp_queue_table("header\nbroken\n").is_err());
+        assert!(parse_udp_queue_table("").is_err());
+        assert!(parse_udp_queue_table("sl local remote st wrong columns\n").is_err());
+    }
+
+    #[test]
+    fn udp_queue_lengths_sum_without_u32_overflow() {
+        let queues = [(u32::MAX, 2_u32), (7_u32, u32::MAX)];
+        assert_eq!(
+            udp_queue_lengths(queues.into_iter()),
+            (u64::from(u32::MAX) + 7, u64::from(u32::MAX) + 2)
+        );
     }
 
     #[test]

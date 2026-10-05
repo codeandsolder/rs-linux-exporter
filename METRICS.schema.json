@@ -1297,26 +1297,37 @@
       "group": "procfs",
       "type": "GaugeVec",
       "description": "TCP socket counts by state from /proc/net/tcp",
-      "labels": []
+      "labels": [
+        "state"
+      ]
     },
     {
       "name": "udp_sockets",
       "group": "procfs",
       "type": "GaugeVec",
       "description": "UDP socket counts by state from /proc/net/udp",
-      "labels": []
+      "labels": [
+        "state"
+      ]
+    },
+    {
+      "name": "udp_queues",
+      "group": "procfs",
+      "type": "GaugeVec",
+      "description": "Queued UDP datagram bytes by transmit/receive queue and IP family",
+      "labels": [
+        "queue",
+        "ip"
+      ]
     },
     {
       "name": "arp_entries",
       "group": "procfs",
       "type": "GaugeVec",
       "description": "ARP table entries by device from /proc/net/arp",
-      "labels": [],
-      "label_values": {
-        "value": [
-          "device"
-        ]
-      }
+      "labels": [
+        "device"
+      ]
     },
     {
       "name": "snmp",
@@ -2555,6 +2566,7 @@
         "netdev",
         "tcp_sockets",
         "udp_sockets",
+        "udp_queues",
         "arp_entries",
         "snmp",
         "netstat"
