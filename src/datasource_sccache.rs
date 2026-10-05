@@ -5,15 +5,10 @@ use crate::runtime::debug_enabled;
 use prometheus::{CounterVec, Gauge, GaugeVec};
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::io::Read;
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::{Mutex, OnceLock};
-use std::thread::{self, JoinHandle};
 use std::time::Duration;
-use wait_timeout::ChildExt;
-
-const MAX_COMMAND_OUTPUT_BYTES: u64 = 1 << 20;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 enum CounterFamily {
@@ -696,83 +691,21 @@ fn dist_snapshot(info: DistInfo) -> DistSnapshot {
     }
 }
 
-fn read_child_output(mut reader: impl Read) -> Result<Vec<u8>, String> {
-    let mut limited = (&mut reader).take(MAX_COMMAND_OUTPUT_BYTES + 1);
-    let mut bytes = Vec::new();
-    limited
-        .read_to_end(&mut bytes)
-        .map_err(|error| format!("read sccache command output: {error}"))?;
-    if bytes.len() as u64 > MAX_COMMAND_OUTPUT_BYTES {
-        return Err(format!(
-            "sccache command output exceeded {MAX_COMMAND_OUTPUT_BYTES} bytes"
-        ));
-    }
-    Ok(bytes)
-}
-
-fn spawn_output_reader<R>(reader: R) -> JoinHandle<Result<Vec<u8>, String>>
-where
-    R: Read + Send + 'static,
-{
-    thread::spawn(move || read_child_output(reader))
-}
-
-fn join_output_reader(handle: JoinHandle<Result<Vec<u8>, String>>) -> Result<Vec<u8>, String> {
-    handle
-        .join()
-        .map_err(|_| "sccache output reader thread panicked".to_string())?
-}
-
 fn run_sccache(config: &AppConfig, args: &[&str]) -> Result<String, String> {
-    let mut child = Command::new(&config.sccache_binary)
+    let mut command = Command::new(&config.sccache_binary);
+    command
         .args(args)
         .env(
             "SCCACHE_SERVER_PORT",
             config.sccache_server_port.to_string(),
         )
-        .env_remove("SCCACHE_SERVER_UDS")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| format!("start {:?}: {error}", config.sccache_binary))?;
-
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "sccache stdout pipe was not created".to_string())?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| "sccache stderr pipe was not created".to_string())?;
-    let stdout_reader = spawn_output_reader(stdout);
-    let stderr_reader = spawn_output_reader(stderr);
-
-    let timeout = Duration::from_millis(config.sccache_timeout_ms);
-    let status = child
-        .wait_timeout(timeout)
-        .map_err(|error| format!("wait for sccache command: {error}"))?;
-    let timed_out = status.is_none();
-    if timed_out {
-        let _ = child.kill();
-    }
-    let status = child
-        .wait()
-        .map_err(|error| format!("reap sccache command: {error}"))?;
-    let stdout = join_output_reader(stdout_reader)?;
-    let stderr = join_output_reader(stderr_reader)?;
-    if timed_out {
-        return Err(format!(
-            "sccache command timed out after {} ms",
-            config.sccache_timeout_ms
-        ));
-    }
-    if !status.success() {
-        return Err(format!(
-            "sccache command exited with {status}: {}",
-            String::from_utf8_lossy(&stderr).trim()
-        ));
-    }
-    String::from_utf8(stdout).map_err(|error| format!("sccache output was not UTF-8: {error}"))
+        .env_remove("SCCACHE_SERVER_UDS");
+    crate::subprocess::run_bounded(
+        command,
+        Duration::from_millis(config.sccache_timeout_ms),
+        crate::subprocess::DEFAULT_MAX_OUTPUT_BYTES,
+        "sccache command",
+    )
 }
 
 fn daemon_reachable(config: &AppConfig) -> Result<(), String> {

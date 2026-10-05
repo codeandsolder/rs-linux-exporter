@@ -1,16 +1,17 @@
 use crate::collection::CollectionReport;
 use crate::config::{AppConfig, Datasource};
 use crate::datasource_nfs;
+use crate::datasource_ntp;
 use crate::datasource_time;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::{
     datasource_cgroup, datasource_conntrack, datasource_cpufreq, datasource_dmi, datasource_edac,
     datasource_filefd, datasource_filesystems, datasource_hwmon, datasource_ipmi,
     datasource_kernel_hung, datasource_mdraid, datasource_netdev_sysfs, datasource_numa,
-    datasource_nvme, datasource_os, datasource_power_supply, datasource_pressure,
+    datasource_nvme, datasource_os, datasource_power_supply, datasource_pressure, datasource_probe,
     datasource_procfs, datasource_rapl, datasource_sccache, datasource_schedstat,
-    datasource_softnet, datasource_systemd, datasource_thermal, datasource_timex, datasource_uname,
-    datasource_watchdog, datasource_zfs,
+    datasource_softnet, datasource_systemd, datasource_tailscale, datasource_thermal,
+    datasource_timex, datasource_uname, datasource_watchdog, datasource_zfs,
 };
 use prometheus::GaugeVec;
 use std::sync::OnceLock;
@@ -79,6 +80,20 @@ fn run_if_enabled(
     }
 }
 
+fn update_time_and_network(config: &AppConfig) {
+    run_if_enabled(config, Datasource::Timex, datasource_timex::update_metrics);
+    run_if_enabled(config, Datasource::Ntp, || {
+        datasource_ntp::update_metrics(config)
+    });
+    run_if_enabled(config, Datasource::Probe, || {
+        datasource_probe::update_metrics(config)
+    });
+    run_if_enabled(config, Datasource::Tailscale, || {
+        datasource_tailscale::update_metrics(config)
+    });
+    run_if_enabled(config, Datasource::Time, datasource_time::update_metrics);
+}
+
 pub fn update_metrics(config: &AppConfig) {
     run_if_enabled(config, Datasource::Systemd, || {
         datasource_systemd::update_metrics(config)
@@ -115,8 +130,7 @@ pub fn update_metrics(config: &AppConfig) {
     run_if_enabled(config, Datasource::Uname, datasource_uname::update_metrics);
     run_if_enabled(config, Datasource::Os, datasource_os::update_metrics);
     run_if_enabled(config, Datasource::Dmi, datasource_dmi::update_metrics);
-    run_if_enabled(config, Datasource::Timex, datasource_timex::update_metrics);
-    run_if_enabled(config, Datasource::Time, datasource_time::update_metrics);
+    update_time_and_network(config);
     run_if_enabled(
         config,
         Datasource::CpuFreq,

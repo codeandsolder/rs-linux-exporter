@@ -42,9 +42,7 @@ fn metrics() -> &'static NumaMetrics {
     NUMA_METRICS.get_or_init(NumaMetrics::new)
 }
 
-fn parse_meminfo(content: &str, node_name: &str) {
-    let metrics = metrics();
-
+fn parse_meminfo_with(metrics: &NumaMetrics, content: &str, node_name: &str) {
     for line in content.lines() {
         let mut parts = line.split_whitespace();
         let (Some("Node"), Some(_node), Some(field_name), Some(value)) =
@@ -70,9 +68,7 @@ fn parse_meminfo(content: &str, node_name: &str) {
     }
 }
 
-fn parse_numastat(content: &str, node_name: &str) {
-    let metrics = metrics();
-
+fn parse_numastat_with(metrics: &NumaMetrics, content: &str, node_name: &str) {
     for line in content.lines() {
         let mut parts = line.split_whitespace();
         let (Some(stat_name), Some(value)) = (parts.next(), parts.next()) else {
@@ -89,15 +85,12 @@ fn parse_numastat(content: &str, node_name: &str) {
     }
 }
 
-fn update_numa_node(node_path: &Path, node_name: &str) {
-    // Read meminfo
+fn update_numa_node_with(metrics: &NumaMetrics, node_path: &Path, node_name: &str) {
     if let Some(meminfo) = read_trimmed(&node_path.join("meminfo")) {
-        parse_meminfo(&meminfo, node_name);
+        parse_meminfo_with(metrics, &meminfo, node_name);
     }
-
-    // Read numastat
     if let Some(numastat) = read_trimmed(&node_path.join("numastat")) {
-        parse_numastat(&numastat, node_name);
+        parse_numastat_with(metrics, &numastat, node_name);
     }
 }
 
@@ -106,7 +99,10 @@ pub fn update_metrics() -> CollectionReport {
 }
 
 fn update_metrics_from_path(base: &Path) -> CollectionReport {
-    let metrics = metrics();
+    update_metrics_from_path_with(metrics(), base)
+}
+
+fn update_metrics_from_path_with(metrics: &NumaMetrics, base: &Path) -> CollectionReport {
     metrics.meminfo.reset();
     metrics.numastat.reset();
     metrics.node_count.set(0.0);
@@ -127,7 +123,7 @@ fn update_metrics_from_path(base: &Path) -> CollectionReport {
             let Ok(path) = fs::canonicalize(entry.path()) else {
                 continue;
             };
-            update_numa_node(&path, &name);
+            update_numa_node_with(metrics, &path, &name);
             node_count += 1;
         }
     }
@@ -138,8 +134,34 @@ fn update_metrics_from_path(base: &Path) -> CollectionReport {
 }
 
 #[cfg(test)]
+fn parse_meminfo(content: &str, node_name: &str) {
+    parse_meminfo_with(metrics(), content, node_name);
+}
+
+#[cfg(test)]
+fn parse_numastat(content: &str, node_name: &str) {
+    parse_numastat_with(metrics(), content, node_name);
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    fn local_metrics() -> NumaMetrics {
+        NumaMetrics {
+            node_count: Gauge::new("test_numa_node_count", "test").expect("valid test gauge"),
+            meminfo: GaugeVec::new(
+                prometheus::Opts::new("test_numa_node_memory_bytes", "test"),
+                &["node", "type"],
+            )
+            .expect("valid test gauge vec"),
+            numastat: GaugeVec::new(
+                prometheus::Opts::new("test_numa_node_stat_pages", "test"),
+                &["node", "type"],
+            )
+            .expect("valid test gauge vec"),
+        }
+    }
     use tempfile::TempDir;
 
     const MOCK_MEMINFO: &str = r"Node 0 MemTotal:       16384000 kB
@@ -230,7 +252,7 @@ other_node 789
     fn test_update_numa_node() {
         let dir = TempDir::new().unwrap();
         let node = create_mock_node(dir.path(), "node0");
-        update_numa_node(&node, "node0");
+        update_numa_node_with(metrics(), &node, "node0");
     }
 
     #[test]
@@ -239,7 +261,7 @@ other_node 789
         let node_dir = dir.path().join("node0");
         fs::create_dir_all(&node_dir).unwrap();
         // No meminfo or numastat files
-        update_numa_node(&node_dir, "node0");
+        update_numa_node_with(metrics(), &node_dir, "node0");
     }
 
     #[test]
@@ -268,15 +290,16 @@ other_node 789
     fn vanished_numa_tree_drops_previous_node_series() {
         const STALE_NODE: &str = "__stale_numa_regression__";
         let dir = TempDir::new().unwrap();
-        metrics()
+        let metrics = local_metrics();
+        metrics
             .meminfo
             .with_label_values(&[STALE_NODE, "MemTotal"])
             .set(1.0);
 
-        update_metrics_from_path(&dir.path().join("missing"));
-        assert_eq!(metrics().node_count.get(), 0.0);
+        update_metrics_from_path_with(&metrics, &dir.path().join("missing"));
+        assert_eq!(metrics.node_count.get(), 0.0);
         assert_eq!(
-            metrics()
+            metrics
                 .meminfo
                 .with_label_values(&[STALE_NODE, "MemTotal"])
                 .get(),
