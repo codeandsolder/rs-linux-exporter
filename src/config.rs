@@ -6,6 +6,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::net::IpAddr;
 use std::net::SocketAddr;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path};
 use std::str::FromStr;
 use subtle::ConstantTimeEq;
@@ -36,6 +37,7 @@ pub enum Datasource {
     NetdevSysfs,
     Numa,
     Zfs,
+    Sccache,
 }
 
 impl Datasource {
@@ -59,6 +61,7 @@ impl Datasource {
             Self::NetdevSysfs => "netdev_sysfs",
             Self::Numa => "numa",
             Self::Zfs => "zfs",
+            Self::Sccache => "sccache",
         }
     }
 }
@@ -70,6 +73,8 @@ pub enum ConfigError {
     IncompleteTls,
     InvalidCgroupRoot(String),
     InvalidCgroupMaxUnits,
+    InvalidSccacheTimeout,
+    InvalidSccachePort,
 }
 
 impl fmt::Display for ConfigError {
@@ -96,6 +101,12 @@ impl fmt::Display for ConfigError {
             ),
             Self::InvalidCgroupMaxUnits => {
                 formatter.write_str("cgroup_max_units must be greater than zero")
+            }
+            Self::InvalidSccacheTimeout => {
+                formatter.write_str("sccache_timeout_ms must be between 10 and 60000 milliseconds")
+            }
+            Self::InvalidSccachePort => {
+                formatter.write_str("sccache_server_port must be greater than zero")
             }
         }
     }
@@ -221,6 +232,11 @@ fn cgroup_roots_available_at(base: &Path, roots: &[String]) -> bool {
     base.join("cgroup.controllers").is_file() && roots.iter().all(|root| base.join(root).is_dir())
 }
 
+fn executable_file(path: &Path) -> bool {
+    path.metadata()
+        .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 #[expect(
@@ -235,6 +251,10 @@ pub struct AppConfig {
     pub cgroup_roots: Vec<String>,
     pub cgroup_max_units: usize,
     pub cgroup_detailed_metrics: bool,
+    pub sccache_binary: String,
+    pub sccache_server_port: u16,
+    pub sccache_timeout_ms: u64,
+    pub sccache_collect_dist_status: bool,
     #[serde(default)]
     pub disabled_datasources: Vec<Datasource>,
     pub allowed_ip: Vec<String>,
@@ -260,6 +280,10 @@ impl Default for AppConfig {
             cgroup_roots: vec!["system.slice".to_string()],
             cgroup_max_units: 256,
             cgroup_detailed_metrics: false,
+            sccache_binary: "sccache".to_string(),
+            sccache_server_port: 4226,
+            sccache_timeout_ms: 1_000,
+            sccache_collect_dist_status: false,
             disabled_datasources: Vec::new(),
             allowed_ip: vec!["127.0.0.0/8".to_string()],
             bind: "127.0.0.1:9100".to_string(),
@@ -342,6 +366,16 @@ impl AppConfig {
         Ok(())
     }
 
+    fn validate_sccache_settings(&self) -> Result<(), ConfigError> {
+        if self.sccache_server_port == 0 {
+            return Err(ConfigError::InvalidSccachePort);
+        }
+        if !(10..=60_000).contains(&self.sccache_timeout_ms) {
+            return Err(ConfigError::InvalidSccacheTimeout);
+        }
+        Ok(())
+    }
+
     fn build_allowed_metrics_nets(&mut self) -> Result<(), ConfigError> {
         let mut nets = Vec::new();
         for entry in &self.allowed_ip {
@@ -363,6 +397,7 @@ impl AppConfig {
         self.build_disabled_set();
         self.build_allowed_metrics_nets()?;
         self.validate_cgroup_settings()?;
+        self.validate_sccache_settings()?;
         let _ = self.bind_addr()?;
         let _ = self.tls_config()?;
         Ok(())
@@ -408,7 +443,25 @@ impl AppConfig {
         cgroup_roots_available_at(Path::new("/sys/fs/cgroup"), &self.cgroup_roots)
     }
 
+    fn sccache_binary_available(&self) -> bool {
+        let binary = Path::new(&self.sccache_binary);
+        if binary.components().count() > 1 {
+            return executable_file(binary);
+        }
+        std::env::var_os("PATH").is_some_and(|path| {
+            std::env::split_paths(&path).any(|dir| executable_file(&dir.join(binary)))
+        })
+    }
+
     fn check_subsystems(&mut self) {
+        if self.is_datasource_enabled(Datasource::Sccache) && !self.sccache_binary_available() {
+            eprintln!(
+                "sccache binary {:?} not available, disabling sccache datasource.",
+                self.sccache_binary
+            );
+            self.disable_datasource(Datasource::Sccache);
+        }
+
         if self.is_datasource_enabled(Datasource::Cgroup) && !self.cgroup_roots_available() {
             eprintln!(
                 "cgroup v2 service roots not available below /sys/fs/cgroup, disabling cgroup datasource."
@@ -530,6 +583,54 @@ mod tests {
             config.validate_cgroup_settings(),
             Err(ConfigError::InvalidCgroupMaxUnits)
         );
+    }
+
+    #[test]
+    fn default_sccache_settings_are_bounded_and_side_effect_free() {
+        let config = AppConfig::default();
+        assert_eq!(config.sccache_binary, "sccache");
+        assert_eq!(config.sccache_server_port, 4226);
+        assert_eq!(config.sccache_timeout_ms, 1_000);
+        assert!(!config.sccache_collect_dist_status);
+        assert_eq!(config.validate_sccache_settings(), Ok(()));
+    }
+
+    #[test]
+    fn invalid_sccache_port_is_rejected() {
+        let config = AppConfig {
+            sccache_server_port: 0,
+            ..Default::default()
+        };
+        assert_eq!(
+            config.validate_sccache_settings(),
+            Err(ConfigError::InvalidSccachePort)
+        );
+    }
+
+    #[test]
+    fn invalid_sccache_timeouts_are_rejected() {
+        for timeout in [0, 9, 60_001, u64::MAX] {
+            let config = AppConfig {
+                sccache_timeout_ms: timeout,
+                ..Default::default()
+            };
+            assert_eq!(
+                config.validate_sccache_settings(),
+                Err(ConfigError::InvalidSccacheTimeout)
+            );
+        }
+    }
+
+    #[test]
+    fn sccache_binary_must_be_executable() {
+        let dir = TempDir::new().unwrap();
+        let binary = dir.path().join("sccache-test");
+        fs::write(&binary, b"#!/bin/sh\nexit 0\n").unwrap();
+        assert!(!executable_file(&binary));
+        let mut permissions = fs::metadata(&binary).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&binary, permissions).unwrap();
+        assert!(executable_file(&binary));
     }
 
     #[test]

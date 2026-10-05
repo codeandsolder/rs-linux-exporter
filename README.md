@@ -28,6 +28,7 @@ and the software reliable.
 |------------|-------------|
 | `procfs` | System stats from /proc (CPU, memory, network, disk I/O) |
 | `cgroup` | Bounded cgroup v2 service CPU, memory, I/O, PID, state, and PSI metrics |
+| `sccache` | Local sccache cache/compiler/distributed-build statistics via its supported JSON CLI |
 | `cpufreq` | CPU frequency per core |
 | `softnet` | Network soft interrupt statistics |
 | `conntrack` | Connection tracking statistics |
@@ -138,8 +139,19 @@ cgroup_max_units = 256
 # PIDs/state, I/O, and cumulative PSI totals.
 cgroup_detailed_metrics = false
 
+# sccache collector. The exporter first verifies the supervised daemon is already
+# reachable on loopback, then reads the supported JSON stats CLI. Monitoring never
+# starts a missing daemon.
+sccache_binary = "sccache"
+sccache_server_port = 4226
+sccache_timeout_ms = 1000
+
+# Optional instantaneous distributed scheduler status. Disabled by default because
+# upstream `sccache --dist-status` can start a daemon if it races with a daemon exit.
+sccache_collect_dist_status = false
+
 # Disable specific datasources (will not be polled)
-# Available: procfs, cgroup, cpufreq, softnet, conntrack, filesystems, hwmon, ipmi, mdraid,
+# Available: procfs, cgroup, sccache, cpufreq, softnet, conntrack, filesystems, hwmon, ipmi, mdraid,
 # thermal, rapl, power_supply, pressure, nvme, edac, netdev_sysfs, numa, zfs
 disabled_datasources = ["thermal", "conntrack"]
 

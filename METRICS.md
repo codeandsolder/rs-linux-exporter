@@ -50,6 +50,28 @@ If you add or edit sections for this file, keep these formatting rules or the
 | `cgroup_pressure_seconds_total` | CounterVec | Cumulative per-service PSI stall time |
 | `cgroup_pressure_stall_ratio` | GaugeVec | Per-service PSI stall fraction over 10/60/300 second windows (when `cgroup_detailed_metrics = true`) |
 
+## sccache
+
+| Metric | Type | Description |
+|---|---|---|
+| `sccache_info` | GaugeVec | sccache version information |
+| `sccache_requests_total` | CounterVec | Cumulative sccache request counters by result |
+| `sccache_cache_requests_total` | CounterVec | Cumulative cache hit/miss/error counters by language |
+| `sccache_cache_events_total` | CounterVec | Cumulative cache timeout/read/write/non-cacheable/recache events |
+| `sccache_compilations_total` | CounterVec | Cumulative performed and failed compilation counters |
+| `sccache_duration_seconds_total` | CounterVec | Cumulative cache read/write and compiler execution time |
+| `sccache_not_cached_total` | CounterVec | Cumulative non-cacheable compilation reasons reported by sccache |
+| `sccache_not_cached_crate_types_total` | CounterVec | Rust crate types behind `crate-type` non-cacheable results |
+| `sccache_dist_compiles_total` | CounterVec | Cumulative successful distributed compilations by worker |
+| `sccache_dist_events_total` | CounterVec | Cumulative distributed-compilation events |
+| `sccache_cache_level_operations_total` | CounterVec | Cumulative multi-level cache operations by cache level |
+| `sccache_cache_level_duration_seconds_total` | CounterVec | Cumulative multi-level cache operation time by cache level |
+| `sccache_cache_size_bytes` | GaugeVec | Current/max cache size when reported by the backend |
+| `sccache_preprocessor_cache_mode` | Gauge | Whether preprocessor-cache mode is enabled |
+| `sccache_basedirs` | Gauge | Number of configured basedirs (paths are intentionally not exported) |
+| `sccache_cache_levels` | Gauge | Number of configured multi-level cache levels |
+| `sccache_dist_status` | GaugeVec | Optional instantaneous distributed scheduler/client status |
+
 ## procfs
 
 | Metric | Type | Description |
@@ -341,6 +363,99 @@ python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROM
 - `10`
 - `60`
 - `300`
+
+### sccache_info labels: `version`
+
+### sccache_requests_total labels: `result`
+
+### sccache_cache_requests_total labels: `result`, `language`
+
+### sccache_cache_events_total labels: `event`
+
+### sccache_compilations_total labels: `result`
+
+### sccache_duration_seconds_total labels: `operation`
+
+### sccache_not_cached_total labels: `reason`
+
+### sccache_not_cached_crate_types_total labels: `crate_type`
+
+### sccache_dist_compiles_total labels: `server`
+
+### sccache_dist_events_total labels: `event`
+
+### sccache_cache_level_operations_total labels: `level`, `name`, `operation`
+
+### sccache_cache_level_duration_seconds_total labels: `level`, `name`, `operation`
+
+### sccache_cache_size_bytes labels: `kind`
+
+### sccache_dist_status labels: `kind`
+
+`sccache_requests_total` label values (`result`):
+
+- `compile`
+- `unsupported_compiler`
+- `not_compile`
+- `not_cacheable`
+- `executed`
+
+`sccache_cache_requests_total` label values (`result`):
+
+- `error`
+- `hit`
+- `miss`
+
+`sccache_cache_events_total` label values (`event`):
+
+- `timeout`
+- `read_error`
+- `non_cacheable_compilation`
+- `forced_recache`
+- `write_error`
+- `write`
+
+`sccache_compilations_total` label values (`result`):
+
+- `performed`
+- `failed`
+
+`sccache_duration_seconds_total` label values (`operation`):
+
+- `cache_write`
+- `cache_read_hit`
+- `compile`
+
+`sccache_dist_events_total` label values (`event`):
+
+- `error`
+
+`sccache_cache_level_operations_total` label values (`operation`):
+
+- `hit`
+- `miss`
+- `write`
+- `write_failure`
+- `backfill_from`
+- `backfill_to`
+
+`sccache_cache_level_duration_seconds_total` label values (`operation`):
+
+- `hit`
+- `write`
+
+`sccache_cache_size_bytes` label values (`kind`):
+
+- `current`
+- `max`
+
+`sccache_dist_status` label values (`kind`):
+
+- `enabled`
+- `connected`
+- `servers`
+- `cpus`
+- `in_progress`
 
 ### pressure_stall_ratio labels: `resource`, `scope`, `window`
 

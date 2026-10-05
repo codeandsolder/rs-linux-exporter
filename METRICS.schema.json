@@ -214,6 +214,233 @@
       }
     },
     {
+      "name": "sccache_info",
+      "group": "sccache",
+      "type": "GaugeVec",
+      "description": "sccache version information",
+      "labels": [
+        "version"
+      ]
+    },
+    {
+      "name": "sccache_requests_total",
+      "group": "sccache",
+      "type": "CounterVec",
+      "description": "Cumulative sccache request counters by result",
+      "labels": [
+        "result"
+      ],
+      "label_values": {
+        "result": [
+          "compile",
+          "unsupported_compiler",
+          "not_compile",
+          "not_cacheable",
+          "executed"
+        ]
+      }
+    },
+    {
+      "name": "sccache_cache_requests_total",
+      "group": "sccache",
+      "type": "CounterVec",
+      "description": "Cumulative cache hit/miss/error counters by language",
+      "labels": [
+        "result",
+        "language"
+      ],
+      "label_values": {
+        "result": [
+          "error",
+          "hit",
+          "miss"
+        ]
+      }
+    },
+    {
+      "name": "sccache_cache_events_total",
+      "group": "sccache",
+      "type": "CounterVec",
+      "description": "Cumulative cache timeout/read/write/non-cacheable/recache events",
+      "labels": [
+        "event"
+      ],
+      "label_values": {
+        "event": [
+          "timeout",
+          "read_error",
+          "non_cacheable_compilation",
+          "forced_recache",
+          "write_error",
+          "write"
+        ]
+      }
+    },
+    {
+      "name": "sccache_compilations_total",
+      "group": "sccache",
+      "type": "CounterVec",
+      "description": "Cumulative performed and failed compilation counters",
+      "labels": [
+        "result"
+      ],
+      "label_values": {
+        "result": [
+          "performed",
+          "failed"
+        ]
+      }
+    },
+    {
+      "name": "sccache_duration_seconds_total",
+      "group": "sccache",
+      "type": "CounterVec",
+      "description": "Cumulative cache read/write and compiler execution time",
+      "labels": [
+        "operation"
+      ],
+      "label_values": {
+        "operation": [
+          "cache_write",
+          "cache_read_hit",
+          "compile"
+        ]
+      }
+    },
+    {
+      "name": "sccache_not_cached_total",
+      "group": "sccache",
+      "type": "CounterVec",
+      "description": "Cumulative non-cacheable compilation reasons reported by sccache",
+      "labels": [
+        "reason"
+      ]
+    },
+    {
+      "name": "sccache_not_cached_crate_types_total",
+      "group": "sccache",
+      "type": "CounterVec",
+      "description": "Rust crate types behind `crate-type` non-cacheable results",
+      "labels": [
+        "crate_type"
+      ]
+    },
+    {
+      "name": "sccache_dist_compiles_total",
+      "group": "sccache",
+      "type": "CounterVec",
+      "description": "Cumulative successful distributed compilations by worker",
+      "labels": [
+        "server"
+      ]
+    },
+    {
+      "name": "sccache_dist_events_total",
+      "group": "sccache",
+      "type": "CounterVec",
+      "description": "Cumulative distributed-compilation events",
+      "labels": [
+        "event"
+      ],
+      "label_values": {
+        "event": [
+          "error"
+        ]
+      }
+    },
+    {
+      "name": "sccache_cache_level_operations_total",
+      "group": "sccache",
+      "type": "CounterVec",
+      "description": "Cumulative multi-level cache operations by cache level",
+      "labels": [
+        "level",
+        "name",
+        "operation"
+      ],
+      "label_values": {
+        "operation": [
+          "hit",
+          "miss",
+          "write",
+          "write_failure",
+          "backfill_from",
+          "backfill_to"
+        ]
+      }
+    },
+    {
+      "name": "sccache_cache_level_duration_seconds_total",
+      "group": "sccache",
+      "type": "CounterVec",
+      "description": "Cumulative multi-level cache operation time by cache level",
+      "labels": [
+        "level",
+        "name",
+        "operation"
+      ],
+      "label_values": {
+        "operation": [
+          "hit",
+          "write"
+        ]
+      }
+    },
+    {
+      "name": "sccache_cache_size_bytes",
+      "group": "sccache",
+      "type": "GaugeVec",
+      "description": "Current/max cache size when reported by the backend",
+      "labels": [
+        "kind"
+      ],
+      "label_values": {
+        "kind": [
+          "current",
+          "max"
+        ]
+      }
+    },
+    {
+      "name": "sccache_preprocessor_cache_mode",
+      "group": "sccache",
+      "type": "Gauge",
+      "description": "Whether preprocessor-cache mode is enabled",
+      "labels": []
+    },
+    {
+      "name": "sccache_basedirs",
+      "group": "sccache",
+      "type": "Gauge",
+      "description": "Number of configured basedirs (paths are intentionally not exported)",
+      "labels": []
+    },
+    {
+      "name": "sccache_cache_levels",
+      "group": "sccache",
+      "type": "Gauge",
+      "description": "Number of configured multi-level cache levels",
+      "labels": []
+    },
+    {
+      "name": "sccache_dist_status",
+      "group": "sccache",
+      "type": "GaugeVec",
+      "description": "Optional instantaneous distributed scheduler/client status",
+      "labels": [
+        "kind"
+      ],
+      "label_values": {
+        "kind": [
+          "enabled",
+          "connected",
+          "servers",
+          "cpus",
+          "in_progress"
+        ]
+      }
+    },
+    {
       "name": "uptime_seconds",
       "group": "procfs",
       "type": "Gauge",
@@ -1524,6 +1751,28 @@
         "cgroup_io_operations_total",
         "cgroup_pressure_seconds_total",
         "cgroup_pressure_stall_ratio"
+      ]
+    },
+    {
+      "name": "sccache",
+      "metrics": [
+        "sccache_info",
+        "sccache_requests_total",
+        "sccache_cache_requests_total",
+        "sccache_cache_events_total",
+        "sccache_compilations_total",
+        "sccache_duration_seconds_total",
+        "sccache_not_cached_total",
+        "sccache_not_cached_crate_types_total",
+        "sccache_dist_compiles_total",
+        "sccache_dist_events_total",
+        "sccache_cache_level_operations_total",
+        "sccache_cache_level_duration_seconds_total",
+        "sccache_cache_size_bytes",
+        "sccache_preprocessor_cache_mode",
+        "sccache_basedirs",
+        "sccache_cache_levels",
+        "sccache_dist_status"
       ]
     },
     {
