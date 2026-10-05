@@ -29,10 +29,12 @@ pub enum Datasource {
     Thermal,
     Rapl,
     PowerSupply,
+    Pressure,
     Nvme,
     Edac,
     NetdevSysfs,
     Numa,
+    Zfs,
 }
 
 impl Datasource {
@@ -49,10 +51,12 @@ impl Datasource {
             Self::Thermal => "thermal",
             Self::Rapl => "rapl",
             Self::PowerSupply => "power_supply",
+            Self::Pressure => "pressure",
             Self::Nvme => "nvme",
             Self::Edac => "edac",
             Self::NetdevSysfs => "netdev_sysfs",
             Self::Numa => "numa",
+            Self::Zfs => "zfs",
         }
     }
 }
@@ -96,6 +100,18 @@ struct SubsystemCheck {
 }
 
 const SUBSYSTEM_CHECKS: &[SubsystemCheck] = &[
+    SubsystemCheck {
+        name: Datasource::Pressure,
+        path: "/proc/pressure",
+        description: "pressure stall information (PSI)",
+        require_entries: true,
+    },
+    SubsystemCheck {
+        name: Datasource::Zfs,
+        path: "/proc/spl/kstat/zfs/arcstats",
+        description: "ZFS ARC statistics",
+        require_entries: false,
+    },
     SubsystemCheck {
         name: Datasource::Numa,
         path: "/sys/devices/system/node",
