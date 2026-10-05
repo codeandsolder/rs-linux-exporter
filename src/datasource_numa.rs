@@ -110,11 +110,15 @@ pub fn update_metrics() {
 }
 
 fn update_metrics_from_path(base: &Path) {
+    let metrics = metrics();
+    metrics.meminfo.reset();
+    metrics.numastat.reset();
+    metrics.node_count.set(0.0);
+
     let Ok(entries) = fs::read_dir(base) else {
         return;
     };
 
-    let metrics = metrics();
     let mut node_count = 0;
 
     for entry in entries.flatten() {
@@ -261,5 +265,28 @@ other_node 789
     fn test_update_metrics_from_path_handles_empty_dir() {
         let dir = TempDir::new().unwrap();
         update_metrics_from_path(dir.path());
+    }
+    #[test]
+    fn vanished_numa_tree_drops_previous_node_series() {
+        let dir = TempDir::new().unwrap();
+        create_mock_node(dir.path(), "node0");
+        update_metrics_from_path(dir.path());
+        assert!(
+            metrics()
+                .meminfo
+                .with_label_values(&["node0", "MemTotal"])
+                .get()
+                > 0.0
+        );
+
+        update_metrics_from_path(&dir.path().join("missing"));
+        assert_eq!(metrics().node_count.get(), 0.0);
+        assert_eq!(
+            metrics()
+                .meminfo
+                .with_label_values(&["node0", "MemTotal"])
+                .get(),
+            0.0
+        );
     }
 }

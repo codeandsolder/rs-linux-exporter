@@ -99,14 +99,14 @@ fn update_rapl_zone(zone_path: &Path, zone_id: &str) {
 }
 
 pub fn update_metrics() {
+    let metrics = metrics();
+    metrics.energy_joules.reset();
+    metrics.max_energy_joules.reset();
+
     let base = Path::new("/sys/class/powercap");
     let Ok(entries) = fs::read_dir(base) else {
         return;
     };
-
-    let metrics = metrics();
-    metrics.energy_joules.reset();
-    metrics.max_energy_joules.reset();
 
     for entry in entries.flatten() {
         let Ok(name) = entry.file_name().into_string() else {

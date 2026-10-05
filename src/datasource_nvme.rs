@@ -68,15 +68,15 @@ pub fn update_metrics() {
 }
 
 fn update_metrics_from_path(base: &Path) {
-    let Ok(entries) = fs::read_dir(base) else {
-        return;
-    };
-
     // Drop controllers that are gone, and stale nvme_info series left behind by
-    // a firmware upgrade (the revision is a label).
+    // a firmware upgrade (the revision is a label), even if sysfs vanished.
     let metrics = metrics();
     metrics.info.reset();
     metrics.state.reset();
+
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
+    };
 
     for entry in entries.flatten() {
         let Ok(name) = entry.file_name().into_string() else {

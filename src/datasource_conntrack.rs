@@ -447,15 +447,16 @@ pub fn collect_stats() -> Result<Vec<CpuStats>, String> {
 }
 
 pub fn update_metrics() {
+    let metrics = metrics();
+    metrics.conntrack.reset();
+
     if !conntrack_module_loaded() {
         return;
     }
 
-    let metrics = metrics();
     match collect_stats() {
         Ok(all_stats) => {
             // The kernel reports one message per online CPU.
-            metrics.conntrack.reset();
             for cpu_stats in all_stats {
                 let cpu_label = cpu_stats.cpu_id.to_string();
                 for (name, value) in cpu_stats.counters {

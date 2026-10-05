@@ -156,18 +156,18 @@ pub fn update_metrics() {
 }
 
 fn update_metrics_from_path(base: &Path) {
-    let Ok(entries) = fs::read_dir(base) else {
-        return;
-    };
-
     // Chips and sensors disappear when a module is unloaded or a device is
-    // unplugged; rebuild so their readings do not stay frozen.
+    // unplugged; clear first so an unreadable directory cannot freeze them.
     let metrics = metrics();
     metrics.temperature_celsius.reset();
     metrics.fan_rpm.reset();
     metrics.voltage_volts.reset();
     metrics.power_watts.reset();
     metrics.current_amps.reset();
+
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
+    };
 
     for entry in entries.flatten() {
         let path = entry.path();

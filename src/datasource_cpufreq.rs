@@ -54,13 +54,13 @@ fn update_cpu(cpu_name: &str, cpufreq_dir: &Path) {
 }
 
 pub fn update_metrics() {
+    // CPUs can be taken offline, which removes their cpufreq directory.
+    metrics().cpu_frequency_hz.reset();
+
     let base = Path::new("/sys/devices/system/cpu");
     let Ok(entries) = fs::read_dir(base) else {
         return;
     };
-
-    // CPUs can be taken offline, which removes their cpufreq directory.
-    metrics().cpu_frequency_hz.reset();
 
     for entry in entries.flatten() {
         let name = entry.file_name();

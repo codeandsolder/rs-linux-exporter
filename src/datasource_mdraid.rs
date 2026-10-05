@@ -109,16 +109,14 @@ fn reset_metrics(metrics: &MdraidMetrics) {
 }
 
 pub fn update_metrics() {
+    let metrics = metrics();
+    // Arrays, their states and their sync actions all come and go. Clear first
+    // so a failed mdstat read cannot preserve a vanished array.
+    reset_metrics(metrics);
+
     let Ok(contents) = fs::read_to_string(MDSTAT_PATH) else {
         return;
     };
-
-    let metrics = metrics();
-
-    // Arrays, their states and their sync actions all come and go. Drop the
-    // previous scrape's series so a stale array or a state the array has since
-    // left does not keep reporting 1.
-    reset_metrics(metrics);
 
     let mut lines = contents.lines().peekable();
 

@@ -147,6 +147,21 @@ impl ProcfsMetrics {
             .or_exit("netstat"),
         }
     }
+
+    fn reset_dynamic(&self) {
+        self.load_average.reset();
+        self.load_processes.reset();
+        self.cpu_seconds_total.reset();
+        self.meminfo.reset();
+        self.vmstat.reset();
+        self.diskstats.reset();
+        self.netdev.reset();
+        self.tcp_sockets.reset();
+        self.udp_sockets.reset();
+        self.arp_entries.reset();
+        self.snmp.reset();
+        self.netstat.reset();
+    }
 }
 
 static PROCFS_METRICS: OnceLock<ProcfsMetrics> = OnceLock::new();
@@ -317,9 +332,6 @@ fn update_kernel_stats(metrics: &ProcfsMetrics, stats: &KernelStats) {
 }
 
 fn update_diskstats(metrics: &ProcfsMetrics, stats: &[procfs::DiskStat], config: &AppConfig) {
-    // Devices come and go (hotplug, loop/dm teardown). Without this the series
-    // for a removed device is served forever at its last value.
-    metrics.diskstats.reset();
     for stat in stats {
         let device = stat.name.as_str();
         if config.ignore_loop_devices && device.starts_with("loop") {
@@ -398,8 +410,6 @@ fn update_netdev(
     devs: &std::collections::HashMap<String, procfs::net::DeviceStatus>,
     config: &AppConfig,
 ) {
-    // Interfaces are created and destroyed constantly on container hosts.
-    metrics.netdev.reset();
     for (name, dev) in devs {
         if config.ignore_ppp_interfaces && name.starts_with("ppp") {
             continue;
@@ -541,9 +551,6 @@ fn update_arp(metrics: &ProcfsMetrics, entries: &[procfs::net::ARPEntry]) {
         *counts.entry(entry.device.as_str()).or_insert(0) += 1;
     }
 
-    // The set of devices is dynamic, so drop the previous scrape's series
-    // rather than leaving entries for devices that no longer exist.
-    metrics.arp_entries.reset();
     for (device, count) in counts {
         metrics
             .arp_entries
@@ -784,6 +791,10 @@ fn update_uptime(metrics: &ProcfsMetrics, uptime: &Uptime) {
 
 pub fn update_metrics(config: &AppConfig) {
     let metrics = metrics();
+
+    // Dynamic label sets must describe this scrape only. Clear them before
+    // touching /proc so a read failure cannot preserve last scrape's series.
+    metrics.reset_dynamic();
 
     if let Ok(uptime) = Uptime::current() {
         update_uptime(metrics, &uptime);

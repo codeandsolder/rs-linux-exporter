@@ -85,11 +85,12 @@ fn unit_label(sensor: &FullSensorRecord) -> String {
 }
 
 pub fn update_metrics() {
+    let metrics = metrics();
+    metrics.sensor_reading.reset();
+
     let Some(mut ipmi) = open_ipmi() else {
         return;
     };
-
-    let metrics = metrics();
 
     let records: Vec<_> = ipmi.sdrs().collect();
     for record in records {

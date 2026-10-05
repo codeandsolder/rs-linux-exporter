@@ -227,12 +227,8 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
 }
 
 pub fn update_metrics() {
-    let base = Path::new("/sys/class/power_supply");
-    let Ok(entries) = fs::read_dir(base) else {
-        return;
-    };
-
-    // Batteries and USB supplies are hot-pluggable.
+    // Batteries and USB supplies are hot-pluggable. Clear first so a sysfs
+    // failure cannot keep a removed supply alive in the registry.
     let metrics = metrics();
     metrics.info.reset();
     metrics.online.reset();
@@ -244,6 +240,11 @@ pub fn update_metrics() {
     metrics.energy_wh.reset();
     metrics.charge_ah.reset();
     metrics.temperature_celsius.reset();
+
+    let base = Path::new("/sys/class/power_supply");
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
+    };
 
     for entry in entries.flatten() {
         let Ok(name) = entry.file_name().into_string() else {

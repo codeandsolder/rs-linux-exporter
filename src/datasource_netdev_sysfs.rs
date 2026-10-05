@@ -193,12 +193,7 @@ fn update_interface(metrics: &NetdevSysfsMetrics, iface_path: &Path, iface: &str
 }
 
 pub fn update_metrics(config: &AppConfig) {
-    let Ok(entries) = fs::read_dir(SYS_CLASS_NET) else {
-        return;
-    };
-
     let metrics = metrics();
-
     // Interfaces are created and destroyed constantly on container hosts.
     metrics.operstate.reset();
     metrics.carrier.reset();
@@ -207,6 +202,10 @@ pub fn update_metrics(config: &AppConfig) {
     metrics.speed_mbps.reset();
     metrics.duplex.reset();
     metrics.autoneg.reset();
+
+    let Ok(entries) = fs::read_dir(SYS_CLASS_NET) else {
+        return;
+    };
 
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();

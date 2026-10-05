@@ -36,12 +36,13 @@ fn parse_column(columns: &[&str], index: usize) -> Option<u64> {
 }
 
 pub fn update_metrics() {
+    // The number of rows follows CPU hotplug. Clear first so an unreadable
+    // procfs file cannot preserve per-CPU values from an earlier scrape.
+    metrics().softnet.reset();
+
     let Ok(contents) = fs::read_to_string("/proc/net/softnet_stat") else {
         return;
     };
-
-    // The number of rows follows CPU hotplug.
-    metrics().softnet.reset();
 
     for (cpu, line) in contents.lines().enumerate() {
         let columns: Vec<&str> = line.split_whitespace().collect();

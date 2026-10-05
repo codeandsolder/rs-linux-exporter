@@ -212,17 +212,24 @@ pub fn update_metrics() {
 }
 
 fn update_metrics_from_path(base: &Path) {
-    let Ok(entries) = fs::read_dir(base) else {
-        return;
-    };
-
-    // dimm_label is part of the label set, so a relabelled or replaced DIMM
-    // would otherwise leave its old counters behind permanently.
+    // Controllers/DIMMs can disappear, and mc_name/dimm_label are labels.
+    // Clear every family before read_dir so disappearance or read failure does
+    // not leave stale controller counters behind.
     let metrics = metrics();
     metrics.mc_info.reset();
+    metrics.mc_ce_count.reset();
+    metrics.mc_ue_count.reset();
+    metrics.mc_ce_noinfo_count.reset();
+    metrics.mc_ue_noinfo_count.reset();
+    metrics.mc_size_mb.reset();
+    metrics.mc_seconds_since_reset.reset();
     metrics.dimm_ce_count.reset();
     metrics.dimm_ue_count.reset();
     metrics.dimm_size_mb.reset();
+
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
+    };
 
     for entry in entries.flatten() {
         let Ok(name) = entry.file_name().into_string() else {
@@ -344,5 +351,15 @@ mod tests {
         create_mock_dimm(&mc, "dimm0", "DIMM_A", 10, 1, 4096);
 
         update_dimm(&mc, "mc0", "dimm0");
+    }
+    #[test]
+    fn vanished_edac_tree_drops_previous_controller_series() {
+        let dir = TempDir::new().unwrap();
+        create_mock_mc(dir.path(), "mc0", "EDAC_MC", 7, 3, 1024);
+        update_metrics_from_path(dir.path());
+        assert_eq!(metrics().mc_ce_count.with_label_values(&["mc0"]).get(), 7.0);
+
+        update_metrics_from_path(&dir.path().join("missing"));
+        assert_eq!(metrics().mc_ce_count.with_label_values(&["mc0"]).get(), 0.0);
     }
 }

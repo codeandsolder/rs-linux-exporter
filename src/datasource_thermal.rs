@@ -151,11 +151,6 @@ fn update_cooling_device(device_path: &Path, device_name: &str) {
 }
 
 pub fn update_metrics() {
-    let base = Path::new("/sys/class/thermal");
-    let Ok(entries) = fs::read_dir(base) else {
-        return;
-    };
-
     let metrics = metrics();
 
     // Zones and trip points appear and disappear with driver state.
@@ -163,6 +158,13 @@ pub fn update_metrics() {
     metrics.zone_trip_point_celsius.reset();
     metrics.cooling_device_cur_state.reset();
     metrics.cooling_device_max_state.reset();
+    metrics.zone_count.set(0.0);
+    metrics.cooling_device_count.set(0.0);
+
+    let base = Path::new("/sys/class/thermal");
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
+    };
 
     let mut zone_count = 0;
     let mut cooling_count = 0;

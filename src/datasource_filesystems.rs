@@ -124,14 +124,12 @@ fn stat_value_u64<T: Into<u64>>(value: T) -> u64 {
 }
 
 pub fn update_metrics(config: &AppConfig) {
-    let Ok(mounts) = procfs::mounts() else { return };
-
     let metrics = metrics();
-
-    // Rebuild from scratch so unmounted filesystems stop being reported. The
-    // previous per-mount removal only covered mounts that were filtered out,
-    // not mounts that had gone away since the last scrape.
+    // Rebuild from scratch before reading mount state: a failed mount-table
+    // read must not preserve a filesystem that may already be gone.
     reset_metrics(metrics);
+
+    let Ok(mounts) = procfs::mounts() else { return };
 
     for mount in mounts {
         let labels = [
