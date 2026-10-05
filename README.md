@@ -35,12 +35,14 @@ and the software reliable.
 | `thermal` | Thermal zones and cooling devices |
 | `rapl` | Intel/AMD RAPL energy consumption (CPU, DRAM) |
 | `power_supply` | Battery and AC adapter status |
+| `pressure` | Linux pressure stall information (PSI) for CPU, memory, and I/O |
 | `nvme` | NVMe device information (model, serial, state) |
 | `edac` | Memory error detection (correctable/uncorrectable) |
 | `numa` | NUMA node memory and hit/miss statistics |
 | `ipmi` | IPMI sensor readings via /dev/ipmi0 |
 | `mdraid` | Linux software RAID (md) array status |
 | `netdev_sysfs` | Network interface link state, speed, and duplex from sysfs |
+| `zfs` | OpenZFS ARC size, hit/miss, and memory-pressure statistics |
 
 ## Kernel Modules for Hardware Monitoring
 
@@ -125,7 +127,7 @@ ignore_veth_interfaces = true
 
 # Disable specific datasources (will not be polled)
 # Available: procfs, cpufreq, softnet, conntrack, filesystems, hwmon, ipmi, mdraid,
-# thermal, rapl, power_supply, nvme, edac, netdev_sysfs, numa
+# thermal, rapl, power_supply, pressure, nvme, edac, netdev_sysfs, numa, zfs
 disabled_datasources = ["thermal", "conntrack"]
 
 # Restrict /metrics access to these IPs/CIDRs (supports single IPs and CIDR notation)

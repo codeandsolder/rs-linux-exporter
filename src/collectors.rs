@@ -4,8 +4,8 @@ use crate::metric_support::RegisterMetricResultExt;
 use crate::{
     datasource_conntrack, datasource_cpufreq, datasource_edac, datasource_filesystems,
     datasource_hwmon, datasource_ipmi, datasource_mdraid, datasource_netdev_sysfs, datasource_numa,
-    datasource_nvme, datasource_power_supply, datasource_procfs, datasource_rapl,
-    datasource_softnet, datasource_thermal,
+    datasource_nvme, datasource_power_supply, datasource_pressure, datasource_procfs,
+    datasource_rapl, datasource_softnet, datasource_thermal, datasource_zfs,
 };
 use prometheus::GaugeVec;
 use std::sync::OnceLock;
@@ -120,4 +120,10 @@ pub fn update_metrics(config: &AppConfig) {
         datasource_netdev_sysfs::update_metrics(config)
     });
     run_if_enabled(config, Datasource::Numa, datasource_numa::update_metrics);
+    run_if_enabled(
+        config,
+        Datasource::Pressure,
+        datasource_pressure::update_metrics,
+    );
+    run_if_enabled(config, Datasource::Zfs, datasource_zfs::update_metrics);
 }

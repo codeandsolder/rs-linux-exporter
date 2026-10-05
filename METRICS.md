@@ -164,12 +164,32 @@ If you add or edit sections for this file, keep these formatting rules or the
 | `power_supply_charge_ah` | GaugeVec | Battery charge in Amp-hours |
 | `power_supply_temperature_celsius` | GaugeVec | Power supply temperature in Celsius |
 
+## pressure
+
+| Metric | Type | Description |
+|---|---|---|
+| `pressure_cpu_waiting_seconds_total` | Counter | Total CPU PSI some-stall time in seconds |
+| `pressure_io_waiting_seconds_total` | Counter | Total I/O PSI some-stall time in seconds |
+| `pressure_io_stalled_seconds_total` | Counter | Total I/O PSI full-stall time in seconds |
+| `pressure_memory_waiting_seconds_total` | Counter | Total memory PSI some-stall time in seconds |
+| `pressure_memory_stalled_seconds_total` | Counter | Total memory PSI full-stall time in seconds |
+| `pressure_stall_ratio` | GaugeVec | Fraction of wall time stalled over 10/60/300 second PSI windows |
+
 ## rapl
 
 | Metric | Type | Description |
 |---|---|---|
 | `rapl_energy_joules` | GaugeVec | Current energy counter in Joules (wraps at max_energy_joules) |
 | `rapl_max_energy_joules` | GaugeVec | Maximum energy counter range in Joules before wrap |
+
+## zfs
+
+| Metric | Type | Description |
+|---|---|---|
+| `zfs_arc_size_bytes` | GaugeVec | ZFS ARC current/target/min/max/compressed/uncompressed/L2 sizes |
+| `zfs_arc_memory_available_bytes` | Gauge | Memory available to the ARC according to OpenZFS (can be negative) |
+| `zfs_arc_accesses_total` | CounterVec | Cumulative ARC/L2ARC hit/miss access counters |
+| `zfs_arc_hit_ratio` | GaugeVec | ARC or L2ARC hit ratio since boot |
 
 ## softnet
 
@@ -230,6 +250,14 @@ python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROM
 ```
 
 ## Metric labels and field catalogs
+
+### pressure_stall_ratio labels: `resource`, `scope`, `window`
+
+### zfs_arc_size_bytes labels: `kind`
+
+### zfs_arc_accesses_total labels: `kind`
+
+### zfs_arc_hit_ratio labels: `cache`
 
 ### node_scrape_collector_duration_seconds labels: `collector`
 

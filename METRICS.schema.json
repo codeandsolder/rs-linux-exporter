@@ -1129,6 +1129,52 @@
       ]
     },
     {
+      "name": "pressure_cpu_waiting_seconds_total",
+      "group": "pressure",
+      "type": "Counter",
+      "description": "Total CPU PSI some-stall time in seconds",
+      "labels": []
+    },
+    {
+      "name": "pressure_io_waiting_seconds_total",
+      "group": "pressure",
+      "type": "Counter",
+      "description": "Total I/O PSI some-stall time in seconds",
+      "labels": []
+    },
+    {
+      "name": "pressure_io_stalled_seconds_total",
+      "group": "pressure",
+      "type": "Counter",
+      "description": "Total I/O PSI full-stall time in seconds",
+      "labels": []
+    },
+    {
+      "name": "pressure_memory_waiting_seconds_total",
+      "group": "pressure",
+      "type": "Counter",
+      "description": "Total memory PSI some-stall time in seconds",
+      "labels": []
+    },
+    {
+      "name": "pressure_memory_stalled_seconds_total",
+      "group": "pressure",
+      "type": "Counter",
+      "description": "Total memory PSI full-stall time in seconds",
+      "labels": []
+    },
+    {
+      "name": "pressure_stall_ratio",
+      "group": "pressure",
+      "type": "GaugeVec",
+      "description": "Fraction of wall time stalled over 10/60/300 second PSI windows",
+      "labels": [
+        "resource",
+        "scope",
+        "window"
+      ]
+    },
+    {
       "name": "rapl_energy_joules",
       "group": "rapl",
       "type": "GaugeVec",
@@ -1146,6 +1192,40 @@
       "labels": [
         "zone",
         "name"
+      ]
+    },
+    {
+      "name": "zfs_arc_size_bytes",
+      "group": "zfs",
+      "type": "GaugeVec",
+      "description": "ZFS ARC current/target/min/max/compressed/uncompressed/L2 sizes",
+      "labels": [
+        "kind"
+      ]
+    },
+    {
+      "name": "zfs_arc_memory_available_bytes",
+      "group": "zfs",
+      "type": "Gauge",
+      "description": "Memory available to the ARC according to OpenZFS (can be negative)",
+      "labels": []
+    },
+    {
+      "name": "zfs_arc_accesses_total",
+      "group": "zfs",
+      "type": "CounterVec",
+      "description": "Cumulative ARC/L2ARC hit/miss access counters",
+      "labels": [
+        "kind"
+      ]
+    },
+    {
+      "name": "zfs_arc_hit_ratio",
+      "group": "zfs",
+      "type": "GaugeVec",
+      "description": "ARC or L2ARC hit ratio since boot",
+      "labels": [
+        "cache"
       ]
     },
     {
@@ -1381,10 +1461,30 @@
       ]
     },
     {
+      "name": "pressure",
+      "metrics": [
+        "pressure_cpu_waiting_seconds_total",
+        "pressure_io_waiting_seconds_total",
+        "pressure_io_stalled_seconds_total",
+        "pressure_memory_waiting_seconds_total",
+        "pressure_memory_stalled_seconds_total",
+        "pressure_stall_ratio"
+      ]
+    },
+    {
       "name": "rapl",
       "metrics": [
         "rapl_energy_joules",
         "rapl_max_energy_joules"
+      ]
+    },
+    {
+      "name": "zfs",
+      "metrics": [
+        "zfs_arc_size_bytes",
+        "zfs_arc_memory_available_bytes",
+        "zfs_arc_accesses_total",
+        "zfs_arc_hit_ratio"
       ]
     },
     {
