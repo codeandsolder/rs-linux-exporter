@@ -1,3 +1,5 @@
+use crate::metric_support::RegisterMetricResultExt;
+use crate::metric_support::prometheus_i64;
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -19,35 +21,35 @@ impl HwmonMetrics {
                 "Hardware monitor temperature sensor reading in Celsius",
                 &["chip", "sensor"]
             )
-            .expect("register hwmon_temperature_celsius"),
+            .or_exit("hwmon_temperature_celsius"),
 
             fan_rpm: prometheus::register_gauge_vec!(
                 "hwmon_fan_rpm",
                 "Hardware monitor fan speed in RPM",
                 &["chip", "sensor"]
             )
-            .expect("register hwmon_fan_rpm"),
+            .or_exit("hwmon_fan_rpm"),
 
             voltage_volts: prometheus::register_gauge_vec!(
                 "hwmon_voltage_volts",
                 "Hardware monitor voltage reading in Volts",
                 &["chip", "sensor"]
             )
-            .expect("register hwmon_voltage_volts"),
+            .or_exit("hwmon_voltage_volts"),
 
             power_watts: prometheus::register_gauge_vec!(
                 "hwmon_power_watts",
                 "Hardware monitor power reading in Watts",
                 &["chip", "sensor"]
             )
-            .expect("register hwmon_power_watts"),
+            .or_exit("hwmon_power_watts"),
 
             current_amps: prometheus::register_gauge_vec!(
                 "hwmon_current_amps",
                 "Hardware monitor current reading in Amps",
                 &["chip", "sensor"]
             )
-            .expect("register hwmon_current_amps"),
+            .or_exit("hwmon_current_amps"),
         }
     }
 }
@@ -69,27 +71,24 @@ fn read_string(path: &Path) -> Option<String> {
 }
 
 fn get_sensor_label(hwmon_dir: &Path, sensor_type: &str, index: &str) -> String {
-    let label_path = hwmon_dir.join(format!("{}_{}_label", sensor_type, index));
-    read_string(&label_path).unwrap_or_else(|| format!("{}_{}", sensor_type, index))
+    let label_path = hwmon_dir.join(format!("{sensor_type}_{index}_label"));
+    read_string(&label_path).unwrap_or_else(|| format!("{sensor_type}_{index}"))
 }
 
 fn update_hwmon_device(hwmon_dir: &Path) {
-    let chip_name = match read_string(&hwmon_dir.join("name")) {
-        Some(name) => name,
-        None => return,
+    let Some(chip_name) = read_string(&hwmon_dir.join("name")) else {
+        return;
     };
 
-    let entries = match fs::read_dir(hwmon_dir) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(hwmon_dir) else {
+        return;
     };
 
     let metrics = metrics();
 
     for entry in entries.flatten() {
-        let file_name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            Err(_) => continue,
+        let Ok(file_name) = entry.file_name().into_string() else {
+            continue;
         };
 
         // Temperature sensors: temp[1-*]_input (millidegrees Celsius)
@@ -100,7 +99,7 @@ fn update_hwmon_device(hwmon_dir: &Path) {
                 metrics
                     .temperature_celsius
                     .with_label_values(&[&chip_name, &label])
-                    .set(millidegrees as f64 / 1000.0);
+                    .set(prometheus_i64(millidegrees) / 1000.0);
             }
         }
         // Fan sensors: fan[1-*]_input (RPM)
@@ -111,7 +110,7 @@ fn update_hwmon_device(hwmon_dir: &Path) {
                 metrics
                     .fan_rpm
                     .with_label_values(&[&chip_name, &label])
-                    .set(rpm as f64);
+                    .set(prometheus_i64(rpm));
             }
         }
         // Voltage sensors: in[0-*]_input (millivolts)
@@ -124,7 +123,7 @@ fn update_hwmon_device(hwmon_dir: &Path) {
                 metrics
                     .voltage_volts
                     .with_label_values(&[&chip_name, &label])
-                    .set(millivolts as f64 / 1000.0);
+                    .set(prometheus_i64(millivolts) / 1000.0);
             }
         }
         // Power sensors: power[1-*]_input (microwatts)
@@ -135,7 +134,7 @@ fn update_hwmon_device(hwmon_dir: &Path) {
                 metrics
                     .power_watts
                     .with_label_values(&[&chip_name, &label])
-                    .set(microwatts as f64 / 1_000_000.0);
+                    .set(prometheus_i64(microwatts) / 1_000_000.0);
             }
         }
         // Current sensors: curr[1-*]_input (milliamps)
@@ -146,7 +145,7 @@ fn update_hwmon_device(hwmon_dir: &Path) {
                 metrics
                     .current_amps
                     .with_label_values(&[&chip_name, &label])
-                    .set(milliamps as f64 / 1000.0);
+                    .set(prometheus_i64(milliamps) / 1000.0);
             }
         }
     }
@@ -157,9 +156,8 @@ pub fn update_metrics() {
 }
 
 fn update_metrics_from_path(base: &Path) {
-    let entries = match fs::read_dir(base) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
     };
 
     // Chips and sensors disappear when a module is unloaded or a device is
@@ -175,9 +173,8 @@ fn update_metrics_from_path(base: &Path) {
         let path = entry.path();
         if path.is_dir() || path.is_symlink() {
             // Resolve symlinks to get the actual hwmon directory
-            let resolved = match fs::canonicalize(&path) {
-                Ok(p) => p,
-                Err(_) => continue,
+            let Ok(resolved) = fs::canonicalize(&path) else {
+                continue;
             };
             update_hwmon_device(&resolved);
         }

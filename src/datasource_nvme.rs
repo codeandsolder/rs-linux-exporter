@@ -1,3 +1,4 @@
+use crate::metric_support::RegisterMetricResultExt;
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -16,14 +17,14 @@ impl NvmeMetrics {
                 "NVMe device information",
                 &["device", "model", "serial", "firmware_rev"]
             )
-            .expect("register nvme_info"),
+            .or_exit("nvme_info"),
 
             state: prometheus::register_gauge_vec!(
                 "nvme_state",
                 "NVMe device state (1 = active for given state)",
                 &["device", "state"]
             )
-            .expect("register nvme_state"),
+            .or_exit("nvme_state"),
         }
     }
 }
@@ -67,9 +68,8 @@ pub fn update_metrics() {
 }
 
 fn update_metrics_from_path(base: &Path) {
-    let entries = match fs::read_dir(base) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
     };
 
     // Drop controllers that are gone, and stale nvme_info series left behind by
@@ -79,9 +79,8 @@ fn update_metrics_from_path(base: &Path) {
     metrics.state.reset();
 
     for entry in entries.flatten() {
-        let name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            Err(_) => continue,
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
         };
 
         // Only process nvme controller directories (nvme0, nvme1, etc.)
@@ -89,9 +88,8 @@ fn update_metrics_from_path(base: &Path) {
             continue;
         }
 
-        let path = match fs::canonicalize(entry.path()) {
-            Ok(p) => p,
-            Err(_) => continue,
+        let Ok(path) = fs::canonicalize(entry.path()) else {
+            continue;
         };
 
         if path.is_dir() {

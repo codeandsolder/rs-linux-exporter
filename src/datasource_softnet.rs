@@ -1,3 +1,5 @@
+use crate::metric_support::RegisterMetricResultExt;
+use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::fs;
 use std::sync::OnceLock;
@@ -14,7 +16,7 @@ impl SoftnetMetrics {
                 "Per-CPU counters from /proc/net/softnet_stat",
                 &["cpu", "field"]
             )
-            .expect("register softnet"),
+            .or_exit("softnet"),
         }
     }
 }
@@ -34,9 +36,8 @@ fn parse_column(columns: &[&str], index: usize) -> Option<u64> {
 }
 
 pub fn update_metrics() {
-    let contents = match fs::read_to_string("/proc/net/softnet_stat") {
-        Ok(contents) => contents,
-        Err(_) => return,
+    let Ok(contents) = fs::read_to_string("/proc/net/softnet_stat") else {
+        return;
     };
 
     // The number of rows follows CPU hotplug.
@@ -53,7 +54,7 @@ pub fn update_metrics() {
         let set_metric = |field: &str, value: u64| {
             metric
                 .with_label_values(&[cpu_label.as_str(), field])
-                .set(value as f64);
+                .set(prometheus_u64(value));
         };
 
         if let Some(value) = parse_column(&columns, 0) {

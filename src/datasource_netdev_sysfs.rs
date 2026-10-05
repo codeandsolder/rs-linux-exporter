@@ -1,4 +1,6 @@
 use crate::config::AppConfig;
+use crate::metric_support::RegisterMetricResultExt;
+use crate::metric_support::prometheus_i64;
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -35,43 +37,43 @@ impl NetdevSysfsMetrics {
                 "Network interface operational state (1 for current state)",
                 &["interface", "state"]
             )
-            .expect("register netdev_operstate"),
+            .or_exit("netdev_operstate"),
             carrier: prometheus::register_gauge_vec!(
                 "netdev_carrier",
                 "Network interface carrier status (1 = link detected)",
                 &["interface"]
             )
-            .expect("register netdev_carrier"),
+            .or_exit("netdev_carrier"),
             carrier_changes: prometheus::register_gauge_vec!(
                 "netdev_carrier_changes",
                 "Network interface carrier change count",
                 &["interface"]
             )
-            .expect("register netdev_carrier_changes"),
+            .or_exit("netdev_carrier_changes"),
             dormant: prometheus::register_gauge_vec!(
                 "netdev_dormant",
                 "Network interface dormant flag (1 = dormant)",
                 &["interface"]
             )
-            .expect("register netdev_dormant"),
+            .or_exit("netdev_dormant"),
             speed_mbps: prometheus::register_gauge_vec!(
                 "netdev_speed_mbps",
                 "Network interface speed in Mbps",
                 &["interface"]
             )
-            .expect("register netdev_speed_mbps"),
+            .or_exit("netdev_speed_mbps"),
             duplex: prometheus::register_gauge_vec!(
                 "netdev_duplex",
                 "Network interface duplex (1 for current duplex)",
                 &["interface", "duplex"]
             )
-            .expect("register netdev_duplex"),
+            .or_exit("netdev_duplex"),
             autoneg: prometheus::register_gauge_vec!(
                 "netdev_autoneg",
                 "Network interface autonegotiation (1 for current state)",
                 &["interface", "state"]
             )
-            .expect("register netdev_autoneg"),
+            .or_exit("netdev_autoneg"),
         }
     }
 }
@@ -104,7 +106,7 @@ fn normalized_autoneg(value: &str) -> &str {
 }
 
 fn normalized_state<'a>(value: &'a str, known: &[&'a str]) -> &'a str {
-    if known.iter().any(|state| *state == value) {
+    if known.contains(&value) {
         value
     } else {
         "unknown"
@@ -137,40 +139,40 @@ fn update_interface(metrics: &NetdevSysfsMetrics, iface_path: &Path, iface: &str
         set_state_metric(&metrics.operstate, iface, &state, &OPERSTATES);
     }
 
-    if let Some(carrier) = read_i64(&iface_path.join("carrier")) {
-        if carrier >= 0 {
-            metrics
-                .carrier
-                .with_label_values(&[iface])
-                .set(carrier as f64);
-        }
+    if let Some(carrier) = read_i64(&iface_path.join("carrier"))
+        && carrier >= 0
+    {
+        metrics
+            .carrier
+            .with_label_values(&[iface])
+            .set(prometheus_i64(carrier));
     }
 
-    if let Some(changes) = read_i64(&iface_path.join("carrier_changes")) {
-        if changes >= 0 {
-            metrics
-                .carrier_changes
-                .with_label_values(&[iface])
-                .set(changes as f64);
-        }
+    if let Some(changes) = read_i64(&iface_path.join("carrier_changes"))
+        && changes >= 0
+    {
+        metrics
+            .carrier_changes
+            .with_label_values(&[iface])
+            .set(prometheus_i64(changes));
     }
 
-    if let Some(dormant) = read_i64(&iface_path.join("dormant")) {
-        if dormant >= 0 {
-            metrics
-                .dormant
-                .with_label_values(&[iface])
-                .set(dormant as f64);
-        }
+    if let Some(dormant) = read_i64(&iface_path.join("dormant"))
+        && dormant >= 0
+    {
+        metrics
+            .dormant
+            .with_label_values(&[iface])
+            .set(prometheus_i64(dormant));
     }
 
-    if let Some(speed) = read_i64(&iface_path.join("speed")) {
-        if speed >= 0 {
-            metrics
-                .speed_mbps
-                .with_label_values(&[iface])
-                .set(speed as f64);
-        }
+    if let Some(speed) = read_i64(&iface_path.join("speed"))
+        && speed >= 0
+    {
+        metrics
+            .speed_mbps
+            .with_label_values(&[iface])
+            .set(prometheus_i64(speed));
     }
 
     if let Some(duplex) = read_string(&iface_path.join("duplex")).map(|value| value.to_lowercase())
@@ -191,9 +193,8 @@ fn update_interface(metrics: &NetdevSysfsMetrics, iface_path: &Path, iface: &str
 }
 
 pub fn update_metrics(config: &AppConfig) {
-    let entries = match fs::read_dir(SYS_CLASS_NET) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(SYS_CLASS_NET) else {
+        return;
     };
 
     let metrics = metrics();

@@ -1,3 +1,4 @@
+use crate::metric_support::RegisterMetricResultExt;
 use crate::runtime::debug_enabled;
 use ipmi_rs::sensor_event::{GetSensorReading, ThresholdReading};
 use ipmi_rs::storage::sdr::record::{
@@ -23,7 +24,7 @@ impl IpmiMetrics {
                 "IPMI sensor reading (unit label indicates base units)",
                 &["sensor", "type", "unit"]
             )
-            .expect("register ipmi_sensor_reading"),
+            .or_exit("ipmi_sensor_reading"),
         }
     }
 }
@@ -53,25 +54,25 @@ fn open_ipmi() -> Option<Ipmi<File>> {
 /// the magnitude is the bitwise complement, negated - so 0xFE is -1, not +1.
 fn ones_complement(reading: u8) -> i16 {
     if reading & 0x80 == 0 {
-        reading as i16
+        i16::from(reading)
     } else {
-        -((!reading) as i16)
+        -i16::from(!reading)
     }
 }
 
 fn convert_reading(sensor: &FullSensorRecord, reading: u8) -> Option<f64> {
     let format = sensor.analog_data_format?;
-    let m = sensor.m as f64;
-    let b = (sensor.b as f64) * 10f64.powf(sensor.b_exponent as f64);
-    let result_mul = 10f64.powf(sensor.result_exponent as f64);
+    let m = f64::from(sensor.m);
+    let b = f64::from(sensor.b) * 10f64.powf(f64::from(sensor.b_exponent));
+    let result_mul = 10f64.powf(f64::from(sensor.result_exponent));
 
     let reading_value = match format {
-        DataFormat::Unsigned => reading as f64,
-        DataFormat::OnesComplement => ones_complement(reading) as f64,
-        DataFormat::TwosComplement => (reading as i8) as f64,
+        DataFormat::Unsigned => f64::from(reading),
+        DataFormat::OnesComplement => f64::from(ones_complement(reading)),
+        DataFormat::TwosComplement => f64::from(reading.cast_signed()),
     };
 
-    Some((m * reading_value + b) * result_mul)
+    Some(m.mul_add(reading_value, b) * result_mul)
 }
 
 fn unit_label(sensor: &FullSensorRecord) -> String {
@@ -84,18 +85,17 @@ fn unit_label(sensor: &FullSensorRecord) -> String {
 }
 
 pub fn update_metrics() {
-    let mut ipmi = match open_ipmi() {
-        Some(ipmi) => ipmi,
-        None => return,
+    let Some(mut ipmi) = open_ipmi() else {
+        return;
     };
 
     let metrics = metrics();
 
     let records: Vec<_> = ipmi.sdrs().collect();
     for record in records {
-        let full = match record.contents {
-            ipmi_rs::storage::sdr::record::RecordContents::FullSensor(full) => full,
-            _ => continue,
+        let ipmi_rs::storage::sdr::record::RecordContents::FullSensor(full) = record.contents
+        else {
+            continue;
         };
 
         let raw_reading = match ipmi.send_recv(GetSensorReading::for_sensor_key(full.key_data())) {
@@ -109,14 +109,12 @@ pub fn update_metrics() {
         };
 
         let threshold: ThresholdReading = (&raw_reading).into();
-        let reading = match threshold.reading {
-            Some(value) => value,
-            None => continue,
+        let Some(reading) = threshold.reading else {
+            continue;
         };
 
-        let value = match convert_reading(&full, reading) {
-            Some(value) => value,
-            None => continue,
+        let Some(value) = convert_reading(&full, reading) else {
+            continue;
         };
 
         let sensor_label = full.id_string().to_string();

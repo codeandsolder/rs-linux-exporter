@@ -1,3 +1,5 @@
+use crate::metric_support::RegisterMetricResultExt;
+use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -24,70 +26,70 @@ impl EdacMetrics {
                 "Memory controller information",
                 &["controller", "mc_name"]
             )
-            .expect("register edac_mc_info"),
+            .or_exit("edac_mc_info"),
 
             mc_ce_count: prometheus::register_gauge_vec!(
                 "edac_mc_correctable_errors_total",
                 "Total correctable memory errors on this controller",
                 &["controller"]
             )
-            .expect("register edac_mc_correctable_errors_total"),
+            .or_exit("edac_mc_correctable_errors_total"),
 
             mc_ue_count: prometheus::register_gauge_vec!(
                 "edac_mc_uncorrectable_errors_total",
                 "Total uncorrectable memory errors on this controller",
                 &["controller"]
             )
-            .expect("register edac_mc_uncorrectable_errors_total"),
+            .or_exit("edac_mc_uncorrectable_errors_total"),
 
             mc_ce_noinfo_count: prometheus::register_gauge_vec!(
                 "edac_mc_correctable_errors_noinfo_total",
                 "Correctable errors without DIMM slot info",
                 &["controller"]
             )
-            .expect("register edac_mc_correctable_errors_noinfo_total"),
+            .or_exit("edac_mc_correctable_errors_noinfo_total"),
 
             mc_ue_noinfo_count: prometheus::register_gauge_vec!(
                 "edac_mc_uncorrectable_errors_noinfo_total",
                 "Uncorrectable errors without DIMM slot info",
                 &["controller"]
             )
-            .expect("register edac_mc_uncorrectable_errors_noinfo_total"),
+            .or_exit("edac_mc_uncorrectable_errors_noinfo_total"),
 
             mc_size_mb: prometheus::register_gauge_vec!(
                 "edac_mc_size_mb",
                 "Total memory managed by this controller in MB",
                 &["controller"]
             )
-            .expect("register edac_mc_size_mb"),
+            .or_exit("edac_mc_size_mb"),
 
             mc_seconds_since_reset: prometheus::register_gauge_vec!(
                 "edac_mc_seconds_since_reset",
                 "Seconds since error counters were reset",
                 &["controller"]
             )
-            .expect("register edac_mc_seconds_since_reset"),
+            .or_exit("edac_mc_seconds_since_reset"),
 
             dimm_ce_count: prometheus::register_gauge_vec!(
                 "edac_dimm_correctable_errors_total",
                 "Correctable errors on this DIMM",
                 &["controller", "dimm", "dimm_label"]
             )
-            .expect("register edac_dimm_correctable_errors_total"),
+            .or_exit("edac_dimm_correctable_errors_total"),
 
             dimm_ue_count: prometheus::register_gauge_vec!(
                 "edac_dimm_uncorrectable_errors_total",
                 "Uncorrectable errors on this DIMM",
                 &["controller", "dimm", "dimm_label"]
             )
-            .expect("register edac_dimm_uncorrectable_errors_total"),
+            .or_exit("edac_dimm_uncorrectable_errors_total"),
 
             dimm_size_mb: prometheus::register_gauge_vec!(
                 "edac_dimm_size_mb",
                 "DIMM size in MB",
                 &["controller", "dimm", "dimm_label"]
             )
-            .expect("register edac_dimm_size_mb"),
+            .or_exit("edac_dimm_size_mb"),
         }
     }
 }
@@ -116,21 +118,21 @@ fn update_dimm(mc_path: &Path, mc_name: &str, dimm_name: &str) {
         metrics
             .dimm_ce_count
             .with_label_values(&[mc_name, dimm_name, &dimm_label])
-            .set(ce as f64);
+            .set(prometheus_u64(ce));
     }
 
     if let Some(ue) = read_u64(&dimm_path.join("dimm_ue_count")) {
         metrics
             .dimm_ue_count
             .with_label_values(&[mc_name, dimm_name, &dimm_label])
-            .set(ue as f64);
+            .set(prometheus_u64(ue));
     }
 
     if let Some(size) = read_u64(&dimm_path.join("size")) {
         metrics
             .dimm_size_mb
             .with_label_values(&[mc_name, dimm_name, &dimm_label])
-            .set(size as f64);
+            .set(prometheus_u64(size));
     }
 }
 
@@ -151,28 +153,28 @@ fn update_memory_controller(mc_path: &Path, mc_name: &str) {
         metrics
             .mc_ce_count
             .with_label_values(&[mc_name])
-            .set(ce as f64);
+            .set(prometheus_u64(ce));
     }
 
     if let Some(ue) = read_u64(&mc_path.join("ue_count")) {
         metrics
             .mc_ue_count
             .with_label_values(&[mc_name])
-            .set(ue as f64);
+            .set(prometheus_u64(ue));
     }
 
     if let Some(ce_noinfo) = read_u64(&mc_path.join("ce_noinfo_count")) {
         metrics
             .mc_ce_noinfo_count
             .with_label_values(&[mc_name])
-            .set(ce_noinfo as f64);
+            .set(prometheus_u64(ce_noinfo));
     }
 
     if let Some(ue_noinfo) = read_u64(&mc_path.join("ue_noinfo_count")) {
         metrics
             .mc_ue_noinfo_count
             .with_label_values(&[mc_name])
-            .set(ue_noinfo as f64);
+            .set(prometheus_u64(ue_noinfo));
     }
 
     // Read size
@@ -180,7 +182,7 @@ fn update_memory_controller(mc_path: &Path, mc_name: &str) {
         metrics
             .mc_size_mb
             .with_label_values(&[mc_name])
-            .set(size as f64);
+            .set(prometheus_u64(size));
     }
 
     // Read seconds since reset
@@ -188,15 +190,14 @@ fn update_memory_controller(mc_path: &Path, mc_name: &str) {
         metrics
             .mc_seconds_since_reset
             .with_label_values(&[mc_name])
-            .set(seconds as f64);
+            .set(prometheus_u64(seconds));
     }
 
     // Process DIMMs and ranks
     if let Ok(entries) = fs::read_dir(mc_path) {
         for entry in entries.flatten() {
-            let name = match entry.file_name().into_string() {
-                Ok(name) => name,
-                Err(_) => continue,
+            let Ok(name) = entry.file_name().into_string() else {
+                continue;
             };
 
             if (name.starts_with("dimm") || name.starts_with("rank")) && entry.path().is_dir() {
@@ -211,9 +212,8 @@ pub fn update_metrics() {
 }
 
 fn update_metrics_from_path(base: &Path) {
-    let entries = match fs::read_dir(base) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
     };
 
     // dimm_label is part of the label set, so a relabelled or replaced DIMM
@@ -225,16 +225,14 @@ fn update_metrics_from_path(base: &Path) {
     metrics.dimm_size_mb.reset();
 
     for entry in entries.flatten() {
-        let name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            Err(_) => continue,
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
         };
 
         // Match mc0, mc1, etc.
         if name.starts_with("mc") && name[2..].chars().all(|c| c.is_ascii_digit()) {
-            let path = match fs::canonicalize(entry.path()) {
-                Ok(p) => p,
-                Err(_) => continue,
+            let Ok(path) = fs::canonicalize(entry.path()) else {
+                continue;
             };
             update_memory_controller(&path, &name);
         }

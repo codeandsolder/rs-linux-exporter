@@ -1,5 +1,5 @@
-#![allow(dead_code)]
 
+use crate::metric_support::RegisterMetricResultExt;
 use crate::runtime::debug_enabled;
 use prometheus::GaugeVec;
 use std::collections::HashMap;
@@ -101,7 +101,7 @@ impl EthtoolMetrics {
                 "Ethernet statistics via ethtool netlink",
                 &["interface", "stat"]
             )
-            .expect("register ethtool_stats"),
+            .or_exit("ethtool_stats"),
         }
     }
 }
@@ -660,10 +660,7 @@ fn is_ethernet_interface(iface_path: &Path) -> bool {
 }
 
 pub fn update_metrics() {
-    let fd = match create_netlink_socket() {
-        Ok(fd) => fd,
-        Err(_) => return,
-    };
+    let Ok(fd) = create_netlink_socket() else { return };
 
     struct SocketGuard(i32);
     impl Drop for SocketGuard {

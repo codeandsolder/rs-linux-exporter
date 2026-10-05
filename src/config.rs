@@ -86,15 +86,12 @@ const SUBSYSTEM_CHECKS: &[SubsystemCheck] = &[
 
 /// Converts an IPv4-mapped IPv6 address back to plain IPv4.
 ///
-/// A dual-stack listener reports IPv4 clients as ::ffff:a.b.c.d, which never
-/// matches an IPv4 CIDR in allowed_ip and would deny legitimate scrapes.
+/// A dual-stack listener reports IPv4 clients as `::ffff:a.b.c.d`, which never
+/// matches an IPv4 CIDR in `allowed_ip` and would deny legitimate scrapes.
 fn unmap_ipv4(ip: IpAddr) -> IpAddr {
     match ip {
-        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
-            Some(v4) => IpAddr::V4(v4),
-            None => IpAddr::V6(v6),
-        },
-        other => other,
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(IpAddr::V6(v6), IpAddr::V4),
+        IpAddr::V4(v4) => IpAddr::V4(v4),
     }
 }
 
@@ -122,10 +119,7 @@ fn check_path_available(path: &Path, require_entries: bool) -> bool {
     }
 
     if require_entries {
-        match fs::read_dir(path) {
-            Ok(mut entries) => entries.next().is_some(),
-            Err(_) => false,
-        }
+        fs::read_dir(path).is_ok_and(|mut entries| entries.next().is_some())
     } else {
         true
     }
@@ -137,6 +131,10 @@ fn check_subsystem_available(check: &SubsystemCheck) -> bool {
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent boolean switches map directly to stable flat TOML keys"
+)]
 pub struct AppConfig {
     pub ignore_loop_devices: bool,
     pub ignore_ramfs_filesystems: bool,
@@ -182,7 +180,7 @@ impl AppConfig {
     pub fn bind_addr(&self) -> SocketAddr {
         self.bind.parse().unwrap_or_else(|err| {
             eprintln!("Invalid bind address '{}': {err}", self.bind);
-            "127.0.0.1:9100".parse().expect("default bind")
+            std::net::SocketAddr::from(([127, 0, 0, 1], 9100))
         })
     }
 

@@ -1,64 +1,66 @@
 use crate::config::AppConfig;
+use crate::metric_support::RegisterMetricResultExt;
+use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::collections::HashSet;
 use std::ffi::CString;
 use std::sync::OnceLock;
 
 struct FilesystemMetrics {
-    filesystem_size_bytes: GaugeVec,
-    filesystem_free_bytes: GaugeVec,
-    filesystem_avail_bytes: GaugeVec,
-    filesystem_used_bytes: GaugeVec,
-    filesystem_files: GaugeVec,
-    filesystem_files_free: GaugeVec,
-    filesystem_files_used: GaugeVec,
+    size_bytes: GaugeVec,
+    free_bytes: GaugeVec,
+    avail_bytes: GaugeVec,
+    used_bytes: GaugeVec,
+    files: GaugeVec,
+    files_free: GaugeVec,
+    files_used: GaugeVec,
 }
 
 impl FilesystemMetrics {
     fn new() -> Self {
         Self {
-            filesystem_size_bytes: prometheus::register_gauge_vec!(
+            size_bytes: prometheus::register_gauge_vec!(
                 "filesystem_size_bytes",
                 "Total filesystem size in bytes",
                 &["mountpoint", "device", "fstype"]
             )
-            .expect("register filesystem_size_bytes"),
-            filesystem_free_bytes: prometheus::register_gauge_vec!(
+            .or_exit("filesystem_size_bytes"),
+            free_bytes: prometheus::register_gauge_vec!(
                 "filesystem_free_bytes",
                 "Free filesystem space in bytes",
                 &["mountpoint", "device", "fstype"]
             )
-            .expect("register filesystem_free_bytes"),
-            filesystem_avail_bytes: prometheus::register_gauge_vec!(
+            .or_exit("filesystem_free_bytes"),
+            avail_bytes: prometheus::register_gauge_vec!(
                 "filesystem_avail_bytes",
                 "Available filesystem space in bytes",
                 &["mountpoint", "device", "fstype"]
             )
-            .expect("register filesystem_avail_bytes"),
-            filesystem_used_bytes: prometheus::register_gauge_vec!(
+            .or_exit("filesystem_avail_bytes"),
+            used_bytes: prometheus::register_gauge_vec!(
                 "filesystem_used_bytes",
                 "Used filesystem space in bytes",
                 &["mountpoint", "device", "fstype"]
             )
-            .expect("register filesystem_used_bytes"),
-            filesystem_files: prometheus::register_gauge_vec!(
+            .or_exit("filesystem_used_bytes"),
+            files: prometheus::register_gauge_vec!(
                 "filesystem_files",
                 "Total inode count",
                 &["mountpoint", "device", "fstype"]
             )
-            .expect("register filesystem_files"),
-            filesystem_files_free: prometheus::register_gauge_vec!(
+            .or_exit("filesystem_files"),
+            files_free: prometheus::register_gauge_vec!(
                 "filesystem_files_free",
                 "Free inode count",
                 &["mountpoint", "device", "fstype"]
             )
-            .expect("register filesystem_files_free"),
-            filesystem_files_used: prometheus::register_gauge_vec!(
+            .or_exit("filesystem_files_free"),
+            files_used: prometheus::register_gauge_vec!(
                 "filesystem_files_used",
                 "Used inode count",
                 &["mountpoint", "device", "fstype"]
             )
-            .expect("register filesystem_files_used"),
+            .or_exit("filesystem_files_used"),
         }
     }
 }
@@ -108,20 +110,21 @@ fn is_pseudo_fs(fstype: &str) -> bool {
 }
 
 fn reset_metrics(metrics: &FilesystemMetrics) {
-    metrics.filesystem_size_bytes.reset();
-    metrics.filesystem_free_bytes.reset();
-    metrics.filesystem_avail_bytes.reset();
-    metrics.filesystem_used_bytes.reset();
-    metrics.filesystem_files.reset();
-    metrics.filesystem_files_free.reset();
-    metrics.filesystem_files_used.reset();
+    metrics.size_bytes.reset();
+    metrics.free_bytes.reset();
+    metrics.avail_bytes.reset();
+    metrics.used_bytes.reset();
+    metrics.files.reset();
+    metrics.files_free.reset();
+    metrics.files_used.reset();
+}
+
+fn stat_value_u64<T: Into<u64>>(value: T) -> u64 {
+    value.into()
 }
 
 pub fn update_metrics(config: &AppConfig) {
-    let mounts = match procfs::mounts() {
-        Ok(mounts) => mounts,
-        Err(_) => return,
-    };
+    let Ok(mounts) = procfs::mounts() else { return };
 
     let metrics = metrics();
 
@@ -147,59 +150,62 @@ pub fn update_metrics(config: &AppConfig) {
             continue;
         }
 
-        let mount_cstring = match CString::new(mount.fs_file.as_bytes()) {
-            Ok(value) => value,
-            Err(_) => continue,
+        let Ok(mount_cstring) = CString::new(mount.fs_file.as_bytes()) else {
+            continue;
         };
 
-        let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
-        let rc = unsafe { libc::statvfs(mount_cstring.as_ptr(), &mut stat) };
+        let mut stat = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+        // SAFETY: `mount_cstring` is NUL-terminated and alive for the call;
+        // `stat` points to writable storage large enough for one `statvfs`.
+        let rc = unsafe { libc::statvfs(mount_cstring.as_ptr(), stat.as_mut_ptr()) };
         if rc != 0 {
             continue;
         }
+        // SAFETY: POSIX `statvfs` initializes the output object on success.
+        let stat = unsafe { stat.assume_init() };
 
         let block_size = if stat.f_frsize > 0 {
-            stat.f_frsize as u64
+            stat_value_u64(stat.f_frsize)
         } else {
-            stat.f_bsize as u64
+            stat_value_u64(stat.f_bsize)
         };
 
-        let total_bytes = stat.f_blocks as u64 * block_size;
-        let free_bytes = stat.f_bfree as u64 * block_size;
-        let avail_bytes = stat.f_bavail as u64 * block_size;
+        let total_bytes = stat_value_u64(stat.f_blocks) * block_size;
+        let free_bytes = stat_value_u64(stat.f_bfree) * block_size;
+        let avail_bytes = stat_value_u64(stat.f_bavail) * block_size;
         let used_bytes = total_bytes.saturating_sub(free_bytes);
 
-        let files_total = stat.f_files as u64;
-        let files_free = stat.f_ffree as u64;
+        let files_total = stat_value_u64(stat.f_files);
+        let files_free = stat_value_u64(stat.f_ffree);
         let files_used = files_total.saturating_sub(files_free);
 
         metrics
-            .filesystem_size_bytes
+            .size_bytes
             .with_label_values(&labels)
-            .set(total_bytes as f64);
+            .set(prometheus_u64(total_bytes));
         metrics
-            .filesystem_free_bytes
+            .free_bytes
             .with_label_values(&labels)
-            .set(free_bytes as f64);
+            .set(prometheus_u64(free_bytes));
         metrics
-            .filesystem_avail_bytes
+            .avail_bytes
             .with_label_values(&labels)
-            .set(avail_bytes as f64);
+            .set(prometheus_u64(avail_bytes));
         metrics
-            .filesystem_used_bytes
+            .used_bytes
             .with_label_values(&labels)
-            .set(used_bytes as f64);
+            .set(prometheus_u64(used_bytes));
         metrics
-            .filesystem_files
+            .files
             .with_label_values(&labels)
-            .set(files_total as f64);
+            .set(prometheus_u64(files_total));
         metrics
-            .filesystem_files_free
+            .files_free
             .with_label_values(&labels)
-            .set(files_free as f64);
+            .set(prometheus_u64(files_free));
         metrics
-            .filesystem_files_used
+            .files_used
             .with_label_values(&labels)
-            .set(files_used as f64);
+            .set(prometheus_u64(files_used));
     }
 }

@@ -1,3 +1,5 @@
+use crate::metric_support::RegisterMetricResultExt;
+use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::fs;
 use std::sync::OnceLock;
@@ -5,39 +7,39 @@ use std::sync::OnceLock;
 const MDSTAT_PATH: &str = "/proc/mdstat";
 
 struct MdraidMetrics {
-    array_state: GaugeVec,
-    array_disks: GaugeVec,
-    array_degraded: GaugeVec,
-    array_sync_progress: GaugeVec,
+    state: GaugeVec,
+    disks: GaugeVec,
+    degraded: GaugeVec,
+    sync_progress: GaugeVec,
 }
 
 impl MdraidMetrics {
     fn new() -> Self {
         Self {
-            array_state: prometheus::register_gauge_vec!(
+            state: prometheus::register_gauge_vec!(
                 "mdraid_array_state",
                 "MD RAID array state (1 for current state label)",
                 &["array", "state", "level"]
             )
-            .expect("register mdraid_array_state"),
-            array_disks: prometheus::register_gauge_vec!(
+            .or_exit("mdraid_array_state"),
+            disks: prometheus::register_gauge_vec!(
                 "mdraid_array_disks",
                 "MD RAID array disk counts by role",
                 &["array", "role"]
             )
-            .expect("register mdraid_array_disks"),
-            array_degraded: prometheus::register_gauge_vec!(
+            .or_exit("mdraid_array_disks"),
+            degraded: prometheus::register_gauge_vec!(
                 "mdraid_array_degraded",
                 "MD RAID array degraded state (1 if degraded)",
                 &["array"]
             )
-            .expect("register mdraid_array_degraded"),
-            array_sync_progress: prometheus::register_gauge_vec!(
+            .or_exit("mdraid_array_degraded"),
+            sync_progress: prometheus::register_gauge_vec!(
                 "mdraid_array_sync_progress",
                 "MD RAID array sync action progress (0-1)",
                 &["array", "action"]
             )
-            .expect("register mdraid_array_sync_progress"),
+            .or_exit("mdraid_array_sync_progress"),
         }
     }
 }
@@ -99,10 +101,16 @@ fn parse_sync_progress(line: &str) -> Option<(String, f64)> {
     Some(((*action).to_string(), value / 100.0))
 }
 
+fn reset_metrics(metrics: &MdraidMetrics) {
+    metrics.state.reset();
+    metrics.disks.reset();
+    metrics.degraded.reset();
+    metrics.sync_progress.reset();
+}
+
 pub fn update_metrics() {
-    let contents = match fs::read_to_string(MDSTAT_PATH) {
-        Ok(contents) => contents,
-        Err(_) => return,
+    let Ok(contents) = fs::read_to_string(MDSTAT_PATH) else {
+        return;
     };
 
     let metrics = metrics();
@@ -110,10 +118,7 @@ pub fn update_metrics() {
     // Arrays, their states and their sync actions all come and go. Drop the
     // previous scrape's series so a stale array or a state the array has since
     // left does not keep reporting 1.
-    metrics.array_state.reset();
-    metrics.array_disks.reset();
-    metrics.array_degraded.reset();
-    metrics.array_sync_progress.reset();
+    reset_metrics(metrics);
 
     let mut lines = contents.lines().peekable();
 
@@ -152,71 +157,71 @@ pub fn update_metrics() {
             }
 
             for token in detail.split_whitespace() {
-                if active.is_none() {
-                    if let Some((t, a)) = parse_counts_token(token) {
-                        total = Some(t);
-                        active = Some(a);
-                        continue;
-                    }
+                if active.is_none()
+                    && let Some((t, a)) = parse_counts_token(token)
+                {
+                    total = Some(t);
+                    active = Some(a);
+                    continue;
                 }
 
-                if working.is_none() {
-                    if let Some((t, w)) = parse_working_token(token) {
-                        working = Some(w);
-                        if total.is_none() {
-                            total = Some(t);
-                        }
+                if working.is_none()
+                    && let Some((t, w)) = parse_working_token(token)
+                {
+                    working = Some(w);
+                    if total.is_none() {
+                        total = Some(t);
                     }
                 }
             }
 
-            if sync_action.is_none() {
-                if let Some((action, progress)) = parse_sync_progress(detail) {
-                    sync_action = Some(action);
-                    sync_progress = Some(progress);
-                }
+            if sync_action.is_none()
+                && let Some((action, progress)) = parse_sync_progress(detail)
+            {
+                sync_action = Some(action);
+                sync_progress = Some(progress);
             }
         }
 
         metrics
-            .array_state
+            .state
             .with_label_values(&[&name, &state, &level])
             .set(1.0);
 
         if let Some(total) = total {
             let role = "total".to_string();
             metrics
-                .array_disks
+                .disks
                 .with_label_values(&[&name, &role])
-                .set(total as f64);
+                .set(prometheus_u64(total));
         }
         if let Some(active) = active {
             let role = "active".to_string();
             metrics
-                .array_disks
+                .disks
                 .with_label_values(&[&name, &role])
-                .set(active as f64);
+                .set(prometheus_u64(active));
         }
         if let Some(working) = working {
             let role = "working".to_string();
             metrics
-                .array_disks
+                .disks
                 .with_label_values(&[&name, &role])
-                .set(working as f64);
+                .set(prometheus_u64(working));
         }
 
         let degraded = match (total, active.or(working)) {
-            (Some(total), Some(active)) => (active < total) as i32,
+            (Some(total), Some(active)) => i32::from(active < total),
             _ => 0,
         };
         metrics
-            .array_degraded
+            .degraded
             .with_label_values(&[&name])
-            .set(degraded as f64);
+            .set(f64::from(degraded));
 
         if let (Some(action), Some(progress)) = (sync_action, sync_progress) {
             metrics
-                .array_sync_progress
+                .sync_progress
                 .with_label_values(&[&name, &action])
                 .set(progress);
         }

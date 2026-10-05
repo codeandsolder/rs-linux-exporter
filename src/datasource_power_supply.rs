@@ -1,3 +1,5 @@
+use crate::metric_support::RegisterMetricResultExt;
+use crate::metric_support::prometheus_i64;
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -24,70 +26,70 @@ impl PowerSupplyMetrics {
                 "Power supply information",
                 &["name", "type"]
             )
-            .expect("register power_supply_info"),
+            .or_exit("power_supply_info"),
 
             online: prometheus::register_gauge_vec!(
                 "power_supply_online",
                 "Power supply online status (1 = online, 0 = offline)",
                 &["name", "type"]
             )
-            .expect("register power_supply_online"),
+            .or_exit("power_supply_online"),
 
             status: prometheus::register_gauge_vec!(
                 "power_supply_status",
                 "Battery status (1 = active for given state)",
                 &["name", "status"]
             )
-            .expect("register power_supply_status"),
+            .or_exit("power_supply_status"),
 
             capacity_percent: prometheus::register_gauge_vec!(
                 "power_supply_capacity_percent",
                 "Battery capacity in percent",
                 &["name"]
             )
-            .expect("register power_supply_capacity_percent"),
+            .or_exit("power_supply_capacity_percent"),
 
             voltage_volts: prometheus::register_gauge_vec!(
                 "power_supply_voltage_volts",
                 "Power supply voltage in Volts",
                 &["name", "measurement"]
             )
-            .expect("register power_supply_voltage_volts"),
+            .or_exit("power_supply_voltage_volts"),
 
             current_amps: prometheus::register_gauge_vec!(
                 "power_supply_current_amps",
                 "Power supply current in Amps",
                 &["name", "measurement"]
             )
-            .expect("register power_supply_current_amps"),
+            .or_exit("power_supply_current_amps"),
 
             power_watts: prometheus::register_gauge_vec!(
                 "power_supply_power_watts",
                 "Power supply power in Watts",
                 &["name"]
             )
-            .expect("register power_supply_power_watts"),
+            .or_exit("power_supply_power_watts"),
 
             energy_wh: prometheus::register_gauge_vec!(
                 "power_supply_energy_wh",
                 "Battery energy in Watt-hours",
                 &["name", "measurement"]
             )
-            .expect("register power_supply_energy_wh"),
+            .or_exit("power_supply_energy_wh"),
 
             charge_ah: prometheus::register_gauge_vec!(
                 "power_supply_charge_ah",
                 "Battery charge in Amp-hours",
                 &["name", "measurement"]
             )
-            .expect("register power_supply_charge_ah"),
+            .or_exit("power_supply_charge_ah"),
 
             temperature_celsius: prometheus::register_gauge_vec!(
                 "power_supply_temperature_celsius",
                 "Power supply temperature in Celsius",
                 &["name"]
             )
-            .expect("register power_supply_temperature_celsius"),
+            .or_exit("power_supply_temperature_celsius"),
         }
     }
 }
@@ -124,7 +126,7 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
         metrics
             .online
             .with_label_values(&[supply_name, &supply_type])
-            .set(online as f64);
+            .set(prometheus_i64(online));
     }
 
     // Battery status (Charging, Discharging, Not charging, Full)
@@ -142,7 +144,7 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
         metrics
             .capacity_percent
             .with_label_values(&[supply_name])
-            .set(capacity as f64);
+            .set(prometheus_i64(capacity));
     }
 
     // Voltage (microvolts -> volts)
@@ -150,13 +152,13 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
         metrics
             .voltage_volts
             .with_label_values(&[supply_name, "now"])
-            .set(voltage as f64 / 1_000_000.0);
+            .set(prometheus_i64(voltage) / 1_000_000.0);
     }
     if let Some(voltage) = read_i64(&supply_path.join("voltage_min_design")) {
         metrics
             .voltage_volts
             .with_label_values(&[supply_name, "min_design"])
-            .set(voltage as f64 / 1_000_000.0);
+            .set(prometheus_i64(voltage) / 1_000_000.0);
     }
 
     // Current (microamps -> amps)
@@ -164,7 +166,7 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
         metrics
             .current_amps
             .with_label_values(&[supply_name, "now"])
-            .set(current as f64 / 1_000_000.0);
+            .set(prometheus_i64(current) / 1_000_000.0);
     }
 
     // Power (microwatts -> watts)
@@ -172,7 +174,7 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
         metrics
             .power_watts
             .with_label_values(&[supply_name])
-            .set(power as f64 / 1_000_000.0);
+            .set(prometheus_i64(power) / 1_000_000.0);
     }
 
     // Energy (microwatt-hours -> watt-hours)
@@ -180,19 +182,19 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
         metrics
             .energy_wh
             .with_label_values(&[supply_name, "now"])
-            .set(energy as f64 / 1_000_000.0);
+            .set(prometheus_i64(energy) / 1_000_000.0);
     }
     if let Some(energy) = read_i64(&supply_path.join("energy_full")) {
         metrics
             .energy_wh
             .with_label_values(&[supply_name, "full"])
-            .set(energy as f64 / 1_000_000.0);
+            .set(prometheus_i64(energy) / 1_000_000.0);
     }
     if let Some(energy) = read_i64(&supply_path.join("energy_full_design")) {
         metrics
             .energy_wh
             .with_label_values(&[supply_name, "full_design"])
-            .set(energy as f64 / 1_000_000.0);
+            .set(prometheus_i64(energy) / 1_000_000.0);
     }
 
     // Charge (microamp-hours -> amp-hours)
@@ -200,19 +202,19 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
         metrics
             .charge_ah
             .with_label_values(&[supply_name, "now"])
-            .set(charge as f64 / 1_000_000.0);
+            .set(prometheus_i64(charge) / 1_000_000.0);
     }
     if let Some(charge) = read_i64(&supply_path.join("charge_full")) {
         metrics
             .charge_ah
             .with_label_values(&[supply_name, "full"])
-            .set(charge as f64 / 1_000_000.0);
+            .set(prometheus_i64(charge) / 1_000_000.0);
     }
     if let Some(charge) = read_i64(&supply_path.join("charge_full_design")) {
         metrics
             .charge_ah
             .with_label_values(&[supply_name, "full_design"])
-            .set(charge as f64 / 1_000_000.0);
+            .set(prometheus_i64(charge) / 1_000_000.0);
     }
 
     // Temperature (tenths of degree Celsius -> Celsius)
@@ -220,15 +222,14 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
         metrics
             .temperature_celsius
             .with_label_values(&[supply_name])
-            .set(temp as f64 / 10.0);
+            .set(prometheus_i64(temp) / 10.0);
     }
 }
 
 pub fn update_metrics() {
     let base = Path::new("/sys/class/power_supply");
-    let entries = match fs::read_dir(base) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
     };
 
     // Batteries and USB supplies are hot-pluggable.
@@ -245,14 +246,12 @@ pub fn update_metrics() {
     metrics.temperature_celsius.reset();
 
     for entry in entries.flatten() {
-        let name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            Err(_) => continue,
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
         };
 
-        let path = match fs::canonicalize(entry.path()) {
-            Ok(p) => p,
-            Err(_) => continue,
+        let Ok(path) = fs::canonicalize(entry.path()) else {
+            continue;
         };
 
         update_power_supply(&path, &name);

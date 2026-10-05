@@ -1,3 +1,5 @@
+use crate::metric_support::RegisterMetricResultExt;
+use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -16,14 +18,14 @@ impl RaplMetrics {
                 "Current energy counter in Joules (wraps at max_energy_joules)",
                 &["zone", "name"]
             )
-            .expect("register rapl_energy_joules"),
+            .or_exit("rapl_energy_joules"),
 
             max_energy_joules: prometheus::register_gauge_vec!(
                 "rapl_max_energy_joules",
                 "Maximum energy counter range in Joules before wrap",
                 &["zone", "name"]
             )
-            .expect("register rapl_max_energy_joules"),
+            .or_exit("rapl_max_energy_joules"),
         }
     }
 }
@@ -53,7 +55,7 @@ fn update_rapl_zone(zone_path: &Path, zone_id: &str) {
         metrics
             .energy_joules
             .with_label_values(&[zone_id, &name])
-            .set(energy_uj as f64 / 1_000_000.0);
+            .set(prometheus_u64(energy_uj) / 1_000_000.0);
     }
 
     // Read max energy range in microjoules, convert to joules
@@ -61,15 +63,14 @@ fn update_rapl_zone(zone_path: &Path, zone_id: &str) {
         metrics
             .max_energy_joules
             .with_label_values(&[zone_id, &name])
-            .set(max_energy_uj as f64 / 1_000_000.0);
+            .set(prometheus_u64(max_energy_uj) / 1_000_000.0);
     }
 
     // Process subzones (e.g., intel-rapl:0:0, intel-rapl:0:1)
     if let Ok(entries) = fs::read_dir(zone_path) {
         for entry in entries.flatten() {
-            let entry_name = match entry.file_name().into_string() {
-                Ok(name) => name,
-                Err(_) => continue,
+            let Ok(entry_name) = entry.file_name().into_string() else {
+                continue;
             };
 
             // Subzones have names like "intel-rapl:0:0" (contain two colons)
@@ -82,7 +83,7 @@ fn update_rapl_zone(zone_path: &Path, zone_id: &str) {
                     metrics
                         .energy_joules
                         .with_label_values(&[&entry_name, &subzone_name])
-                        .set(energy_uj as f64 / 1_000_000.0);
+                        .set(prometheus_u64(energy_uj) / 1_000_000.0);
                 }
 
                 // Read subzone max energy range
@@ -90,7 +91,7 @@ fn update_rapl_zone(zone_path: &Path, zone_id: &str) {
                     metrics
                         .max_energy_joules
                         .with_label_values(&[&entry_name, &subzone_name])
-                        .set(max_energy_uj as f64 / 1_000_000.0);
+                        .set(prometheus_u64(max_energy_uj) / 1_000_000.0);
                 }
             }
         }
@@ -99,9 +100,8 @@ fn update_rapl_zone(zone_path: &Path, zone_id: &str) {
 
 pub fn update_metrics() {
     let base = Path::new("/sys/class/powercap");
-    let entries = match fs::read_dir(base) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
     };
 
     let metrics = metrics();
@@ -109,18 +109,16 @@ pub fn update_metrics() {
     metrics.max_energy_joules.reset();
 
     for entry in entries.flatten() {
-        let name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            Err(_) => continue,
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
         };
 
         // Match intel-rapl:N or amd-rapl:N zones (top-level packages)
         if (name.starts_with("intel-rapl:") || name.starts_with("amd-rapl:"))
             && name.matches(':').count() == 1
         {
-            let path = match fs::canonicalize(entry.path()) {
-                Ok(p) => p,
-                Err(_) => continue,
+            let Ok(path) = fs::canonicalize(entry.path()) else {
+                continue;
             };
             update_rapl_zone(&path, &name);
         }

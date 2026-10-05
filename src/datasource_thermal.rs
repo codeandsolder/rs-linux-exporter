@@ -1,3 +1,5 @@
+use crate::metric_support::RegisterMetricResultExt;
+use crate::metric_support::prometheus_i64;
 use prometheus::{Gauge, GaugeVec};
 use std::fs;
 use std::path::Path;
@@ -20,40 +22,40 @@ impl ThermalMetrics {
                 "Current temperature of the thermal zone in Celsius",
                 &["zone", "type"]
             )
-            .expect("register thermal_zone_temperature_celsius"),
+            .or_exit("thermal_zone_temperature_celsius"),
 
             zone_trip_point_celsius: prometheus::register_gauge_vec!(
                 "thermal_zone_trip_point_celsius",
                 "Trip point temperature threshold in Celsius",
                 &["zone", "type", "trip_point", "trip_type"]
             )
-            .expect("register thermal_zone_trip_point_celsius"),
+            .or_exit("thermal_zone_trip_point_celsius"),
 
             cooling_device_cur_state: prometheus::register_gauge_vec!(
                 "thermal_cooling_device_cur_state",
                 "Current cooling state of the device",
                 &["device", "type"]
             )
-            .expect("register thermal_cooling_device_cur_state"),
+            .or_exit("thermal_cooling_device_cur_state"),
 
             cooling_device_max_state: prometheus::register_gauge_vec!(
                 "thermal_cooling_device_max_state",
                 "Maximum cooling state of the device",
                 &["device", "type"]
             )
-            .expect("register thermal_cooling_device_max_state"),
+            .or_exit("thermal_cooling_device_max_state"),
 
             zone_count: prometheus::register_gauge!(
                 "thermal_zone_count",
                 "Number of thermal zones"
             )
-            .expect("register thermal_zone_count"),
+            .or_exit("thermal_zone_count"),
 
             cooling_device_count: prometheus::register_gauge!(
                 "thermal_cooling_device_count",
                 "Number of cooling devices"
             )
-            .expect("register thermal_cooling_device_count"),
+            .or_exit("thermal_cooling_device_count"),
         }
     }
 }
@@ -95,34 +97,31 @@ fn update_thermal_zone(zone_path: &Path, zone_name: &str) {
         metrics
             .zone_temperature_celsius
             .with_label_values(&[zone_name, &zone_type])
-            .set(millidegrees as f64 / 1000.0);
+            .set(prometheus_i64(millidegrees) / 1000.0);
     }
 
     // Read trip points
-    let entries = match fs::read_dir(zone_path) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(zone_path) else {
+        return;
     };
 
     for entry in entries.flatten() {
-        let file_name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            Err(_) => continue,
+        let Ok(file_name) = entry.file_name().into_string() else {
+            continue;
         };
 
         // Match trip_point_N_temp files
-        if let Some(index) = trip_point_index(&file_name) {
-            if let Some(millidegrees) = read_i64(&entry.path()) {
-                // Try to get the trip point type
-                let trip_type_path = zone_path.join(format!("trip_point_{}_type", index));
-                let trip_type =
-                    read_string(&trip_type_path).unwrap_or_else(|| "unknown".to_string());
+        if let Some(index) = trip_point_index(&file_name)
+            && let Some(millidegrees) = read_i64(&entry.path())
+        {
+            // Try to get the trip point type
+            let trip_type_path = zone_path.join(format!("trip_point_{index}_type"));
+            let trip_type = read_string(&trip_type_path).unwrap_or_else(|| "unknown".to_string());
 
-                metrics
-                    .zone_trip_point_celsius
-                    .with_label_values(&[zone_name, &zone_type, index, &trip_type])
-                    .set(millidegrees as f64 / 1000.0);
-            }
+            metrics
+                .zone_trip_point_celsius
+                .with_label_values(&[zone_name, &zone_type, index, &trip_type])
+                .set(prometheus_i64(millidegrees) / 1000.0);
         }
     }
 }
@@ -139,7 +138,7 @@ fn update_cooling_device(device_path: &Path, device_name: &str) {
         metrics
             .cooling_device_cur_state
             .with_label_values(&[device_name, &device_type])
-            .set(cur_state as f64);
+            .set(prometheus_i64(cur_state));
     }
 
     // Read max state
@@ -147,15 +146,14 @@ fn update_cooling_device(device_path: &Path, device_name: &str) {
         metrics
             .cooling_device_max_state
             .with_label_values(&[device_name, &device_type])
-            .set(max_state as f64);
+            .set(prometheus_i64(max_state));
     }
 }
 
 pub fn update_metrics() {
     let base = Path::new("/sys/class/thermal");
-    let entries = match fs::read_dir(base) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
     };
 
     let metrics = metrics();
@@ -170,14 +168,12 @@ pub fn update_metrics() {
     let mut cooling_count = 0;
 
     for entry in entries.flatten() {
-        let name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            Err(_) => continue,
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
         };
 
-        let path = match fs::canonicalize(entry.path()) {
-            Ok(p) => p,
-            Err(_) => continue,
+        let Ok(path) = fs::canonicalize(entry.path()) else {
+            continue;
         };
 
         if name.starts_with("thermal_zone") {
@@ -189,8 +185,8 @@ pub fn update_metrics() {
         }
     }
 
-    metrics.zone_count.set(zone_count as f64);
-    metrics.cooling_device_count.set(cooling_count as f64);
+    metrics.zone_count.set(f64::from(zone_count));
+    metrics.cooling_device_count.set(f64::from(cooling_count));
 }
 
 #[cfg(test)]

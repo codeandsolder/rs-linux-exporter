@@ -1,3 +1,4 @@
+use crate::metric_support::RegisterMetricResultExt;
 #[macro_use]
 extern crate rocket;
 
@@ -5,7 +6,6 @@ mod config;
 mod datasource_conntrack;
 mod datasource_cpufreq;
 mod datasource_edac;
-mod datasource_ethtool;
 mod datasource_filesystems;
 mod datasource_hwmon;
 mod datasource_ipmi;
@@ -18,6 +18,7 @@ mod datasource_procfs;
 mod datasource_rapl;
 mod datasource_softnet;
 mod datasource_thermal;
+mod metric_support;
 mod runtime;
 
 use crate::config::AppConfig;
@@ -44,8 +45,8 @@ impl<'r> FromRequest<'r> for BearerToken {
             .headers()
             .get_one("Authorization")
             .and_then(|header| header.strip_prefix("Bearer "))
-            .map(|t| t.to_string());
-        Outcome::Success(BearerToken(token))
+            .map(std::string::ToString::to_string);
+        Outcome::Success(Self(token))
     }
 }
 use std::sync::OnceLock;
@@ -53,7 +54,6 @@ use std::sync::OnceLock;
 static METRICS_REQUESTS_TOTAL: OnceLock<IntCounter> = OnceLock::new();
 static METRICS_REQUESTS_DENIED_TOTAL: OnceLock<IntCounter> = OnceLock::new();
 static APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
-static IS_ROOT: OnceLock<bool> = OnceLock::new();
 
 /// Serialises scrapes. Collectors reset their vecs and repopulate them, so two
 /// concurrent scrapes would let one observe the other's half-rebuilt state. It
@@ -66,7 +66,7 @@ fn metrics_requests_total() -> &'static IntCounter {
             "metrics_requests_total",
             "Total number of /metrics requests"
         )
-        .expect("register metrics_requests_total")
+        .or_exit("metrics_requests_total")
     })
 }
 
@@ -76,16 +76,12 @@ fn metrics_requests_denied_total() -> &'static IntCounter {
             "metrics_requests_denied_total",
             "Total number of /metrics requests denied by ACL"
         )
-        .expect("register metrics_requests_denied_total")
+        .or_exit("metrics_requests_denied_total")
     })
 }
 
 fn app_config() -> &'static AppConfig {
     APP_CONFIG.get_or_init(AppConfig::load)
-}
-
-fn is_root() -> bool {
-    *IS_ROOT.get_or_init(|| unsafe { libc::geteuid() == 0 })
 }
 
 fn update_metrics() {
@@ -244,7 +240,7 @@ fn metrics_json_payload() -> String {
 fn refresh_and_render<T>(render: impl FnOnce() -> T) -> T {
     let _guard = SCRAPE_LOCK
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     update_metrics();
     render()
 }
@@ -260,18 +256,15 @@ fn render_text() -> String {
     String::from_utf8(buffer).unwrap_or_default()
 }
 
-fn collection_failed() -> status::Custom<(ContentType, String)> {
-    status::Custom(
-        Status::InternalServerError,
-        (ContentType::Plain, "collection failed".to_string()),
-    )
+const fn collection_failed() -> status::Custom<&'static str> {
+    status::Custom(Status::InternalServerError, "collection failed")
 }
 
 #[get("/metrics")]
 async fn metrics(
     client_ip: Option<IpAddr>,
     token: BearerToken,
-) -> Result<(ContentType, String), status::Custom<(ContentType, String)>> {
+) -> Result<(ContentType, String), status::Custom<&'static str>> {
     metrics_requests_total().inc();
     let config = app_config();
 
@@ -280,36 +273,24 @@ async fn metrics(
         if config.log_denied_requests {
             eprintln!(
                 "Denied /metrics request from {} (invalid token)",
-                client_ip
-                    .map(|ip| ip.to_string())
-                    .unwrap_or_else(|| "<unknown>".to_string())
+                client_ip.map_or_else(|| "<unknown>".to_string(), |ip| ip.to_string())
             );
         }
         metrics_requests_denied_total().inc();
-        return Err(status::Custom(
-            Status::Unauthorized,
-            (ContentType::Plain, "unauthorized".to_string()),
-        ));
+        return Err(status::Custom(Status::Unauthorized, "unauthorized"));
     }
 
     // Check IP allowlist
-    let is_allowed = client_ip
-        .map(|ip| config.is_metrics_ip_allowed(ip))
-        .unwrap_or(false);
+    let is_allowed = client_ip.is_some_and(|ip| config.is_metrics_ip_allowed(ip));
     if !is_allowed {
         if config.log_denied_requests {
             eprintln!(
                 "Denied /metrics request from {}",
-                client_ip
-                    .map(|ip| ip.to_string())
-                    .unwrap_or_else(|| "<unknown>".to_string())
+                client_ip.map_or_else(|| "<unknown>".to_string(), |ip| ip.to_string())
             );
         }
         metrics_requests_denied_total().inc();
-        return Err(status::Custom(
-            Status::Forbidden,
-            (ContentType::Plain, "access denied".to_string()),
-        ));
+        return Err(status::Custom(Status::Forbidden, "access denied"));
     }
 
     match spawn_blocking(|| refresh_and_render(render_text)).await {
@@ -325,7 +306,7 @@ async fn metrics(
 async fn metrics_json(
     client_ip: Option<IpAddr>,
     token: BearerToken,
-) -> Result<(ContentType, String), status::Custom<(ContentType, String)>> {
+) -> Result<(ContentType, String), status::Custom<&'static str>> {
     metrics_requests_total().inc();
     let config = app_config();
 
@@ -334,36 +315,24 @@ async fn metrics_json(
         if config.log_denied_requests {
             eprintln!(
                 "Denied /metrics.json request from {} (invalid token)",
-                client_ip
-                    .map(|ip| ip.to_string())
-                    .unwrap_or_else(|| "<unknown>".to_string())
+                client_ip.map_or_else(|| "<unknown>".to_string(), |ip| ip.to_string())
             );
         }
         metrics_requests_denied_total().inc();
-        return Err(status::Custom(
-            Status::Unauthorized,
-            (ContentType::Plain, "unauthorized".to_string()),
-        ));
+        return Err(status::Custom(Status::Unauthorized, "unauthorized"));
     }
 
     // Check IP allowlist
-    let is_allowed = client_ip
-        .map(|ip| config.is_metrics_ip_allowed(ip))
-        .unwrap_or(false);
+    let is_allowed = client_ip.is_some_and(|ip| config.is_metrics_ip_allowed(ip));
     if !is_allowed {
         if config.log_denied_requests {
             eprintln!(
                 "Denied /metrics.json request from {}",
-                client_ip
-                    .map(|ip| ip.to_string())
-                    .unwrap_or_else(|| "<unknown>".to_string())
+                client_ip.map_or_else(|| "<unknown>".to_string(), |ip| ip.to_string())
             );
         }
         metrics_requests_denied_total().inc();
-        return Err(status::Custom(
-            Status::Forbidden,
-            (ContentType::Plain, "access denied".to_string()),
-        ));
+        return Err(status::Custom(Status::Forbidden, "access denied"));
     }
 
     match spawn_blocking(|| refresh_and_render(metrics_json_payload)).await {
@@ -376,7 +345,7 @@ async fn metrics_json(
 }
 
 #[get("/")]
-fn index() -> &'static str {
+const fn index() -> &'static str {
     "rs-linux-exporter: /metrics"
 }
 
@@ -386,14 +355,10 @@ fn not_found(request: &rocket::Request<'_>) -> &'static str {
     if config.log_404_requests {
         let client_ip = request
             .client_ip()
-            .map(|ip| ip.to_string())
-            .unwrap_or_else(|| "<unknown>".to_string());
-        eprintln!(
-            "404 {} {} from {}",
-            request.method(),
-            request.uri(),
-            client_ip
-        );
+            .map_or_else(|| "<unknown>".to_string(), |ip| ip.to_string());
+        let method = request.method();
+        let uri = request.uri();
+        eprintln!("404 {method} {uri} from {client_ip}");
     }
     "Not Found"
 }
@@ -406,9 +371,6 @@ fn rocket() -> _ {
     }
     // Initialize config early to run subsystem availability checks and print messages
     let _ = app_config();
-    if !is_root() {
-        eprintln!("\x1b[31mNon-root: ethtool stats collection disabled.\x1b[0m");
-    }
     let bind = app_config().bind_addr();
     let mut figment = Config::figment()
         .merge(("address", bind.ip().to_string()))

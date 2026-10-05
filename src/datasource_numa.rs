@@ -1,3 +1,5 @@
+use crate::metric_support::RegisterMetricResultExt;
+use crate::metric_support::prometheus_u64;
 use prometheus::{Gauge, GaugeVec};
 use std::fs;
 use std::path::Path;
@@ -13,21 +15,21 @@ impl NumaMetrics {
     fn new() -> Self {
         Self {
             node_count: prometheus::register_gauge!("numa_node_count", "Number of NUMA nodes")
-                .expect("register numa_node_count"),
+                .or_exit("numa_node_count"),
 
             meminfo: prometheus::register_gauge_vec!(
                 "numa_node_memory_bytes",
                 "NUMA node memory information in bytes",
                 &["node", "type"]
             )
-            .expect("register numa_node_memory_bytes"),
+            .or_exit("numa_node_memory_bytes"),
 
             numastat: prometheus::register_gauge_vec!(
                 "numa_node_stat_pages",
                 "NUMA node hit/miss statistics in pages",
                 &["node", "type"]
             )
-            .expect("register numa_node_stat_pages"),
+            .or_exit("numa_node_stat_pages"),
         }
     }
 }
@@ -65,7 +67,7 @@ fn parse_meminfo(content: &str, node_name: &str) {
         metrics
             .meminfo
             .with_label_values(&[node_name, field_name])
-            .set(bytes as f64);
+            .set(prometheus_u64(bytes));
     }
 }
 
@@ -87,7 +89,7 @@ fn parse_numastat(content: &str, node_name: &str) {
         metrics
             .numastat
             .with_label_values(&[node_name, stat_name])
-            .set(value as f64);
+            .set(prometheus_u64(value));
     }
 }
 
@@ -108,32 +110,29 @@ pub fn update_metrics() {
 }
 
 fn update_metrics_from_path(base: &Path) {
-    let entries = match fs::read_dir(base) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
     };
 
     let metrics = metrics();
     let mut node_count = 0;
 
     for entry in entries.flatten() {
-        let name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            Err(_) => continue,
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
         };
 
         // Match node0, node1, etc.
         if name.starts_with("node") && name[4..].chars().all(|c| c.is_ascii_digit()) {
-            let path = match fs::canonicalize(entry.path()) {
-                Ok(p) => p,
-                Err(_) => continue,
+            let Ok(path) = fs::canonicalize(entry.path()) else {
+                continue;
             };
             update_numa_node(&path, &name);
             node_count += 1;
         }
     }
 
-    metrics.node_count.set(node_count as f64);
+    metrics.node_count.set(f64::from(node_count));
 }
 
 #[cfg(test)]

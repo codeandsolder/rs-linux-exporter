@@ -1,3 +1,5 @@
+use crate::metric_support::RegisterMetricResultExt;
+use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -15,7 +17,7 @@ impl CpuFreqMetrics {
                 "Current CPU frequency per core",
                 &["cpu", "source"]
             )
-            .expect("register cpu_frequency_hz"),
+            .or_exit("cpu_frequency_hz"),
         }
     }
 }
@@ -38,7 +40,7 @@ fn update_cpu(cpu_name: &str, cpufreq_dir: &Path) {
         metrics
             .cpu_frequency_hz
             .with_label_values(&[cpu_name, "scaling_cur_freq"])
-            .set((khz * 1000) as f64);
+            .set(prometheus_u64(khz * 1000));
         return;
     }
 
@@ -47,15 +49,14 @@ fn update_cpu(cpu_name: &str, cpufreq_dir: &Path) {
         metrics
             .cpu_frequency_hz
             .with_label_values(&[cpu_name, "cpuinfo_cur_freq"])
-            .set((khz * 1000) as f64);
+            .set(prometheus_u64(khz * 1000));
     }
 }
 
 pub fn update_metrics() {
     let base = Path::new("/sys/devices/system/cpu");
-    let entries = match fs::read_dir(base) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
     };
 
     // CPUs can be taken offline, which removes their cpufreq directory.
@@ -63,10 +64,7 @@ pub fn update_metrics() {
 
     for entry in entries.flatten() {
         let name = entry.file_name();
-        let name = match name.to_str() {
-            Some(name) => name,
-            None => continue,
-        };
+        let Some(name) = name.to_str() else { continue };
         if !name.starts_with("cpu") || name == "cpufreq" || name == "cpuidle" {
             continue;
         }

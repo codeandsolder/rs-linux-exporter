@@ -1,4 +1,6 @@
 use crate::config::AppConfig;
+use crate::metric_support::RegisterMetricResultExt;
+use crate::metric_support::{prometheus_i64, prometheus_u64};
 use procfs::net::{TcpState, UdpState};
 use procfs::prelude::{Current, CurrentSI};
 use procfs::{CpuTime, KernelStats, LoadAverage, Meminfo, Uptime};
@@ -30,115 +32,119 @@ struct ProcfsMetrics {
 }
 
 impl ProcfsMetrics {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "flat Prometheus descriptor registration is easier to audit as one table"
+    )]
     fn new() -> Self {
         Self {
             uptime_seconds: prometheus::register_gauge!(
                 "uptime_seconds",
                 "System uptime in seconds"
             )
-            .expect("register uptime_seconds"),
+            .or_exit("uptime_seconds"),
             uptime_idle_seconds: prometheus::register_gauge!(
                 "uptime_idle_seconds",
                 "Sum of idle time across all CPUs in seconds"
             )
-            .expect("register uptime_idle_seconds"),
+            .or_exit("uptime_idle_seconds"),
             load_average: prometheus::register_gauge_vec!(
                 "load_average",
                 "System load averages",
                 &["interval"]
             )
-            .expect("register load_average"),
+            .or_exit("load_average"),
             load_processes: prometheus::register_gauge_vec!(
                 "load_processes",
                 "Runnable and total scheduling entities from /proc/loadavg",
                 &["kind"]
             )
-            .expect("register load_processes"),
+            .or_exit("load_processes"),
             cpu_seconds_total: prometheus::register_gauge_vec!(
                 "cpu_seconds_total",
                 "CPU time spent in seconds",
                 &["cpu", "mode"]
             )
-            .expect("register cpu_seconds_total"),
+            .or_exit("cpu_seconds_total"),
             cpu_context_switches_total: prometheus::register_gauge!(
                 "cpu_context_switches_total",
                 "Number of context switches since boot"
             )
-            .expect("register cpu_context_switches_total"),
+            .or_exit("cpu_context_switches_total"),
             cpu_boot_time_seconds: prometheus::register_gauge!(
                 "cpu_boot_time_seconds",
                 "Boot time, in seconds since the epoch"
             )
-            .expect("register cpu_boot_time_seconds"),
+            .or_exit("cpu_boot_time_seconds"),
             processes_forked_total: prometheus::register_gauge!(
                 "processes_forked_total",
                 "Number of forks since boot"
             )
-            .expect("register processes_forked_total"),
+            .or_exit("processes_forked_total"),
             processes_running: prometheus::register_gauge!(
                 "processes_running",
                 "Number of processes currently runnable"
             )
-            .expect("register processes_running"),
+            .or_exit("processes_running"),
             processes_blocked: prometheus::register_gauge!(
                 "processes_blocked",
                 "Number of processes blocked waiting for I/O"
             )
-            .expect("register processes_blocked"),
+            .or_exit("processes_blocked"),
             meminfo: prometheus::register_gauge_vec!(
                 "meminfo",
                 "Raw values from /proc/meminfo (bytes unless otherwise noted)",
                 &["field"]
             )
-            .expect("register meminfo"),
+            .or_exit("meminfo"),
             vmstat: prometheus::register_gauge_vec!(
                 "vmstat",
                 "Raw values from /proc/vmstat",
                 &["field"]
             )
-            .expect("register vmstat"),
+            .or_exit("vmstat"),
             diskstats: prometheus::register_gauge_vec!(
                 "diskstats",
                 "Raw disk statistics from /proc/diskstats",
                 &["device", "field"]
             )
-            .expect("register diskstats"),
+            .or_exit("diskstats"),
             netdev: prometheus::register_gauge_vec!(
                 "netdev",
                 "Raw network device stats from /proc/net/dev",
                 &["interface", "field"]
             )
-            .expect("register netdev"),
+            .or_exit("netdev"),
             tcp_sockets: prometheus::register_gauge_vec!(
                 "tcp_sockets",
                 "TCP socket counts by state from /proc/net/tcp",
                 &["state"]
             )
-            .expect("register tcp_sockets"),
+            .or_exit("tcp_sockets"),
             udp_sockets: prometheus::register_gauge_vec!(
                 "udp_sockets",
                 "UDP socket counts by state from /proc/net/udp",
                 &["state"]
             )
-            .expect("register udp_sockets"),
+            .or_exit("udp_sockets"),
             arp_entries: prometheus::register_gauge_vec!(
                 "arp_entries",
                 "ARP table entries by device from /proc/net/arp",
                 &["device"]
             )
-            .expect("register arp_entries"),
+            .or_exit("arp_entries"),
             snmp: prometheus::register_gauge_vec!(
                 "snmp",
                 "SNMP counters from /proc/net/snmp",
                 &["field"]
             )
-            .expect("register snmp"),
+            .or_exit("snmp"),
             netstat: prometheus::register_gauge_vec!(
                 "netstat",
                 "Extended netstat counters from /proc/net/netstat",
                 &["field"]
             )
-            .expect("register netstat"),
+            .or_exit("netstat"),
         }
     }
 }
@@ -152,51 +158,53 @@ fn metrics() -> &'static ProcfsMetrics {
 fn set_cpu_time(metrics: &GaugeVec, cpu_label: &str, cpu_time: &CpuTime) {
     metrics
         .with_label_values(&[cpu_label, "user"])
-        .set(cpu_time.user_ms() as f64 / 1000.0);
+        .set(prometheus_u64(cpu_time.user_ms()) / 1000.0);
     metrics
         .with_label_values(&[cpu_label, "nice"])
-        .set(cpu_time.nice_ms() as f64 / 1000.0);
+        .set(prometheus_u64(cpu_time.nice_ms()) / 1000.0);
     metrics
         .with_label_values(&[cpu_label, "system"])
-        .set(cpu_time.system_ms() as f64 / 1000.0);
+        .set(prometheus_u64(cpu_time.system_ms()) / 1000.0);
     metrics
         .with_label_values(&[cpu_label, "idle"])
-        .set(cpu_time.idle_ms() as f64 / 1000.0);
+        .set(prometheus_u64(cpu_time.idle_ms()) / 1000.0);
 
     if let Some(value) = cpu_time.iowait_ms() {
         metrics
             .with_label_values(&[cpu_label, "iowait"])
-            .set(value as f64 / 1000.0);
+            .set(prometheus_u64(value) / 1000.0);
     }
     if let Some(value) = cpu_time.irq_ms() {
         metrics
             .with_label_values(&[cpu_label, "irq"])
-            .set(value as f64 / 1000.0);
+            .set(prometheus_u64(value) / 1000.0);
     }
     if let Some(value) = cpu_time.softirq_ms() {
         metrics
             .with_label_values(&[cpu_label, "softirq"])
-            .set(value as f64 / 1000.0);
+            .set(prometheus_u64(value) / 1000.0);
     }
     if let Some(value) = cpu_time.steal_ms() {
         metrics
             .with_label_values(&[cpu_label, "steal"])
-            .set(value as f64 / 1000.0);
+            .set(prometheus_u64(value) / 1000.0);
     }
     if let Some(value) = cpu_time.guest_ms() {
         metrics
             .with_label_values(&[cpu_label, "guest"])
-            .set(value as f64 / 1000.0);
+            .set(prometheus_u64(value) / 1000.0);
     }
     if let Some(value) = cpu_time.guest_nice_ms() {
         metrics
             .with_label_values(&[cpu_label, "guest_nice"])
-            .set(value as f64 / 1000.0);
+            .set(prometheus_u64(value) / 1000.0);
     }
 }
 
 fn set_meminfo_value(metrics: &GaugeVec, name: &str, value: u64) {
-    metrics.with_label_values(&[name]).set(value as f64);
+    metrics
+        .with_label_values(&[name])
+        .set(prometheus_u64(value));
 }
 
 fn set_meminfo_optional(metrics: &GaugeVec, name: &str, value: Option<u64>) {
@@ -286,19 +294,25 @@ fn update_meminfo(metrics: &ProcfsMetrics, meminfo: &Meminfo) {
 fn update_kernel_stats(metrics: &ProcfsMetrics, stats: &KernelStats) {
     set_cpu_time(&metrics.cpu_seconds_total, "total", &stats.total);
     for (idx, cpu) in stats.cpu_time.iter().enumerate() {
-        let label = format!("cpu{}", idx);
+        let label = format!("cpu{idx}");
         set_cpu_time(&metrics.cpu_seconds_total, &label, cpu);
     }
 
-    metrics.cpu_context_switches_total.set(stats.ctxt as f64);
-    metrics.cpu_boot_time_seconds.set(stats.btime as f64);
-    metrics.processes_forked_total.set(stats.processes as f64);
+    metrics
+        .cpu_context_switches_total
+        .set(prometheus_u64(stats.ctxt));
+    metrics
+        .cpu_boot_time_seconds
+        .set(prometheus_u64(stats.btime));
+    metrics
+        .processes_forked_total
+        .set(prometheus_u64(stats.processes));
 
     if let Some(value) = stats.procs_running {
-        metrics.processes_running.set(value as f64);
+        metrics.processes_running.set(f64::from(value));
     }
     if let Some(value) = stats.procs_blocked {
-        metrics.processes_blocked.set(value as f64);
+        metrics.processes_blocked.set(f64::from(value));
     }
 }
 
@@ -314,67 +328,67 @@ fn update_diskstats(metrics: &ProcfsMetrics, stats: &[procfs::DiskStat], config:
         let diskstats = &metrics.diskstats;
         diskstats
             .with_label_values(&[device, "reads"])
-            .set(stat.reads as f64);
+            .set(prometheus_u64(stat.reads));
         diskstats
             .with_label_values(&[device, "reads_merged"])
-            .set(stat.merged as f64);
+            .set(prometheus_u64(stat.merged));
         diskstats
             .with_label_values(&[device, "sectors_read"])
-            .set(stat.sectors_read as f64);
+            .set(prometheus_u64(stat.sectors_read));
         diskstats
             .with_label_values(&[device, "time_reading_ms"])
-            .set(stat.time_reading as f64);
+            .set(prometheus_u64(stat.time_reading));
         diskstats
             .with_label_values(&[device, "writes"])
-            .set(stat.writes as f64);
+            .set(prometheus_u64(stat.writes));
         diskstats
             .with_label_values(&[device, "writes_merged"])
-            .set(stat.writes_merged as f64);
+            .set(prometheus_u64(stat.writes_merged));
         diskstats
             .with_label_values(&[device, "sectors_written"])
-            .set(stat.sectors_written as f64);
+            .set(prometheus_u64(stat.sectors_written));
         diskstats
             .with_label_values(&[device, "time_writing_ms"])
-            .set(stat.time_writing as f64);
+            .set(prometheus_u64(stat.time_writing));
         diskstats
             .with_label_values(&[device, "in_progress"])
-            .set(stat.in_progress as f64);
+            .set(prometheus_u64(stat.in_progress));
         diskstats
             .with_label_values(&[device, "time_in_progress_ms"])
-            .set(stat.time_in_progress as f64);
+            .set(prometheus_u64(stat.time_in_progress));
         diskstats
             .with_label_values(&[device, "weighted_time_in_progress_ms"])
-            .set(stat.weighted_time_in_progress as f64);
+            .set(prometheus_u64(stat.weighted_time_in_progress));
 
         if let Some(value) = stat.discards {
             diskstats
                 .with_label_values(&[device, "discards"])
-                .set(value as f64);
+                .set(prometheus_u64(value));
         }
         if let Some(value) = stat.discards_merged {
             diskstats
                 .with_label_values(&[device, "discards_merged"])
-                .set(value as f64);
+                .set(prometheus_u64(value));
         }
         if let Some(value) = stat.sectors_discarded {
             diskstats
                 .with_label_values(&[device, "sectors_discarded"])
-                .set(value as f64);
+                .set(prometheus_u64(value));
         }
         if let Some(value) = stat.time_discarding {
             diskstats
                 .with_label_values(&[device, "time_discarding_ms"])
-                .set(value as f64);
+                .set(prometheus_u64(value));
         }
         if let Some(value) = stat.flushes {
             diskstats
                 .with_label_values(&[device, "flushes"])
-                .set(value as f64);
+                .set(prometheus_u64(value));
         }
         if let Some(value) = stat.time_flushing {
             diskstats
                 .with_label_values(&[device, "time_flushing_ms"])
-                .set(value as f64);
+                .set(prometheus_u64(value));
         }
     }
 }
@@ -397,52 +411,52 @@ fn update_netdev(
         let iface = name.as_str();
         netdev
             .with_label_values(&[iface, "recv_bytes"])
-            .set(dev.recv_bytes as f64);
+            .set(prometheus_u64(dev.recv_bytes));
         netdev
             .with_label_values(&[iface, "recv_packets"])
-            .set(dev.recv_packets as f64);
+            .set(prometheus_u64(dev.recv_packets));
         netdev
             .with_label_values(&[iface, "recv_errs"])
-            .set(dev.recv_errs as f64);
+            .set(prometheus_u64(dev.recv_errs));
         netdev
             .with_label_values(&[iface, "recv_drop"])
-            .set(dev.recv_drop as f64);
+            .set(prometheus_u64(dev.recv_drop));
         netdev
             .with_label_values(&[iface, "recv_fifo"])
-            .set(dev.recv_fifo as f64);
+            .set(prometheus_u64(dev.recv_fifo));
         netdev
             .with_label_values(&[iface, "recv_frame"])
-            .set(dev.recv_frame as f64);
+            .set(prometheus_u64(dev.recv_frame));
         netdev
             .with_label_values(&[iface, "recv_compressed"])
-            .set(dev.recv_compressed as f64);
+            .set(prometheus_u64(dev.recv_compressed));
         netdev
             .with_label_values(&[iface, "recv_multicast"])
-            .set(dev.recv_multicast as f64);
+            .set(prometheus_u64(dev.recv_multicast));
         netdev
             .with_label_values(&[iface, "sent_bytes"])
-            .set(dev.sent_bytes as f64);
+            .set(prometheus_u64(dev.sent_bytes));
         netdev
             .with_label_values(&[iface, "sent_packets"])
-            .set(dev.sent_packets as f64);
+            .set(prometheus_u64(dev.sent_packets));
         netdev
             .with_label_values(&[iface, "sent_errs"])
-            .set(dev.sent_errs as f64);
+            .set(prometheus_u64(dev.sent_errs));
         netdev
             .with_label_values(&[iface, "sent_drop"])
-            .set(dev.sent_drop as f64);
+            .set(prometheus_u64(dev.sent_drop));
         netdev
             .with_label_values(&[iface, "sent_fifo"])
-            .set(dev.sent_fifo as f64);
+            .set(prometheus_u64(dev.sent_fifo));
         netdev
             .with_label_values(&[iface, "sent_colls"])
-            .set(dev.sent_colls as f64);
+            .set(prometheus_u64(dev.sent_colls));
         netdev
             .with_label_values(&[iface, "sent_carrier"])
-            .set(dev.sent_carrier as f64);
+            .set(prometheus_u64(dev.sent_carrier));
         netdev
             .with_label_values(&[iface, "sent_compressed"])
-            .set(dev.sent_compressed as f64);
+            .set(prometheus_u64(dev.sent_compressed));
     }
 }
 
@@ -467,7 +481,7 @@ const TCP_STATE_LABELS: [&str; 12] = [
 /// Every label value `udp_state_label` can return.
 const UDP_STATE_LABELS: [&str; 2] = ["established", "close"];
 
-fn tcp_state_label(state: &TcpState) -> &'static str {
+const fn tcp_state_label(state: &TcpState) -> &'static str {
     match state {
         TcpState::Established => "established",
         TcpState::SynSent => "syn_sent",
@@ -484,7 +498,7 @@ fn tcp_state_label(state: &TcpState) -> &'static str {
     }
 }
 
-fn udp_state_label(state: &UdpState) -> &'static str {
+const fn udp_state_label(state: &UdpState) -> &'static str {
     match state {
         UdpState::Established => "established",
         UdpState::Close => "close",
@@ -502,7 +516,7 @@ fn update_tcp(metrics: &ProcfsMetrics, entries: &[procfs::net::TcpNetEntry]) {
         metrics
             .tcp_sockets
             .with_label_values(&[state])
-            .set(count as f64);
+            .set(prometheus_u64(count));
     }
 }
 
@@ -517,7 +531,7 @@ fn update_udp(metrics: &ProcfsMetrics, entries: &[procfs::net::UdpNetEntry]) {
         metrics
             .udp_sockets
             .with_label_values(&[state])
-            .set(count as f64);
+            .set(prometheus_u64(count));
     }
 }
 
@@ -534,20 +548,26 @@ fn update_arp(metrics: &ProcfsMetrics, entries: &[procfs::net::ARPEntry]) {
         metrics
             .arp_entries
             .with_label_values(&[device])
-            .set(count as f64);
+            .set(prometheus_u64(count));
     }
 }
 
 fn update_snmp(metrics: &ProcfsMetrics, snmp: &procfs::net::Snmp) {
     let set = |field: &str, value: u64| {
-        metrics.snmp.with_label_values(&[field]).set(value as f64);
+        metrics
+            .snmp
+            .with_label_values(&[field])
+            .set(prometheus_u64(value));
     };
     let set_i64 = |field: &str, value: i64| {
-        metrics.snmp.with_label_values(&[field]).set(value as f64);
+        metrics
+            .snmp
+            .with_label_values(&[field])
+            .set(prometheus_i64(value));
     };
 
-    set("ip_forwarding", snmp.ip_forwarding.to_u8() as u64);
-    set("ip_default_ttl", snmp.ip_default_ttl as u64);
+    set("ip_forwarding", u64::from(snmp.ip_forwarding.to_u8()));
+    set("ip_default_ttl", u64::from(snmp.ip_default_ttl));
     set("ip_in_receives", snmp.ip_in_receives);
     set("ip_in_hdr_errors", snmp.ip_in_hdr_errors);
     set("ip_in_addr_errors", snmp.ip_in_addr_errors);
@@ -594,7 +614,10 @@ fn update_snmp(metrics: &ProcfsMetrics, snmp: &procfs::net::Snmp) {
     set("icmp_out_addr_masks", snmp.icmp_out_addr_masks);
     set("icmp_out_addr_mask_reps", snmp.icmp_out_addr_mask_reps);
 
-    set("tcp_rto_algorithm", snmp.tcp_rto_algorithm.to_u8() as u64);
+    set(
+        "tcp_rto_algorithm",
+        u64::from(snmp.tcp_rto_algorithm.to_u8()),
+    );
     set("tcp_rto_min", snmp.tcp_rto_min);
     set("tcp_rto_max", snmp.tcp_rto_max);
     set_i64("tcp_max_conn", snmp.tcp_max_conn);
@@ -652,24 +675,14 @@ fn to_snake_case(input: &str) -> String {
             let is_lower = ch.is_ascii_lowercase();
             let is_digit = ch.is_ascii_digit();
 
-            if !out.is_empty() {
-                if is_upper
-                    && (prev_is_lower
-                        || prev_is_digit
-                        || (prev_is_upper && next.map(|n| n.is_ascii_lowercase()).unwrap_or(false)))
-                {
-                    if !out.ends_with('_') {
-                        out.push('_');
-                    }
-                } else if is_digit && (prev_is_lower || prev_is_upper) {
-                    if !out.ends_with('_') {
-                        out.push('_');
-                    }
-                } else if is_lower && prev_is_digit {
-                    if !out.ends_with('_') {
-                        out.push('_');
-                    }
-                }
+            let starts_new_word = (is_upper
+                && (prev_is_lower
+                    || prev_is_digit
+                    || (prev_is_upper && next.is_some_and(|n| n.is_ascii_lowercase()))))
+                || (is_digit && (prev_is_lower || prev_is_upper))
+                || (is_lower && prev_is_digit);
+            if !out.is_empty() && starts_new_word && !out.ends_with('_') {
+                out.push('_');
             }
         }
 
@@ -720,15 +733,18 @@ fn update_netstat(metrics: &ProcfsMetrics) {
             let section_key = to_snake_case(&section);
             for (field, value_str) in fields.iter().zip(rest.iter()) {
                 if let Ok(value) = value_str.parse::<i64>() {
-                    let field_key = format!("{}_{}", section_key, to_snake_case(field));
+                    let field_key = format!("{section_key}_{}", to_snake_case(field));
                     metrics
                         .netstat
                         .with_label_values(&[field_key.as_str()])
-                        .set(value as f64);
+                        .set(prometheus_i64(value));
                 }
             }
         } else {
-            headers.insert(section, rest.iter().map(|s| s.to_string()).collect());
+            headers.insert(
+                section,
+                rest.iter().map(std::string::ToString::to_string).collect(),
+            );
         }
     }
 }
@@ -737,28 +753,28 @@ fn update_loadavg(metrics: &ProcfsMetrics, loadavg: &LoadAverage) {
     metrics
         .load_average
         .with_label_values(&["1"])
-        .set(loadavg.one as f64);
+        .set(f64::from(loadavg.one));
     metrics
         .load_average
         .with_label_values(&["5"])
-        .set(loadavg.five as f64);
+        .set(f64::from(loadavg.five));
     metrics
         .load_average
         .with_label_values(&["15"])
-        .set(loadavg.fifteen as f64);
+        .set(f64::from(loadavg.fifteen));
 
     metrics
         .load_processes
         .with_label_values(&["running"])
-        .set(loadavg.cur as f64);
+        .set(f64::from(loadavg.cur));
     metrics
         .load_processes
         .with_label_values(&["total"])
-        .set(loadavg.max as f64);
+        .set(f64::from(loadavg.max));
     metrics
         .load_processes
         .with_label_values(&["latest_pid"])
-        .set(loadavg.latest_pid as f64);
+        .set(f64::from(loadavg.latest_pid));
 }
 
 fn update_uptime(metrics: &ProcfsMetrics, uptime: &Uptime) {
@@ -790,7 +806,7 @@ pub fn update_metrics(config: &AppConfig) {
             metrics
                 .vmstat
                 .with_label_values(&[key.as_str()])
-                .set(value as f64);
+                .set(prometheus_i64(value));
         }
     }
 
