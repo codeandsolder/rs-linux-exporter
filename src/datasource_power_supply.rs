@@ -228,9 +228,8 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
 
 pub fn update_metrics() {
     let base = Path::new("/sys/class/power_supply");
-    let entries = match fs::read_dir(base) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
     };
 
     // Batteries and USB supplies are hot-pluggable.
@@ -247,14 +246,12 @@ pub fn update_metrics() {
     metrics.temperature_celsius.reset();
 
     for entry in entries.flatten() {
-        let name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            Err(_) => continue,
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
         };
 
-        let path = match fs::canonicalize(entry.path()) {
-            Ok(p) => p,
-            Err(_) => continue,
+        let Ok(path) = fs::canonicalize(entry.path()) else {
+            continue;
         };
 
         update_power_supply(&path, &name);

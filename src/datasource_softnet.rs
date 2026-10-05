@@ -36,9 +36,8 @@ fn parse_column(columns: &[&str], index: usize) -> Option<u64> {
 }
 
 pub fn update_metrics() {
-    let contents = match fs::read_to_string("/proc/net/softnet_stat") {
-        Ok(contents) => contents,
-        Err(_) => return,
+    let Ok(contents) = fs::read_to_string("/proc/net/softnet_stat") else {
+        return;
     };
 
     // The number of rows follows CPU hotplug.

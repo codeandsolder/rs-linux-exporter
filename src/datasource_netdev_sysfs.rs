@@ -193,9 +193,8 @@ fn update_interface(metrics: &NetdevSysfsMetrics, iface_path: &Path, iface: &str
 }
 
 pub fn update_metrics(config: &AppConfig) {
-    let entries = match fs::read_dir(SYS_CLASS_NET) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(SYS_CLASS_NET) else {
+        return;
     };
 
     let metrics = metrics();

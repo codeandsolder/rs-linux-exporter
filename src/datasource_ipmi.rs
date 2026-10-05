@@ -94,9 +94,9 @@ pub fn update_metrics() {
 
     let records: Vec<_> = ipmi.sdrs().collect();
     for record in records {
-        let full = match record.contents {
-            ipmi_rs::storage::sdr::record::RecordContents::FullSensor(full) => full,
-            _ => continue,
+        let ipmi_rs::storage::sdr::record::RecordContents::FullSensor(full) = record.contents
+        else {
+            continue;
         };
 
         let raw_reading = match ipmi.send_recv(GetSensorReading::for_sensor_key(full.key_data())) {
@@ -110,14 +110,12 @@ pub fn update_metrics() {
         };
 
         let threshold: ThresholdReading = (&raw_reading).into();
-        let reading = match threshold.reading {
-            Some(value) => value,
-            None => continue,
+        let Some(reading) = threshold.reading else {
+            continue;
         };
 
-        let value = match convert_reading(&full, reading) {
-            Some(value) => value,
-            None => continue,
+        let Some(value) = convert_reading(&full, reading) else {
+            continue;
         };
 
         let sensor_label = full.id_string().to_string();

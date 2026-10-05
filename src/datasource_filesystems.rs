@@ -120,10 +120,7 @@ fn reset_metrics(metrics: &FilesystemMetrics) {
 }
 
 pub fn update_metrics(config: &AppConfig) {
-    let mounts = match procfs::mounts() {
-        Ok(mounts) => mounts,
-        Err(_) => return,
-    };
+    let Ok(mounts) = procfs::mounts() else { return };
 
     let metrics = metrics();
 
@@ -149,9 +146,8 @@ pub fn update_metrics(config: &AppConfig) {
             continue;
         }
 
-        let mount_cstring = match CString::new(mount.fs_file.as_bytes()) {
-            Ok(value) => value,
-            Err(_) => continue,
+        let Ok(mount_cstring) = CString::new(mount.fs_file.as_bytes()) else {
+            continue;
         };
 
         let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };

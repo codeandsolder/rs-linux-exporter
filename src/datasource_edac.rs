@@ -196,9 +196,8 @@ fn update_memory_controller(mc_path: &Path, mc_name: &str) {
     // Process DIMMs and ranks
     if let Ok(entries) = fs::read_dir(mc_path) {
         for entry in entries.flatten() {
-            let name = match entry.file_name().into_string() {
-                Ok(name) => name,
-                Err(_) => continue,
+            let Ok(name) = entry.file_name().into_string() else {
+                continue;
             };
 
             if (name.starts_with("dimm") || name.starts_with("rank")) && entry.path().is_dir() {
@@ -213,9 +212,8 @@ pub fn update_metrics() {
 }
 
 fn update_metrics_from_path(base: &Path) {
-    let entries = match fs::read_dir(base) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
     };
 
     // dimm_label is part of the label set, so a relabelled or replaced DIMM
@@ -227,16 +225,14 @@ fn update_metrics_from_path(base: &Path) {
     metrics.dimm_size_mb.reset();
 
     for entry in entries.flatten() {
-        let name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            Err(_) => continue,
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
         };
 
         // Match mc0, mc1, etc.
         if name.starts_with("mc") && name[2..].chars().all(|c| c.is_ascii_digit()) {
-            let path = match fs::canonicalize(entry.path()) {
-                Ok(p) => p,
-                Err(_) => continue,
+            let Ok(path) = fs::canonicalize(entry.path()) else {
+                continue;
             };
             update_memory_controller(&path, &name);
         }

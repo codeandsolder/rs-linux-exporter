@@ -90,11 +90,8 @@ const SUBSYSTEM_CHECKS: &[SubsystemCheck] = &[
 /// matches an IPv4 CIDR in `allowed_ip` and would deny legitimate scrapes.
 fn unmap_ipv4(ip: IpAddr) -> IpAddr {
     match ip {
-        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
-            Some(v4) => IpAddr::V4(v4),
-            None => IpAddr::V6(v6),
-        },
-        other => other,
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(IpAddr::V6(v6), IpAddr::V4),
+        IpAddr::V4(v4) => IpAddr::V4(v4),
     }
 }
 
@@ -122,10 +119,7 @@ fn check_path_available(path: &Path, require_entries: bool) -> bool {
     }
 
     if require_entries {
-        match fs::read_dir(path) {
-            Ok(mut entries) => entries.next().is_some(),
-            Err(_) => false,
-        }
+        fs::read_dir(path).is_ok_and(|mut entries| entries.next().is_some())
     } else {
         true
     }

@@ -660,10 +660,7 @@ fn is_ethernet_interface(iface_path: &Path) -> bool {
 }
 
 pub fn update_metrics() {
-    let fd = match create_netlink_socket() {
-        Ok(fd) => fd,
-        Err(_) => return,
-    };
+    let Ok(fd) = create_netlink_socket() else { return };
 
     struct SocketGuard(i32);
     impl Drop for SocketGuard {

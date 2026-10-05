@@ -102,9 +102,8 @@ fn parse_sync_progress(line: &str) -> Option<(String, f64)> {
 }
 
 pub fn update_metrics() {
-    let contents = match fs::read_to_string(MDSTAT_PATH) {
-        Ok(contents) => contents,
-        Err(_) => return,
+    let Ok(contents) = fs::read_to_string(MDSTAT_PATH) else {
+        return;
     };
 
     let metrics = metrics();

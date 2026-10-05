@@ -69,9 +69,8 @@ fn update_rapl_zone(zone_path: &Path, zone_id: &str) {
     // Process subzones (e.g., intel-rapl:0:0, intel-rapl:0:1)
     if let Ok(entries) = fs::read_dir(zone_path) {
         for entry in entries.flatten() {
-            let entry_name = match entry.file_name().into_string() {
-                Ok(name) => name,
-                Err(_) => continue,
+            let Ok(entry_name) = entry.file_name().into_string() else {
+                continue;
             };
 
             // Subzones have names like "intel-rapl:0:0" (contain two colons)
@@ -101,9 +100,8 @@ fn update_rapl_zone(zone_path: &Path, zone_id: &str) {
 
 pub fn update_metrics() {
     let base = Path::new("/sys/class/powercap");
-    let entries = match fs::read_dir(base) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
     };
 
     let metrics = metrics();
@@ -111,18 +109,16 @@ pub fn update_metrics() {
     metrics.max_energy_joules.reset();
 
     for entry in entries.flatten() {
-        let name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            Err(_) => continue,
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
         };
 
         // Match intel-rapl:N or amd-rapl:N zones (top-level packages)
         if (name.starts_with("intel-rapl:") || name.starts_with("amd-rapl:"))
             && name.matches(':').count() == 1
         {
-            let path = match fs::canonicalize(entry.path()) {
-                Ok(p) => p,
-                Err(_) => continue,
+            let Ok(path) = fs::canonicalize(entry.path()) else {
+                continue;
             };
             update_rapl_zone(&path, &name);
         }

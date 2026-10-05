@@ -55,9 +55,8 @@ fn update_cpu(cpu_name: &str, cpufreq_dir: &Path) {
 
 pub fn update_metrics() {
     let base = Path::new("/sys/devices/system/cpu");
-    let entries = match fs::read_dir(base) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
     };
 
     // CPUs can be taken offline, which removes their cpufreq directory.
@@ -65,10 +64,7 @@ pub fn update_metrics() {
 
     for entry in entries.flatten() {
         let name = entry.file_name();
-        let name = match name.to_str() {
-            Some(name) => name,
-            None => continue,
-        };
+        let Some(name) = name.to_str() else { continue };
         if !name.starts_with("cpu") || name == "cpufreq" || name == "cpuidle" {
             continue;
         }

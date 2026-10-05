@@ -76,22 +76,19 @@ fn get_sensor_label(hwmon_dir: &Path, sensor_type: &str, index: &str) -> String 
 }
 
 fn update_hwmon_device(hwmon_dir: &Path) {
-    let chip_name = match read_string(&hwmon_dir.join("name")) {
-        Some(name) => name,
-        None => return,
+    let Some(chip_name) = read_string(&hwmon_dir.join("name")) else {
+        return;
     };
 
-    let entries = match fs::read_dir(hwmon_dir) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(hwmon_dir) else {
+        return;
     };
 
     let metrics = metrics();
 
     for entry in entries.flatten() {
-        let file_name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            Err(_) => continue,
+        let Ok(file_name) = entry.file_name().into_string() else {
+            continue;
         };
 
         // Temperature sensors: temp[1-*]_input (millidegrees Celsius)
@@ -159,9 +156,8 @@ pub fn update_metrics() {
 }
 
 fn update_metrics_from_path(base: &Path) {
-    let entries = match fs::read_dir(base) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
     };
 
     // Chips and sensors disappear when a module is unloaded or a device is
@@ -177,9 +173,8 @@ fn update_metrics_from_path(base: &Path) {
         let path = entry.path();
         if path.is_dir() || path.is_symlink() {
             // Resolve symlinks to get the actual hwmon directory
-            let resolved = match fs::canonicalize(&path) {
-                Ok(p) => p,
-                Err(_) => continue,
+            let Ok(resolved) = fs::canonicalize(&path) else {
+                continue;
             };
             update_hwmon_device(&resolved);
         }

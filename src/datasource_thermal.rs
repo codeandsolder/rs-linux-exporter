@@ -101,15 +101,13 @@ fn update_thermal_zone(zone_path: &Path, zone_name: &str) {
     }
 
     // Read trip points
-    let entries = match fs::read_dir(zone_path) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(zone_path) else {
+        return;
     };
 
     for entry in entries.flatten() {
-        let file_name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            Err(_) => continue,
+        let Ok(file_name) = entry.file_name().into_string() else {
+            continue;
         };
 
         // Match trip_point_N_temp files
@@ -154,9 +152,8 @@ fn update_cooling_device(device_path: &Path, device_name: &str) {
 
 pub fn update_metrics() {
     let base = Path::new("/sys/class/thermal");
-    let entries = match fs::read_dir(base) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
     };
 
     let metrics = metrics();
@@ -171,14 +168,12 @@ pub fn update_metrics() {
     let mut cooling_count = 0;
 
     for entry in entries.flatten() {
-        let name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            Err(_) => continue,
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
         };
 
-        let path = match fs::canonicalize(entry.path()) {
-            Ok(p) => p,
-            Err(_) => continue,
+        let Ok(path) = fs::canonicalize(entry.path()) else {
+            continue;
         };
 
         if name.starts_with("thermal_zone") {

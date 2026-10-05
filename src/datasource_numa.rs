@@ -110,25 +110,22 @@ pub fn update_metrics() {
 }
 
 fn update_metrics_from_path(base: &Path) {
-    let entries = match fs::read_dir(base) {
-        Ok(entries) => entries,
-        Err(_) => return,
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
     };
 
     let metrics = metrics();
     let mut node_count = 0;
 
     for entry in entries.flatten() {
-        let name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            Err(_) => continue,
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
         };
 
         // Match node0, node1, etc.
         if name.starts_with("node") && name[4..].chars().all(|c| c.is_ascii_digit()) {
-            let path = match fs::canonicalize(entry.path()) {
-                Ok(p) => p,
-                Err(_) => continue,
+            let Ok(path) = fs::canonicalize(entry.path()) else {
+                continue;
             };
             update_numa_node(&path, &name);
             node_count += 1;
