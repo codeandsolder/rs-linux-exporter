@@ -69,7 +69,7 @@ fn convert_reading(sensor: &FullSensorRecord, reading: u8) -> Option<f64> {
     let reading_value = match format {
         DataFormat::Unsigned => f64::from(reading),
         DataFormat::OnesComplement => f64::from(ones_complement(reading)),
-        DataFormat::TwosComplement => f64::from(reading as i8),
+        DataFormat::TwosComplement => f64::from(reading.cast_signed()),
     };
 
     Some(m.mul_add(reading_value, b) * result_mul)
@@ -85,9 +85,8 @@ fn unit_label(sensor: &FullSensorRecord) -> String {
 }
 
 pub fn update_metrics() {
-    let mut ipmi = match open_ipmi() {
-        Some(ipmi) => ipmi,
-        None => return,
+    let Some(mut ipmi) = open_ipmi() else {
+        return;
     };
 
     let metrics = metrics();

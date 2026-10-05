@@ -150,11 +150,15 @@ pub fn update_metrics(config: &AppConfig) {
             continue;
         };
 
-        let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
-        let rc = unsafe { libc::statvfs(mount_cstring.as_ptr(), &raw mut stat) };
+        let mut stat = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+        // SAFETY: `mount_cstring` is NUL-terminated and alive for the call;
+        // `stat` points to writable storage large enough for one `statvfs`.
+        let rc = unsafe { libc::statvfs(mount_cstring.as_ptr(), stat.as_mut_ptr()) };
         if rc != 0 {
             continue;
         }
+        // SAFETY: POSIX `statvfs` initializes the output object on success.
+        let stat = unsafe { stat.assume_init() };
 
         let block_size = if stat.f_frsize > 0 {
             stat.f_frsize as u64
