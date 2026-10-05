@@ -118,6 +118,8 @@ Defaults when installed from `.deb`:
 - Bind address: `127.0.0.1:23311`
 - Allowed clients: `127.0.0.0/8`
 
+The packaged systemd service uses a read-only sandbox and keeps only `CAP_NET_ADMIN`, which is required for conntrack Netlink dumps. `ProtectClock` is intentionally not enabled because it blocks the read-only `timex` kernel query, and `PrivateDevices` is intentionally not enabled so `/dev/ipmi*` remains available on IPMI-capable hosts.
+
 To change the bind address or allowed clients, edit `/etc/rs-linux-exporter/config.toml` and restart:
 
 ```bash

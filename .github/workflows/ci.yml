@@ -32,6 +32,15 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --locked --no-deps
+      - name: Packaging syntax
+        run: |
+          bash -n make_deb.sh
+          dash -n packaging/postinst packaging/prerm packaging/postrm
+          sed \
+            -e 's#^WorkingDirectory=.*#WorkingDirectory=/#' \
+            -e 's#^ExecStart=.*#ExecStart=/bin/true#' \
+            packaging/rs-linux-exporter.service > /tmp/rs-linux-exporter.service
+          systemd-analyze verify /tmp/rs-linux-exporter.service
 
 
   python-tooling:

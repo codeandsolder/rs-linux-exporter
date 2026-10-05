@@ -1,9 +1,22 @@
 #!/bin/sh
 set -e
 
-if command -v systemctl >/dev/null 2>&1; then
-  systemctl disable rs-linux-exporter.service || true
-  systemctl daemon-reload || true
-fi
+unit=rs-linux-exporter.service
+
+case "$1" in
+  remove|purge)
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl disable "$unit" || true
+      if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload || true
+      fi
+    fi
+    ;;
+  upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+    if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+      systemctl daemon-reload || true
+    fi
+    ;;
+esac
 
 exit 0

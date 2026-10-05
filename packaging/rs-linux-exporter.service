@@ -9,5 +9,34 @@ ExecStart=/usr/bin/rs-linux-exporter
 Restart=on-failure
 RestartSec=2s
 
+# Host telemetry should be read-only. Keep only CAP_NET_ADMIN because the
+# conntrack Netlink dump requires it. PrivateDevices is intentionally omitted
+# so /dev/ipmi* remains visible on hosts with an IPMI device.
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_NET_ADMIN
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectHostname=yes
+ProtectProc=invisible
+LockPersonality=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+MemoryDenyWriteExecute=yes
+UMask=0077
+
+# The timex collector performs read-only kernel clock queries. ProtectClock=yes
+# would block them; keep the syscall surface narrow instead.
+SystemCallFilter=@system-service adjtimex clock_adjtime
+SystemCallErrorNumber=EPERM
+
 [Install]
 WantedBy=multi-user.target

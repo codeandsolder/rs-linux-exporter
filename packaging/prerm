@@ -1,8 +1,18 @@
 #!/bin/sh
 set -e
 
-if command -v systemctl >/dev/null 2>&1; then
-  systemctl stop rs-linux-exporter.service || true
-fi
+unit=rs-linux-exporter.service
+
+case "$1" in
+  remove|deconfigure)
+    if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+      systemctl stop "$unit" || true
+    fi
+    ;;
+  upgrade|failed-upgrade)
+    # Keep an active daemon running until postinst can restart it after the
+    # new package has been unpacked, minimizing telemetry downtime.
+    ;;
+esac
 
 exit 0
