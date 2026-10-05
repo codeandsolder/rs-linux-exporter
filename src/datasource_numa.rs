@@ -133,7 +133,7 @@ fn update_metrics_from_path(base: &Path) {
         }
     }
 
-    metrics.node_count.set(node_count as f64);
+    metrics.node_count.set(f64::from(node_count));
 }
 
 #[cfg(test)]

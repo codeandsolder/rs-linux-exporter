@@ -153,7 +153,7 @@ pub fn update_metrics(config: &AppConfig) {
         };
 
         let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
-        let rc = unsafe { libc::statvfs(mount_cstring.as_ptr(), &mut stat) };
+        let rc = unsafe { libc::statvfs(mount_cstring.as_ptr(), &raw mut stat) };
         if rc != 0 {
             continue;
         }

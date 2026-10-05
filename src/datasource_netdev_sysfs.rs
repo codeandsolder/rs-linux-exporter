@@ -104,7 +104,7 @@ fn normalized_autoneg(value: &str) -> &str {
 }
 
 fn normalized_state<'a>(value: &'a str, known: &[&'a str]) -> &'a str {
-    if known.iter().any(|state| *state == value) {
+    if known.contains(&value) {
         value
     } else {
         "unknown"
@@ -137,40 +137,40 @@ fn update_interface(metrics: &NetdevSysfsMetrics, iface_path: &Path, iface: &str
         set_state_metric(&metrics.operstate, iface, &state, &OPERSTATES);
     }
 
-    if let Some(carrier) = read_i64(&iface_path.join("carrier")) {
-        if carrier >= 0 {
-            metrics
-                .carrier
-                .with_label_values(&[iface])
-                .set(carrier as f64);
-        }
+    if let Some(carrier) = read_i64(&iface_path.join("carrier"))
+        && carrier >= 0
+    {
+        metrics
+            .carrier
+            .with_label_values(&[iface])
+            .set(carrier as f64);
     }
 
-    if let Some(changes) = read_i64(&iface_path.join("carrier_changes")) {
-        if changes >= 0 {
-            metrics
-                .carrier_changes
-                .with_label_values(&[iface])
-                .set(changes as f64);
-        }
+    if let Some(changes) = read_i64(&iface_path.join("carrier_changes"))
+        && changes >= 0
+    {
+        metrics
+            .carrier_changes
+            .with_label_values(&[iface])
+            .set(changes as f64);
     }
 
-    if let Some(dormant) = read_i64(&iface_path.join("dormant")) {
-        if dormant >= 0 {
-            metrics
-                .dormant
-                .with_label_values(&[iface])
-                .set(dormant as f64);
-        }
+    if let Some(dormant) = read_i64(&iface_path.join("dormant"))
+        && dormant >= 0
+    {
+        metrics
+            .dormant
+            .with_label_values(&[iface])
+            .set(dormant as f64);
     }
 
-    if let Some(speed) = read_i64(&iface_path.join("speed")) {
-        if speed >= 0 {
-            metrics
-                .speed_mbps
-                .with_label_values(&[iface])
-                .set(speed as f64);
-        }
+    if let Some(speed) = read_i64(&iface_path.join("speed"))
+        && speed >= 0
+    {
+        metrics
+            .speed_mbps
+            .with_label_values(&[iface])
+            .set(speed as f64);
     }
 
     if let Some(duplex) = read_string(&iface_path.join("duplex")).map(|value| value.to_lowercase())

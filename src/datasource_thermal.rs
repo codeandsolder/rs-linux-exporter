@@ -111,18 +111,17 @@ fn update_thermal_zone(zone_path: &Path, zone_name: &str) {
         };
 
         // Match trip_point_N_temp files
-        if let Some(index) = trip_point_index(&file_name) {
-            if let Some(millidegrees) = read_i64(&entry.path()) {
-                // Try to get the trip point type
-                let trip_type_path = zone_path.join(format!("trip_point_{}_type", index));
-                let trip_type =
-                    read_string(&trip_type_path).unwrap_or_else(|| "unknown".to_string());
+        if let Some(index) = trip_point_index(&file_name)
+            && let Some(millidegrees) = read_i64(&entry.path())
+        {
+            // Try to get the trip point type
+            let trip_type_path = zone_path.join(format!("trip_point_{index}_type"));
+            let trip_type = read_string(&trip_type_path).unwrap_or_else(|| "unknown".to_string());
 
-                metrics
-                    .zone_trip_point_celsius
-                    .with_label_values(&[zone_name, &zone_type, index, &trip_type])
-                    .set(millidegrees as f64 / 1000.0);
-            }
+            metrics
+                .zone_trip_point_celsius
+                .with_label_values(&[zone_name, &zone_type, index, &trip_type])
+                .set(millidegrees as f64 / 1000.0);
         }
     }
 }
@@ -189,8 +188,8 @@ pub fn update_metrics() {
         }
     }
 
-    metrics.zone_count.set(zone_count as f64);
-    metrics.cooling_device_count.set(cooling_count as f64);
+    metrics.zone_count.set(f64::from(zone_count));
+    metrics.cooling_device_count.set(f64::from(cooling_count));
 }
 
 #[cfg(test)]

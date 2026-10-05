@@ -96,7 +96,7 @@ fn metrics() -> &'static ConntrackMetrics {
     CONNTRACK_METRICS.get_or_init(ConntrackMetrics::new)
 }
 
-/// Align to 4-byte boundary (NLMSG_ALIGN)
+/// Align to 4-byte boundary (`NLMSG_ALIGN`)
 #[inline]
 fn nlmsg_align(len: usize) -> usize {
     (len + 3) & !3
@@ -104,7 +104,8 @@ fn nlmsg_align(len: usize) -> usize {
 
 /// Build the netlink request message for conntrack stats
 fn create_stats_request(seq: u32) -> Vec<u8> {
-    let nlmsg_type = ((NFNL_SUBSYS_CTNETLINK as u16) << 8) | (IPCTNL_MSG_CT_GET_STATS_CPU as u16);
+    let nlmsg_type =
+        (u16::from(NFNL_SUBSYS_CTNETLINK) << 8) | u16::from(IPCTNL_MSG_CT_GET_STATS_CPU);
     let total_len = mem::size_of::<NlMsgHdr>() + mem::size_of::<NfGenMsg>();
 
     let mut buf = vec![0u8; total_len];
@@ -121,7 +122,7 @@ fn create_stats_request(seq: u32) -> Vec<u8> {
     // Copy header to buffer
     unsafe {
         std::ptr::copy_nonoverlapping(
-            &hdr as *const NlMsgHdr as *const u8,
+            (&raw const hdr).cast::<u8>(),
             buf.as_mut_ptr(),
             mem::size_of::<NlMsgHdr>(),
         );
@@ -137,7 +138,7 @@ fn create_stats_request(seq: u32) -> Vec<u8> {
     // Copy nfgenmsg to buffer
     unsafe {
         std::ptr::copy_nonoverlapping(
-            &nfmsg as *const NfGenMsg as *const u8,
+            (&raw const nfmsg).cast::<u8>(),
             buf.as_mut_ptr().add(mem::size_of::<NlMsgHdr>()),
             mem::size_of::<NfGenMsg>(),
         );
@@ -146,7 +147,7 @@ fn create_stats_request(seq: u32) -> Vec<u8> {
     buf
 }
 
-/// Map CTA_STATS attribute type to metric name
+/// Map `CTA_STATS` attribute type to metric name
 fn attr_type_to_name(attr_type: u16) -> Option<&'static str> {
     match attr_type {
         CTA_STATS_FOUND => Some("found"),
@@ -170,7 +171,7 @@ fn parse_stats_message(data: &[u8]) -> Result<CpuStats, String> {
     }
 
     // Parse nfgenmsg to get CPU ID
-    let nfmsg: NfGenMsg = unsafe { std::ptr::read_unaligned(data.as_ptr() as *const NfGenMsg) };
+    let nfmsg: NfGenMsg = unsafe { std::ptr::read_unaligned(data.as_ptr().cast::<NfGenMsg>()) };
     let cpu_id = u16::from_be(nfmsg.res_id);
 
     let mut stats = CpuStats {
@@ -182,7 +183,7 @@ fn parse_stats_message(data: &[u8]) -> Result<CpuStats, String> {
     let mut offset = mem::size_of::<NfGenMsg>();
     while offset + mem::size_of::<NlAttr>() <= data.len() {
         let attr: NlAttr =
-            unsafe { std::ptr::read_unaligned(data.as_ptr().add(offset) as *const NlAttr) };
+            unsafe { std::ptr::read_unaligned(data.as_ptr().add(offset).cast::<NlAttr>()) };
 
         let attr_len = attr.nla_len as usize;
         if attr_len < mem::size_of::<NlAttr>() || offset + attr_len > data.len() {
@@ -200,7 +201,7 @@ fn parse_stats_message(data: &[u8]) -> Result<CpuStats, String> {
             let value_bytes: [u8; 4] = data[payload_offset..payload_offset + 4]
                 .try_into()
                 .unwrap_or([0; 4]);
-            let value = u32::from_be_bytes(value_bytes) as u64;
+            let value = u64::from(u32::from_be_bytes(value_bytes));
             stats.counters.insert(name.to_string(), value);
         }
 
@@ -231,7 +232,7 @@ fn create_netlink_socket() -> io::Result<i32> {
             fd,
             libc::SOL_SOCKET,
             libc::SO_RCVTIMEO,
-            &timeout as *const libc::timeval as *const libc::c_void,
+            (&raw const timeout).cast::<libc::c_void>(),
             mem::size_of::<libc::timeval>() as u32,
         )
     };
@@ -251,7 +252,7 @@ fn create_netlink_socket() -> io::Result<i32> {
     let ret = unsafe {
         libc::bind(
             fd,
-            &addr as *const libc::sockaddr_nl as *const libc::sockaddr,
+            (&raw const addr).cast::<libc::sockaddr>(),
             mem::size_of::<libc::sockaddr_nl>() as u32,
         )
     };
@@ -279,7 +280,7 @@ fn conntrack_module_loaded() -> bool {
 }
 
 /// Check if conntrack stats collection is available.
-/// Returns true if we can create a netlink socket (requires CAP_NET_ADMIN or root).
+/// Returns true if we can create a netlink socket (requires `CAP_NET_ADMIN` or root).
 /// Collect conntrack statistics via netlink.
 /// Returns per-CPU statistics or an error.
 pub fn collect_stats() -> Result<Vec<CpuStats>, String> {
@@ -301,7 +302,7 @@ pub fn collect_stats() -> Result<Vec<CpuStats>, String> {
     let sent = unsafe {
         libc::send(
             fd,
-            request.as_ptr() as *const libc::c_void,
+            request.as_ptr().cast::<libc::c_void>(),
             request.len(),
             0,
         )
@@ -326,11 +327,11 @@ pub fn collect_stats() -> Result<Vec<CpuStats>, String> {
         let len = unsafe {
             libc::recvfrom(
                 fd,
-                buffer.as_mut_ptr() as *mut libc::c_void,
+                buffer.as_mut_ptr().cast::<libc::c_void>(),
                 buffer.len(),
                 0,
-                &mut addr as *mut libc::sockaddr_nl as *mut libc::sockaddr,
-                &mut addr_len,
+                (&raw mut addr).cast::<libc::sockaddr>(),
+                &raw mut addr_len,
             )
         };
 
@@ -358,7 +359,7 @@ pub fn collect_stats() -> Result<Vec<CpuStats>, String> {
         let mut offset = 0;
         while offset + mem::size_of::<NlMsgHdr>() <= len {
             let hdr: NlMsgHdr =
-                unsafe { std::ptr::read_unaligned(buffer.as_ptr().add(offset) as *const NlMsgHdr) };
+                unsafe { std::ptr::read_unaligned(buffer.as_ptr().add(offset).cast::<NlMsgHdr>()) };
 
             let msg_len = hdr.nlmsg_len as usize;
             if msg_len < mem::size_of::<NlMsgHdr>() || offset + msg_len > len {
@@ -375,7 +376,7 @@ pub fn collect_stats() -> Result<Vec<CpuStats>, String> {
                 if msg_len >= mem::size_of::<NlMsgHdr>() + 4 {
                     let error_offset = offset + mem::size_of::<NlMsgHdr>();
                     let error_code: i32 = unsafe {
-                        std::ptr::read_unaligned(buffer.as_ptr().add(error_offset) as *const i32)
+                        std::ptr::read_unaligned(buffer.as_ptr().add(error_offset).cast::<i32>())
                     };
                     if error_code != 0 {
                         return Err(format!(

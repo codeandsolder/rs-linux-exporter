@@ -69,8 +69,8 @@ fn read_string(path: &Path) -> Option<String> {
 }
 
 fn get_sensor_label(hwmon_dir: &Path, sensor_type: &str, index: &str) -> String {
-    let label_path = hwmon_dir.join(format!("{}_{}_label", sensor_type, index));
-    read_string(&label_path).unwrap_or_else(|| format!("{}_{}", sensor_type, index))
+    let label_path = hwmon_dir.join(format!("{sensor_type}_{index}_label"));
+    read_string(&label_path).unwrap_or_else(|| format!("{sensor_type}_{index}"))
 }
 
 fn update_hwmon_device(hwmon_dir: &Path) {

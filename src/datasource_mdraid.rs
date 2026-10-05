@@ -152,29 +152,29 @@ pub fn update_metrics() {
             }
 
             for token in detail.split_whitespace() {
-                if active.is_none() {
-                    if let Some((t, a)) = parse_counts_token(token) {
-                        total = Some(t);
-                        active = Some(a);
-                        continue;
-                    }
+                if active.is_none()
+                    && let Some((t, a)) = parse_counts_token(token)
+                {
+                    total = Some(t);
+                    active = Some(a);
+                    continue;
                 }
 
-                if working.is_none() {
-                    if let Some((t, w)) = parse_working_token(token) {
-                        working = Some(w);
-                        if total.is_none() {
-                            total = Some(t);
-                        }
+                if working.is_none()
+                    && let Some((t, w)) = parse_working_token(token)
+                {
+                    working = Some(w);
+                    if total.is_none() {
+                        total = Some(t);
                     }
                 }
             }
 
-            if sync_action.is_none() {
-                if let Some((action, progress)) = parse_sync_progress(detail) {
-                    sync_action = Some(action);
-                    sync_progress = Some(progress);
-                }
+            if sync_action.is_none()
+                && let Some((action, progress)) = parse_sync_progress(detail)
+            {
+                sync_action = Some(action);
+                sync_progress = Some(progress);
             }
         }
 
@@ -206,13 +206,13 @@ pub fn update_metrics() {
         }
 
         let degraded = match (total, active.or(working)) {
-            (Some(total), Some(active)) => (active < total) as i32,
+            (Some(total), Some(active)) => i32::from(active < total),
             _ => 0,
         };
         metrics
             .array_degraded
             .with_label_values(&[&name])
-            .set(degraded as f64);
+            .set(f64::from(degraded));
 
         if let (Some(action), Some(progress)) = (sync_action, sync_progress) {
             metrics

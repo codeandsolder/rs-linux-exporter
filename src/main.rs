@@ -43,8 +43,8 @@ impl<'r> FromRequest<'r> for BearerToken {
             .headers()
             .get_one("Authorization")
             .and_then(|header| header.strip_prefix("Bearer "))
-            .map(|t| t.to_string());
-        Outcome::Success(BearerToken(token))
+            .map(std::string::ToString::to_string);
+        Outcome::Success(Self(token))
     }
 }
 use std::sync::OnceLock;
@@ -238,7 +238,7 @@ fn metrics_json_payload() -> String {
 fn refresh_and_render<T>(render: impl FnOnce() -> T) -> T {
     let _guard = SCRAPE_LOCK
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     update_metrics();
     render()
 }
@@ -274,9 +274,7 @@ async fn metrics(
         if config.log_denied_requests {
             eprintln!(
                 "Denied /metrics request from {} (invalid token)",
-                client_ip
-                    .map(|ip| ip.to_string())
-                    .unwrap_or_else(|| "<unknown>".to_string())
+                client_ip.map_or_else(|| "<unknown>".to_string(), |ip| ip.to_string())
             );
         }
         metrics_requests_denied_total().inc();
@@ -287,16 +285,12 @@ async fn metrics(
     }
 
     // Check IP allowlist
-    let is_allowed = client_ip
-        .map(|ip| config.is_metrics_ip_allowed(ip))
-        .unwrap_or(false);
+    let is_allowed = client_ip.is_some_and(|ip| config.is_metrics_ip_allowed(ip));
     if !is_allowed {
         if config.log_denied_requests {
             eprintln!(
                 "Denied /metrics request from {}",
-                client_ip
-                    .map(|ip| ip.to_string())
-                    .unwrap_or_else(|| "<unknown>".to_string())
+                client_ip.map_or_else(|| "<unknown>".to_string(), |ip| ip.to_string())
             );
         }
         metrics_requests_denied_total().inc();
@@ -328,9 +322,7 @@ async fn metrics_json(
         if config.log_denied_requests {
             eprintln!(
                 "Denied /metrics.json request from {} (invalid token)",
-                client_ip
-                    .map(|ip| ip.to_string())
-                    .unwrap_or_else(|| "<unknown>".to_string())
+                client_ip.map_or_else(|| "<unknown>".to_string(), |ip| ip.to_string())
             );
         }
         metrics_requests_denied_total().inc();
@@ -341,16 +333,12 @@ async fn metrics_json(
     }
 
     // Check IP allowlist
-    let is_allowed = client_ip
-        .map(|ip| config.is_metrics_ip_allowed(ip))
-        .unwrap_or(false);
+    let is_allowed = client_ip.is_some_and(|ip| config.is_metrics_ip_allowed(ip));
     if !is_allowed {
         if config.log_denied_requests {
             eprintln!(
                 "Denied /metrics.json request from {}",
-                client_ip
-                    .map(|ip| ip.to_string())
-                    .unwrap_or_else(|| "<unknown>".to_string())
+                client_ip.map_or_else(|| "<unknown>".to_string(), |ip| ip.to_string())
             );
         }
         metrics_requests_denied_total().inc();
@@ -380,8 +368,7 @@ fn not_found(request: &rocket::Request<'_>) -> &'static str {
     if config.log_404_requests {
         let client_ip = request
             .client_ip()
-            .map(|ip| ip.to_string())
-            .unwrap_or_else(|| "<unknown>".to_string());
+            .map_or_else(|| "<unknown>".to_string(), |ip| ip.to_string());
         eprintln!(
             "404 {} {} from {}",
             request.method(),

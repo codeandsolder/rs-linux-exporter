@@ -286,7 +286,7 @@ fn update_meminfo(metrics: &ProcfsMetrics, meminfo: &Meminfo) {
 fn update_kernel_stats(metrics: &ProcfsMetrics, stats: &KernelStats) {
     set_cpu_time(&metrics.cpu_seconds_total, "total", &stats.total);
     for (idx, cpu) in stats.cpu_time.iter().enumerate() {
-        let label = format!("cpu{}", idx);
+        let label = format!("cpu{idx}");
         set_cpu_time(&metrics.cpu_seconds_total, &label, cpu);
     }
 
@@ -295,10 +295,10 @@ fn update_kernel_stats(metrics: &ProcfsMetrics, stats: &KernelStats) {
     metrics.processes_forked_total.set(stats.processes as f64);
 
     if let Some(value) = stats.procs_running {
-        metrics.processes_running.set(value as f64);
+        metrics.processes_running.set(f64::from(value));
     }
     if let Some(value) = stats.procs_blocked {
-        metrics.processes_blocked.set(value as f64);
+        metrics.processes_blocked.set(f64::from(value));
     }
 }
 
@@ -546,8 +546,8 @@ fn update_snmp(metrics: &ProcfsMetrics, snmp: &procfs::net::Snmp) {
         metrics.snmp.with_label_values(&[field]).set(value as f64);
     };
 
-    set("ip_forwarding", snmp.ip_forwarding.to_u8() as u64);
-    set("ip_default_ttl", snmp.ip_default_ttl as u64);
+    set("ip_forwarding", u64::from(snmp.ip_forwarding.to_u8()));
+    set("ip_default_ttl", u64::from(snmp.ip_default_ttl));
     set("ip_in_receives", snmp.ip_in_receives);
     set("ip_in_hdr_errors", snmp.ip_in_hdr_errors);
     set("ip_in_addr_errors", snmp.ip_in_addr_errors);
@@ -594,7 +594,10 @@ fn update_snmp(metrics: &ProcfsMetrics, snmp: &procfs::net::Snmp) {
     set("icmp_out_addr_masks", snmp.icmp_out_addr_masks);
     set("icmp_out_addr_mask_reps", snmp.icmp_out_addr_mask_reps);
 
-    set("tcp_rto_algorithm", snmp.tcp_rto_algorithm.to_u8() as u64);
+    set(
+        "tcp_rto_algorithm",
+        u64::from(snmp.tcp_rto_algorithm.to_u8()),
+    );
     set("tcp_rto_min", snmp.tcp_rto_min);
     set("tcp_rto_max", snmp.tcp_rto_max);
     set_i64("tcp_max_conn", snmp.tcp_max_conn);
@@ -656,7 +659,7 @@ fn to_snake_case(input: &str) -> String {
                 if is_upper
                     && (prev_is_lower
                         || prev_is_digit
-                        || (prev_is_upper && next.map(|n| n.is_ascii_lowercase()).unwrap_or(false)))
+                        || (prev_is_upper && next.is_some_and(|n| n.is_ascii_lowercase())))
                 {
                     if !out.ends_with('_') {
                         out.push('_');
@@ -665,10 +668,8 @@ fn to_snake_case(input: &str) -> String {
                     if !out.ends_with('_') {
                         out.push('_');
                     }
-                } else if is_lower && prev_is_digit {
-                    if !out.ends_with('_') {
-                        out.push('_');
-                    }
+                } else if is_lower && prev_is_digit && !out.ends_with('_') {
+                    out.push('_');
                 }
             }
         }
@@ -728,7 +729,10 @@ fn update_netstat(metrics: &ProcfsMetrics) {
                 }
             }
         } else {
-            headers.insert(section, rest.iter().map(|s| s.to_string()).collect());
+            headers.insert(
+                section,
+                rest.iter().map(std::string::ToString::to_string).collect(),
+            );
         }
     }
 }
@@ -737,28 +741,28 @@ fn update_loadavg(metrics: &ProcfsMetrics, loadavg: &LoadAverage) {
     metrics
         .load_average
         .with_label_values(&["1"])
-        .set(loadavg.one as f64);
+        .set(f64::from(loadavg.one));
     metrics
         .load_average
         .with_label_values(&["5"])
-        .set(loadavg.five as f64);
+        .set(f64::from(loadavg.five));
     metrics
         .load_average
         .with_label_values(&["15"])
-        .set(loadavg.fifteen as f64);
+        .set(f64::from(loadavg.fifteen));
 
     metrics
         .load_processes
         .with_label_values(&["running"])
-        .set(loadavg.cur as f64);
+        .set(f64::from(loadavg.cur));
     metrics
         .load_processes
         .with_label_values(&["total"])
-        .set(loadavg.max as f64);
+        .set(f64::from(loadavg.max));
     metrics
         .load_processes
         .with_label_values(&["latest_pid"])
-        .set(loadavg.latest_pid as f64);
+        .set(f64::from(loadavg.latest_pid));
 }
 
 fn update_uptime(metrics: &ProcfsMetrics, uptime: &Uptime) {

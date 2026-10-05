@@ -86,8 +86,8 @@ const SUBSYSTEM_CHECKS: &[SubsystemCheck] = &[
 
 /// Converts an IPv4-mapped IPv6 address back to plain IPv4.
 ///
-/// A dual-stack listener reports IPv4 clients as ::ffff:a.b.c.d, which never
-/// matches an IPv4 CIDR in allowed_ip and would deny legitimate scrapes.
+/// A dual-stack listener reports IPv4 clients as `::ffff:a.b.c.d`, which never
+/// matches an IPv4 CIDR in `allowed_ip` and would deny legitimate scrapes.
 fn unmap_ipv4(ip: IpAddr) -> IpAddr {
     match ip {
         IpAddr::V6(v6) => match v6.to_ipv4_mapped() {

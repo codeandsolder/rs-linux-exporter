@@ -53,25 +53,25 @@ fn open_ipmi() -> Option<Ipmi<File>> {
 /// the magnitude is the bitwise complement, negated - so 0xFE is -1, not +1.
 fn ones_complement(reading: u8) -> i16 {
     if reading & 0x80 == 0 {
-        reading as i16
+        i16::from(reading)
     } else {
-        -((!reading) as i16)
+        -i16::from(!reading)
     }
 }
 
 fn convert_reading(sensor: &FullSensorRecord, reading: u8) -> Option<f64> {
     let format = sensor.analog_data_format?;
-    let m = sensor.m as f64;
-    let b = (sensor.b as f64) * 10f64.powf(sensor.b_exponent as f64);
-    let result_mul = 10f64.powf(sensor.result_exponent as f64);
+    let m = f64::from(sensor.m);
+    let b = f64::from(sensor.b) * 10f64.powf(f64::from(sensor.b_exponent));
+    let result_mul = 10f64.powf(f64::from(sensor.result_exponent));
 
     let reading_value = match format {
-        DataFormat::Unsigned => reading as f64,
-        DataFormat::OnesComplement => ones_complement(reading) as f64,
-        DataFormat::TwosComplement => (reading as i8) as f64,
+        DataFormat::Unsigned => f64::from(reading),
+        DataFormat::OnesComplement => f64::from(ones_complement(reading)),
+        DataFormat::TwosComplement => f64::from(reading as i8),
     };
 
-    Some((m * reading_value + b) * result_mul)
+    Some(m.mul_add(reading_value, b) * result_mul)
 }
 
 fn unit_label(sensor: &FullSensorRecord) -> String {
