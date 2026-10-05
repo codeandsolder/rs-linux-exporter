@@ -6,14 +6,14 @@
       "name": "metrics_requests_total",
       "group": "Core",
       "type": "Counter",
-      "description": "Total number of `/metrics` requests",
+      "description": "Total number of metrics endpoint requests",
       "labels": []
     },
     {
       "name": "metrics_requests_denied_total",
       "group": "Core",
       "type": "Counter",
-      "description": "Total number of `/metrics` requests denied by ACL",
+      "description": "Total number of metrics endpoint requests denied by authentication or ACL",
       "labels": []
     },
     {

@@ -28,8 +28,8 @@ If you add or edit sections for this file, keep these formatting rules or the
 
 | Metric | Type | Description |
 |---|---|---|
-| `metrics_requests_total` | Counter | Total number of `/metrics` requests |
-| `metrics_requests_denied_total` | Counter | Total number of `/metrics` requests denied by ACL |
+| `metrics_requests_total` | Counter | Total number of metrics endpoint requests |
+| `metrics_requests_denied_total` | Counter | Total number of metrics endpoint requests denied by authentication or ACL |
 
 ## procfs
 
