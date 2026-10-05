@@ -2,6 +2,7 @@
 name = "rs-linux-exporter"
 version = "0.1.6"
 edition = "2024"
+rust-version = "1.99"
 description = "Linux monitoring exporter"
 repository = "https://github.com/nuclearcat/rs-linux-exporter"
 readme = "README.md"
