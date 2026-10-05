@@ -124,7 +124,8 @@ ignore_ppp_interfaces = true
 ignore_veth_interfaces = true
 
 # Disable specific datasources (will not be polled)
-# Available: procfs, cpufreq, softnet, conntrack, filesystems, hwmon, thermal, ipmi, mdraid
+# Available: procfs, cpufreq, softnet, conntrack, filesystems, hwmon, ipmi, mdraid,
+# thermal, rapl, power_supply, nvme, edac, netdev_sysfs, numa
 disabled_datasources = ["thermal", "conntrack"]
 
 # Restrict /metrics access to these IPs/CIDRs (supports single IPs and CIDR notation)

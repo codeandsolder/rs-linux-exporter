@@ -133,7 +133,6 @@ fn update_metrics() {
     if config.is_datasource_enabled(Datasource::Numa) {
         datasource_numa::update_metrics();
     }
-    // TODO: Implementation in progress; ethtool netlink stats disabled for now.
 }
 
 fn push_json_sample(

@@ -83,12 +83,6 @@ If you add or edit sections for this file, keep these formatting rules or the
 | `edac_dimm_uncorrectable_errors_total` | GaugeVec | Uncorrectable errors on this DIMM |
 | `edac_dimm_size_mb` | GaugeVec | DIMM size in MB |
 
-## ethtool
-
-| Metric | Type | Description |
-|---|---|---|
-| `ethtool_stats` | GaugeVec | Ethernet statistics via ethtool netlink |
-
 ## filesystems
 
 | Metric | Type | Description |
@@ -191,10 +185,6 @@ If you add or edit sections for this file, keep these formatting rules or the
 | `thermal_cooling_device_max_state` | GaugeVec | Maximum cooling state of the device |
 | `thermal_zone_count` | Gauge | Number of thermal zones |
 | `thermal_cooling_device_count` | Gauge | Number of cooling devices |
-
-## TODO (documentation gaps)
-
-- `ethtool_stats`: collection is currently disabled in `update_metrics` (`ethtool` module exists, but is not enabled yet).
 
 ## Schema generation for Python tooling
 

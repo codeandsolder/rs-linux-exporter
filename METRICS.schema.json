@@ -1,7 +1,6 @@
 {
   "version": "1.0.0",
-  "generated_at": "2026-02-17T06:32:16.569835+00:00",
-  "source_file": "/home/nuclearcat/Documents/rs-linux-exporter/METRICS.md",
+  "source_file": "METRICS.md",
   "metrics": [
     {
       "name": "metrics_requests_total",
@@ -165,8 +164,12 @@
         "shmempmdmapped",
         "filehugepages",
         "filepmdmapped",
+        "cmatotal",
+        "cmafree",
         "unaccepted",
         "balloon",
+        "gpuactive",
+        "gpureclaim",
         "hugepages_total",
         "hugepages_free",
         "hugepages_rsvd",
@@ -320,13 +323,11 @@
         "icmp_outaddrmaskreps",
         "icmpmsg_intype0",
         "icmpmsg_intype3",
-        "icmpmsg_intype5",
         "icmpmsg_intype8",
         "icmpmsg_intype11",
         "icmpmsg_outtype0",
         "icmpmsg_outtype3",
         "icmpmsg_outtype8",
-        "icmpmsg_outtype13",
         "tcp_rtoalgorithm",
         "tcp_rtomin",
         "tcp_rtomax",
@@ -350,16 +351,7 @@
         "udp_sndbuferrors",
         "udp_incsumerrors",
         "udp_ignoredmulti",
-        "udp_memerrors",
-        "udplite_indatagrams",
-        "udplite_noports",
-        "udplite_inerrors",
-        "udplite_outdatagrams",
-        "udplite_rcvbuferrors",
-        "udplite_sndbuferrors",
-        "udplite_incsumerrors",
-        "udplite_ignoredmulti",
-        "udplite_memerrors"
+        "udp_memerrors"
       ]
     },
     {
@@ -814,7 +806,6 @@
         "mptcp_ext_mpfastcloserx",
         "mptcp_ext_mprsttx",
         "mptcp_ext_mprstrx",
-        "mptcp_ext_rcvpruned",
         "mptcp_ext_subflowstale",
         "mptcp_ext_subflowrecover",
         "mptcp_ext_sndwndshared",
@@ -827,7 +818,8 @@
         "mptcp_ext_md5sigfallback",
         "mptcp_ext_dssfallback",
         "mptcp_ext_simultconnectfallback",
-        "mptcp_ext_fallbackfailed"
+        "mptcp_ext_fallbackfailed",
+        "mptcp_ext_winprobe"
       ]
     },
     {
@@ -957,13 +949,6 @@
         "dimm",
         "dimm_label"
       ]
-    },
-    {
-      "name": "ethtool_stats",
-      "group": "ethtool",
-      "type": "GaugeVec",
-      "description": "Ethernet statistics via ethtool netlink",
-      "labels": []
     },
     {
       "name": "filesystem_size_bytes",
@@ -1524,12 +1509,6 @@
         "edac_dimm_correctable_errors_total",
         "edac_dimm_uncorrectable_errors_total",
         "edac_dimm_size_mb"
-      ]
-    },
-    {
-      "name": "ethtool",
-      "metrics": [
-        "ethtool_stats"
       ]
     },
     {

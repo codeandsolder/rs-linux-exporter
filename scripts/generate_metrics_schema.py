@@ -10,12 +10,9 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections import OrderedDict
-from datetime import datetime, timezone
 import re
+from collections import OrderedDict
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
-
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -72,7 +69,7 @@ NETDEV_FIELDS = [
 ]
 
 
-def _parse_table_row(line: str) -> Optional[Tuple[str, str, str]]:
+def _parse_table_row(line: str) -> tuple[str, str, str] | None:
     if not line.startswith("|"):
         return None
     cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
@@ -88,21 +85,21 @@ def _parse_table_row(line: str) -> Optional[Tuple[str, str, str]]:
     return metric, metric_type, description
 
 
-def _resolve_metric_name(metric: str, known_names: Set[str]) -> str:
+def _resolve_metric_name(metric: str, known_names: set[str]) -> str:
     if metric in known_names:
         return metric
     if metric in {"netstat", "ip_ext", "tcp_ext", "mptcp_ext"}:
         return "netstat"
-    if metric.startswith("tcp_ext_") or metric.startswith("ip_ext_") or metric.startswith("mptcp_ext_"):
+    if metric.startswith(("tcp_ext_", "ip_ext_", "mptcp_ext_")):
         return "netstat"
     return metric
 
 
-def _parse_markdown(path: Path) -> Tuple[OrderedDict[str, List[dict]], Dict[str, dict]]:
+def _parse_markdown(path: Path) -> tuple[OrderedDict[str, list[dict]], dict[str, dict]]:
     text = path.read_text(encoding="utf-8").splitlines()
 
     groups: OrderedDict[str, list[dict]] = OrderedDict()
-    metadata: Dict[str, dict] = {}
+    metadata: dict[str, dict] = {}
 
     in_group = False
     in_labels_section = False
@@ -139,7 +136,9 @@ def _parse_markdown(path: Path) -> Tuple[OrderedDict[str, List[dict]], Dict[str,
             continue
 
         if not in_labels_section and in_group:
-            if re.match(r"^\|\s*Metric\s*\|\s*Type\s*\|\s*Description\s*\|$", line.strip()):
+            if re.match(
+                r"^\|\s*Metric\s*\|\s*Type\s*\|\s*Description\s*\|$", line.strip()
+            ):
                 in_table = True
                 continue
             if in_table:
@@ -157,7 +156,9 @@ def _parse_markdown(path: Path) -> Tuple[OrderedDict[str, List[dict]], Dict[str,
                                 "group": current_group,
                             }
                         )
-                        metadata.setdefault(name, {"labels": [], "label_values": {}, "fields": []})
+                        metadata.setdefault(
+                            name, {"labels": [], "label_values": {}, "fields": []}
+                        )
                         continue
                 in_table = False
             continue
@@ -176,15 +177,22 @@ def _parse_markdown(path: Path) -> Tuple[OrderedDict[str, List[dict]], Dict[str,
             body = direct.group("body")
             labels = re.findall(r"`([^`]+)`", body)
             if labels:
-                metadata.setdefault(metric, {"labels": [], "label_values": {}, "fields": []})["labels"] = labels
+                metadata.setdefault(
+                    metric, {"labels": [], "label_values": {}, "fields": []}
+                )["labels"] = labels
             capture = None
             continue
 
-        list_header = re.match(r"^`(?P<metric>[^`]+)`\s+label values(?:\s*\(`(?P<label>[^`]+)`\))?:$", line.strip())
+        list_header = re.match(
+            r"^`(?P<metric>[^`]+)`\s+label values(?:\s*\(`(?P<label>[^`]+)`\))?:$",
+            line.strip(),
+        )
         if list_header:
             metric = _resolve_metric_name(list_header.group("metric"), set(metadata))
             label = list_header.group("label") or "value"
-            metadata.setdefault(metric, {"labels": [], "label_values": {}, "fields": []})
+            metadata.setdefault(
+                metric, {"labels": [], "label_values": {}, "fields": []}
+            )
             capture = {
                 "metric": metric,
                 "kind": "label_values",
@@ -197,8 +205,12 @@ def _parse_markdown(path: Path) -> Tuple[OrderedDict[str, List[dict]], Dict[str,
             line.strip(),
         )
         if field_list_header:
-            metric = _resolve_metric_name(field_list_header.group("metric"), set(metadata))
-            metadata.setdefault(metric, {"labels": [], "label_values": {}, "fields": []})
+            metric = _resolve_metric_name(
+                field_list_header.group("metric"), set(metadata)
+            )
+            metadata.setdefault(
+                metric, {"labels": [], "label_values": {}, "fields": []}
+            )
             capture = {"metric": metric, "kind": "fields", "label": None}
             continue
 
@@ -212,9 +224,13 @@ def _parse_markdown(path: Path) -> Tuple[OrderedDict[str, List[dict]], Dict[str,
             if not value:
                 continue
 
-            target = metadata.setdefault(capture["metric"], {"labels": [], "label_values": {}, "fields": []})
+            target = metadata.setdefault(
+                capture["metric"], {"labels": [], "label_values": {}, "fields": []}
+            )
             if capture["kind"] == "label_values":
-                values = target.setdefault("label_values", {}).setdefault(capture["label"], [])
+                values = target.setdefault("label_values", {}).setdefault(
+                    capture["label"], []
+                )
                 if value not in values:
                     values.append(value)
             else:
@@ -326,14 +342,21 @@ def generate_schema(markdown_path: Path, args: argparse.Namespace) -> dict:
                     "type": metric["type"],
                     "description": metric["description"],
                     "labels": metric_meta.get("labels", []),
-                    **({"label_values": metric_meta["label_values"]} if metric_meta.get("label_values") else {}),
-                    **({"fields": metric_meta.get("fields", [])} if metric_meta.get("fields") else {}),
+                    **(
+                        {"label_values": metric_meta["label_values"]}
+                        if metric_meta.get("label_values")
+                        else {}
+                    ),
+                    **(
+                        {"fields": metric_meta.get("fields", [])}
+                        if metric_meta.get("fields")
+                        else {}
+                    ),
                 }
             )
 
     schema = {
         "version": "1.0.0",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
         "source_file": str(markdown_path),
         "metrics": metrics,
         "groups": [
