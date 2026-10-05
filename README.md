@@ -29,6 +29,13 @@ and the software reliable.
 | `procfs` | System stats from /proc (CPU, memory, network, disk I/O) |
 | `filefd` | System-wide file descriptor table allocation and limit from `/proc/sys/fs/file-nr` |
 | `schedstat` | Per-CPU scheduler running/waiting/timeslice counters from `/proc/schedstat` |
+| `kernel_hung` | Kernel hung-task detections from `/proc/sys/kernel/hung_task_detect_count` |
+| `watchdog` | Linux watchdog device state, timeout, firmware and identity from sysfs |
+| `uname` | Kernel/system identity from the `uname(2)` system call |
+| `os` | Operating-system identity and lifecycle data from `os-release` |
+| `dmi` | BIOS, board, chassis and system DMI identity from sysfs |
+| `timex` | Kernel NTP discipline, synchronization, error and PPS statistics via read-only `adjtimex(2)` |
+| `time` | Current Unix time and Linux kernel clocksource information |
 | `nfs` | Global NFS client RPC, network, and procedure counters when the kernel interface is present |
 | `nfsd` | Global kernel NFS server RPC, cache, I/O, thread, and procedure counters when active |
 | `cgroup` | Bounded cgroup v2 service CPU, memory, I/O, PID, state, and PSI metrics |

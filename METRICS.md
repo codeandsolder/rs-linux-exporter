@@ -99,6 +99,75 @@ The datasource follows `/proc/net/rpc/nfs` dynamically: an absent file is health
 
 The datasource follows `/proc/net/rpc/nfsd` dynamically with the same healthy/no-data behavior when the kernel server is inactive. Variable-length NFSv4 operation tables retain counters beyond the known legacy catalog as `op_N` labels.
 
+## kernel_hung
+
+| Metric | Type | Description |
+|---|---|---|
+| `kernel_hung_tasks_total` | Counter | Number of tasks detected as hung by the kernel |
+
+## watchdog
+
+| Metric | Type | Description |
+|---|---|---|
+| `watchdog_bootstatus` | GaugeVec | Watchdog boot status |
+| `watchdog_fw_version` | GaugeVec | Watchdog firmware version |
+| `watchdog_nowayout` | GaugeVec | Watchdog nowayout setting |
+| `watchdog_timeleft_seconds` | GaugeVec | Watchdog time left in seconds |
+| `watchdog_timeout_seconds` | GaugeVec | Watchdog timeout in seconds |
+| `watchdog_pretimeout_seconds` | GaugeVec | Watchdog pretimeout in seconds |
+| `watchdog_access_cs0` | GaugeVec | Watchdog access_cs0 value when exposed by the driver |
+| `watchdog_info` | GaugeVec | Watchdog identity, options, state and status information |
+
+## uname
+
+| Metric | Type | Description |
+|---|---|---|
+| `uname_info` | GaugeVec | Kernel/system identity from the uname system call |
+
+## os
+
+| Metric | Type | Description |
+|---|---|---|
+| `os_info` | GaugeVec | Operating-system identity from `/etc/os-release` or `/usr/lib/os-release` |
+| `os_version` | GaugeVec | Numeric major.minor prefix of `VERSION_ID` when present |
+| `os_support_end_timestamp_seconds` | GaugeVec | Operating-system support-end date as a Unix timestamp when present |
+
+## dmi
+
+| Metric | Type | Description |
+|---|---|---|
+| `dmi_info` | GaugeVec | BIOS, board, chassis and product DMI identity |
+
+## timex
+
+| Metric | Type | Description |
+|---|---|---|
+| `timex_offset_seconds` | GaugeVec | Time offset between local system and reference clock |
+| `timex_frequency_adjustment_ratio` | GaugeVec | Local clock frequency adjustment ratio |
+| `timex_maxerror_seconds` | GaugeVec | Maximum clock error in seconds |
+| `timex_estimated_error_seconds` | GaugeVec | Estimated clock error in seconds |
+| `timex_status` | GaugeVec | Raw kernel timex status bits |
+| `timex_loop_time_constant` | GaugeVec | Phase-locked loop time constant |
+| `timex_tick_seconds` | GaugeVec | Seconds between clock ticks |
+| `timex_pps_frequency_hertz` | GaugeVec | Pulse-per-second frequency |
+| `timex_pps_jitter_seconds` | GaugeVec | Pulse-per-second jitter |
+| `timex_pps_shift_seconds` | GaugeVec | Pulse-per-second interval duration |
+| `timex_pps_stability_hertz` | GaugeVec | Pulse-per-second stability |
+| `timex_pps_jitter_total` | CounterVec | PPS jitter-limit exceeded events |
+| `timex_pps_calibration_total` | CounterVec | PPS calibration intervals |
+| `timex_pps_error_total` | CounterVec | PPS calibration errors |
+| `timex_pps_stability_exceeded_total` | CounterVec | PPS stability-limit exceeded events |
+| `timex_tai_offset_seconds` | GaugeVec | International Atomic Time (TAI) offset |
+| `timex_sync_status` | GaugeVec | Whether the kernel clock is synchronized to a reliable source |
+
+## time
+
+| Metric | Type | Description |
+|---|---|---|
+| `time_seconds` | Gauge | System time in seconds since the Unix epoch |
+| `time_clocksource_available_info` | GaugeVec | Available Linux kernel clocksources by clocksource device |
+| `time_clocksource_current_info` | GaugeVec | Current Linux kernel clocksource by clocksource device |
+
 ## systemd
 
 | Metric | Type | Description |
@@ -446,6 +515,34 @@ python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROM
 ### nfsd_rpc_errors_total labels: `error`
 
 ### nfsd_requests_total labels: `proto`, `method`
+
+### watchdog_bootstatus labels: `name`
+
+### watchdog_fw_version labels: `name`
+
+### watchdog_nowayout labels: `name`
+
+### watchdog_timeleft_seconds labels: `name`
+
+### watchdog_timeout_seconds labels: `name`
+
+### watchdog_pretimeout_seconds labels: `name`
+
+### watchdog_access_cs0 labels: `name`
+
+### watchdog_info labels: `name`, `options`, `identity`, `state`, `status`, `pretimeout_governor`
+
+### uname_info labels: `sysname`, `release`, `version`, `machine`, `nodename`, `domainname`
+
+### os_info labels: `build_id`, `id`, `id_like`, `image_id`, `image_version`, `name`, `pretty_name`, `variant`, `variant_id`, `version`, `version_codename`, `version_id`
+
+### os_version labels: `id`, `id_like`, `name`
+
+### dmi_info labels: `bios_date`, `bios_release`, `bios_vendor`, `bios_version`, `board_asset_tag`, `board_name`, `board_serial`, `board_vendor`, `board_version`, `chassis_asset_tag`, `chassis_serial`, `chassis_vendor`, `chassis_version`, `product_family`, `product_name`, `product_serial`, `product_sku`, `product_uuid`, `product_version`, `system_vendor`
+
+### time_clocksource_available_info labels: `device`, `clocksource`
+
+### time_clocksource_current_info labels: `device`, `clocksource`
 
 ### systemd_unit_state labels: `name`, `state`, `type`
 
