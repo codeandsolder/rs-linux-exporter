@@ -407,6 +407,316 @@
       ]
     },
     {
+      "name": "kernel_hung_tasks_total",
+      "group": "kernel_hung",
+      "type": "Counter",
+      "description": "Number of tasks detected as hung by the kernel",
+      "labels": []
+    },
+    {
+      "name": "watchdog_bootstatus",
+      "group": "watchdog",
+      "type": "GaugeVec",
+      "description": "Watchdog boot status",
+      "labels": [
+        "name"
+      ]
+    },
+    {
+      "name": "watchdog_fw_version",
+      "group": "watchdog",
+      "type": "GaugeVec",
+      "description": "Watchdog firmware version",
+      "labels": [
+        "name"
+      ]
+    },
+    {
+      "name": "watchdog_nowayout",
+      "group": "watchdog",
+      "type": "GaugeVec",
+      "description": "Watchdog nowayout setting",
+      "labels": [
+        "name"
+      ]
+    },
+    {
+      "name": "watchdog_timeleft_seconds",
+      "group": "watchdog",
+      "type": "GaugeVec",
+      "description": "Watchdog time left in seconds",
+      "labels": [
+        "name"
+      ]
+    },
+    {
+      "name": "watchdog_timeout_seconds",
+      "group": "watchdog",
+      "type": "GaugeVec",
+      "description": "Watchdog timeout in seconds",
+      "labels": [
+        "name"
+      ]
+    },
+    {
+      "name": "watchdog_pretimeout_seconds",
+      "group": "watchdog",
+      "type": "GaugeVec",
+      "description": "Watchdog pretimeout in seconds",
+      "labels": [
+        "name"
+      ]
+    },
+    {
+      "name": "watchdog_access_cs0",
+      "group": "watchdog",
+      "type": "GaugeVec",
+      "description": "Watchdog access_cs0 value when exposed by the driver",
+      "labels": [
+        "name"
+      ]
+    },
+    {
+      "name": "watchdog_info",
+      "group": "watchdog",
+      "type": "GaugeVec",
+      "description": "Watchdog identity, options, state and status information",
+      "labels": [
+        "name",
+        "options",
+        "identity",
+        "state",
+        "status",
+        "pretimeout_governor"
+      ]
+    },
+    {
+      "name": "uname_info",
+      "group": "uname",
+      "type": "GaugeVec",
+      "description": "Kernel/system identity from the uname system call",
+      "labels": [
+        "sysname",
+        "release",
+        "version",
+        "machine",
+        "nodename",
+        "domainname"
+      ]
+    },
+    {
+      "name": "os_info",
+      "group": "os",
+      "type": "GaugeVec",
+      "description": "Operating-system identity from `/etc/os-release` or `/usr/lib/os-release`",
+      "labels": [
+        "build_id",
+        "id",
+        "id_like",
+        "image_id",
+        "image_version",
+        "name",
+        "pretty_name",
+        "variant",
+        "variant_id",
+        "version",
+        "version_codename",
+        "version_id"
+      ]
+    },
+    {
+      "name": "os_version",
+      "group": "os",
+      "type": "GaugeVec",
+      "description": "Numeric major.minor prefix of `VERSION_ID` when present",
+      "labels": [
+        "id",
+        "id_like",
+        "name"
+      ]
+    },
+    {
+      "name": "os_support_end_timestamp_seconds",
+      "group": "os",
+      "type": "GaugeVec",
+      "description": "Operating-system support-end date as a Unix timestamp when present",
+      "labels": []
+    },
+    {
+      "name": "dmi_info",
+      "group": "dmi",
+      "type": "GaugeVec",
+      "description": "BIOS, board, chassis and product DMI identity",
+      "labels": [
+        "bios_date",
+        "bios_release",
+        "bios_vendor",
+        "bios_version",
+        "board_asset_tag",
+        "board_name",
+        "board_serial",
+        "board_vendor",
+        "board_version",
+        "chassis_asset_tag",
+        "chassis_serial",
+        "chassis_vendor",
+        "chassis_version",
+        "product_family",
+        "product_name",
+        "product_serial",
+        "product_sku",
+        "product_uuid",
+        "product_version",
+        "system_vendor"
+      ]
+    },
+    {
+      "name": "timex_offset_seconds",
+      "group": "timex",
+      "type": "GaugeVec",
+      "description": "Time offset between local system and reference clock",
+      "labels": []
+    },
+    {
+      "name": "timex_frequency_adjustment_ratio",
+      "group": "timex",
+      "type": "GaugeVec",
+      "description": "Local clock frequency adjustment ratio",
+      "labels": []
+    },
+    {
+      "name": "timex_maxerror_seconds",
+      "group": "timex",
+      "type": "GaugeVec",
+      "description": "Maximum clock error in seconds",
+      "labels": []
+    },
+    {
+      "name": "timex_estimated_error_seconds",
+      "group": "timex",
+      "type": "GaugeVec",
+      "description": "Estimated clock error in seconds",
+      "labels": []
+    },
+    {
+      "name": "timex_status",
+      "group": "timex",
+      "type": "GaugeVec",
+      "description": "Raw kernel timex status bits",
+      "labels": []
+    },
+    {
+      "name": "timex_loop_time_constant",
+      "group": "timex",
+      "type": "GaugeVec",
+      "description": "Phase-locked loop time constant",
+      "labels": []
+    },
+    {
+      "name": "timex_tick_seconds",
+      "group": "timex",
+      "type": "GaugeVec",
+      "description": "Seconds between clock ticks",
+      "labels": []
+    },
+    {
+      "name": "timex_pps_frequency_hertz",
+      "group": "timex",
+      "type": "GaugeVec",
+      "description": "Pulse-per-second frequency",
+      "labels": []
+    },
+    {
+      "name": "timex_pps_jitter_seconds",
+      "group": "timex",
+      "type": "GaugeVec",
+      "description": "Pulse-per-second jitter",
+      "labels": []
+    },
+    {
+      "name": "timex_pps_shift_seconds",
+      "group": "timex",
+      "type": "GaugeVec",
+      "description": "Pulse-per-second interval duration",
+      "labels": []
+    },
+    {
+      "name": "timex_pps_stability_hertz",
+      "group": "timex",
+      "type": "GaugeVec",
+      "description": "Pulse-per-second stability",
+      "labels": []
+    },
+    {
+      "name": "timex_pps_jitter_total",
+      "group": "timex",
+      "type": "CounterVec",
+      "description": "PPS jitter-limit exceeded events",
+      "labels": []
+    },
+    {
+      "name": "timex_pps_calibration_total",
+      "group": "timex",
+      "type": "CounterVec",
+      "description": "PPS calibration intervals",
+      "labels": []
+    },
+    {
+      "name": "timex_pps_error_total",
+      "group": "timex",
+      "type": "CounterVec",
+      "description": "PPS calibration errors",
+      "labels": []
+    },
+    {
+      "name": "timex_pps_stability_exceeded_total",
+      "group": "timex",
+      "type": "CounterVec",
+      "description": "PPS stability-limit exceeded events",
+      "labels": []
+    },
+    {
+      "name": "timex_tai_offset_seconds",
+      "group": "timex",
+      "type": "GaugeVec",
+      "description": "International Atomic Time (TAI) offset",
+      "labels": []
+    },
+    {
+      "name": "timex_sync_status",
+      "group": "timex",
+      "type": "GaugeVec",
+      "description": "Whether the kernel clock is synchronized to a reliable source",
+      "labels": []
+    },
+    {
+      "name": "time_seconds",
+      "group": "time",
+      "type": "Gauge",
+      "description": "System time in seconds since the Unix epoch",
+      "labels": []
+    },
+    {
+      "name": "time_clocksource_available_info",
+      "group": "time",
+      "type": "GaugeVec",
+      "description": "Available Linux kernel clocksources by clocksource device",
+      "labels": [
+        "device",
+        "clocksource"
+      ]
+    },
+    {
+      "name": "time_clocksource_current_info",
+      "group": "time",
+      "type": "GaugeVec",
+      "description": "Current Linux kernel clocksource by clocksource device",
+      "labels": [
+        "device",
+        "clocksource"
+      ]
+    },
+    {
       "name": "systemd_unit_state",
       "group": "systemd",
       "type": "GaugeVec",
@@ -2115,6 +2425,75 @@
         "nfsd_rpc_errors_total",
         "nfsd_server_rpcs_total",
         "nfsd_requests_total"
+      ]
+    },
+    {
+      "name": "kernel_hung",
+      "metrics": [
+        "kernel_hung_tasks_total"
+      ]
+    },
+    {
+      "name": "watchdog",
+      "metrics": [
+        "watchdog_bootstatus",
+        "watchdog_fw_version",
+        "watchdog_nowayout",
+        "watchdog_timeleft_seconds",
+        "watchdog_timeout_seconds",
+        "watchdog_pretimeout_seconds",
+        "watchdog_access_cs0",
+        "watchdog_info"
+      ]
+    },
+    {
+      "name": "uname",
+      "metrics": [
+        "uname_info"
+      ]
+    },
+    {
+      "name": "os",
+      "metrics": [
+        "os_info",
+        "os_version",
+        "os_support_end_timestamp_seconds"
+      ]
+    },
+    {
+      "name": "dmi",
+      "metrics": [
+        "dmi_info"
+      ]
+    },
+    {
+      "name": "timex",
+      "metrics": [
+        "timex_offset_seconds",
+        "timex_frequency_adjustment_ratio",
+        "timex_maxerror_seconds",
+        "timex_estimated_error_seconds",
+        "timex_status",
+        "timex_loop_time_constant",
+        "timex_tick_seconds",
+        "timex_pps_frequency_hertz",
+        "timex_pps_jitter_seconds",
+        "timex_pps_shift_seconds",
+        "timex_pps_stability_hertz",
+        "timex_pps_jitter_total",
+        "timex_pps_calibration_total",
+        "timex_pps_error_total",
+        "timex_pps_stability_exceeded_total",
+        "timex_tai_offset_seconds",
+        "timex_sync_status"
+      ]
+    },
+    {
+      "name": "time",
+      "metrics": [
+        "time_seconds",
+        "time_clocksource_available_info",
+        "time_clocksource_current_info"
       ]
     },
     {
