@@ -6,16 +6,15 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
-
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 COUNTER_RATE_WINDOW_DEFAULT = "5m"
 COUNTER_RATE_METRICS = {
     "conntrack",
     "diskstats",
-    "ethtool_stats",
     "netdev",
     "netstat",
     "rapl_energy_joules",
@@ -28,16 +27,16 @@ BYTE_FIELD_TOKENS = ("byte", "bytes", "octet")
 
 def build_panel(
     title: str,
-    metrics: Iterable[Dict[str, Any]],
+    metrics: Iterable[dict[str, Any]],
     datasource_ref: str,
     instance_var: str,
     datasource_type: str = "prometheus",
-    job_var: Optional[str] = None,
-    extra_filters: Optional[Dict[str, str]] = None,
+    job_var: str | None = None,
+    extra_filters: dict[str, str] | None = None,
     rate_window: str = COUNTER_RATE_WINDOW_DEFAULT,
     disable_rate: bool = False,
-) -> Dict[str, Any]:
-    def _metric_labels(metric: Dict[str, Any]) -> List[str]:
+) -> dict[str, Any]:
+    def _metric_labels(metric: dict[str, Any]) -> list[str]:
         labels = metric.get("labels", [])
         if isinstance(labels, list):
             return [
@@ -47,7 +46,7 @@ def build_panel(
             ]
         return []
 
-    def _metric_fields(metric: Dict[str, Any]) -> List[str]:
+    def _metric_fields(metric: dict[str, Any]) -> list[str]:
         fields = metric.get("fields")
         if fields is None:
             fields = metric.get("fields_detected")
@@ -55,7 +54,7 @@ def build_panel(
             return [str(field) for field in fields if isinstance(field, str)]
         return []
 
-    def _is_rate_metric(metric: Dict[str, Any]) -> bool:
+    def _is_rate_metric(metric: dict[str, Any]) -> bool:
         if disable_rate:
             return False
         name = str(metric.get("name", ""))
@@ -66,15 +65,21 @@ def build_panel(
             return True
         return name in COUNTER_RATE_METRICS
 
-    def _byte_fields(fields: List[str]) -> List[str]:
-        return sorted({field for field in fields if any(token in field.lower() for token in BYTE_FIELD_TOKENS)})
+    def _byte_fields(fields: list[str]) -> list[str]:
+        return sorted(
+            {
+                field
+                for field in fields
+                if any(token in field.lower() for token in BYTE_FIELD_TOKENS)
+            }
+        )
 
-    def _regex(values: List[str]) -> str:
+    def _regex(values: list[str]) -> str:
         if not values:
             return ""
         return "^(" + "|".join(re.escape(value) for value in values) + ")$"
 
-    def _selector(metric_name: str, extra_labels: Optional[List[str]] = None) -> str:
+    def _selector(metric_name: str, extra_labels: list[str] | None = None) -> str:
         parts = [f'__name__="{metric_name}"']
         if instance_var:
             parts.append(f'instance=~"${{{instance_var}}}"')
@@ -87,14 +92,14 @@ def build_panel(
             parts.extend(extra_labels)
         return "{" + ",".join(parts) + "}"
 
-    def _legend(metric: Dict[str, Any]) -> str:
+    def _legend(metric: dict[str, Any]) -> str:
         labels = _metric_labels(metric)
         labels_display = ["{{__name__}}"]
         for label in labels:
             labels_display.append("{{" + label + "}}")
         return " ".join(labels_display)
 
-    def _make_target(ref_id: str, expression: str, legend: str) -> Dict[str, Any]:
+    def _make_target(ref_id: str, expression: str, legend: str) -> dict[str, Any]:
         return {
             "refId": ref_id,
             "datasource": {"type": datasource_type, "uid": datasource_ref},
@@ -110,7 +115,7 @@ def build_panel(
             return chr(ord("A") + index)
         return f"A{index - 25}"
 
-    targets: List[Dict[str, Any]] = []
+    targets: list[dict[str, Any]] = []
     ref_index = 0
     for metric in sorted(metrics, key=lambda item: str(item.get("name", ""))):
         name = str(metric.get("name", ""))
@@ -131,18 +136,28 @@ def build_panel(
                     byte_regex = _regex(byte_fields)
                     byte_selector = selector[:-1] + f',field=~"{byte_regex}"}}'
                     byte_expr = f"rate({byte_selector}[{rate_window}]) * 8"
-                    targets.append(_make_target(_ref_id(ref_index), byte_expr, f"{legend} (bits/s)"))
+                    targets.append(
+                        _make_target(
+                            _ref_id(ref_index), byte_expr, f"{legend} (bits/s)"
+                        )
+                    )
                     ref_index += 1
 
                     if set(fields) != set(byte_fields):
-                        non_byte_selector = selector[:-1] + ',field!~"' + byte_regex + '"}'
+                        non_byte_selector = (
+                            selector[:-1] + ',field!~"' + byte_regex + '"}'
+                        )
                         non_byte_expr = f"rate({non_byte_selector}[{rate_window}])"
-                        targets.append(_make_target(_ref_id(ref_index), non_byte_expr, legend))
+                        targets.append(
+                            _make_target(_ref_id(ref_index), non_byte_expr, legend)
+                        )
                         ref_index += 1
                     continue
 
             targets.append(
-                _make_target(_ref_id(ref_index), f"rate({selector}[{rate_window}])", legend)
+                _make_target(
+                    _ref_id(ref_index), f"rate({selector}[{rate_window}])", legend
+                )
             )
             ref_index += 1
         else:
@@ -158,7 +173,10 @@ def build_panel(
             "defaults": {
                 "color": {"mode": "palette-classic"},
                 "mappings": [],
-                "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": None}]},
+                "thresholds": {
+                    "mode": "absolute",
+                    "steps": [{"color": "green", "value": None}],
+                },
                 "unit": "short",
             },
             "overrides": [],
@@ -174,7 +192,7 @@ def build_panel(
     }
 
 
-def _label_selector(job_var: Optional[str], metric_selector: str = ".+") -> str:
+def _label_selector(job_var: str | None, metric_selector: str = ".+") -> str:
     labels = [f'__name__=~"{metric_selector}"']
     if job_var:
         labels.append(f'job=~"${{{job_var}}}"')
@@ -185,9 +203,9 @@ def build_panel_template_vars(
     datasource_ref: str,
     datasource_type: str,
     instance_var: str,
-    job_var: Optional[str],
-) -> List[Dict[str, Any]]:
-    vars_list: List[Dict[str, Any]] = []
+    job_var: str | None,
+) -> list[dict[str, Any]]:
+    vars_list: list[dict[str, Any]] = []
     selector = _label_selector(job_var)
 
     if job_var:
@@ -198,7 +216,7 @@ def build_panel_template_vars(
                 "label": job_var,
                 "description": "",
                 "hide": 0,
-                "query": "label_values({__name__=~\".+\"}, job)",
+                "query": 'label_values({__name__=~".+"}, job)',
                 "datasource": {"type": datasource_type, "uid": datasource_ref},
                 "pluginId": "prometheus",
                 "pluginName": "Prometheus",
@@ -239,9 +257,8 @@ def build_panel_template_vars(
     return vars_list
 
 
-def layout_panels(panels: List[Dict[str, Any]], width: int, height: int) -> None:
-    if width > 24:
-        width = 24
+def layout_panels(panels: list[dict[str, Any]], width: int, height: int) -> None:
+    width = min(width, 24)
     if width <= 0:
         width = 12
     if height <= 0:
@@ -259,17 +276,17 @@ def layout_panels(panels: List[Dict[str, Any]], width: int, height: int) -> None
 
 def build_dashboard(
     title: str,
-    panels: List[Dict[str, Any]],
+    panels: list[dict[str, Any]],
     datasource_ref: str,
     datasource_type: str,
     instance_var: str,
-    job_var: Optional[str],
+    job_var: str | None,
     time_from: str,
     time_to: str,
     refresh: str,
     panel_width: int = 12,
     panel_height: int = 8,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     for idx, panel in enumerate(panels, start=1):
         panel.setdefault("id", idx)
 
@@ -299,7 +316,11 @@ def build_dashboard(
         "refresh": refresh,
         "schemaVersion": 42,
         "tags": [],
-        "templating": {"list": build_panel_template_vars(datasource_ref, datasource_type, instance_var, job_var)},
+        "templating": {
+            "list": build_panel_template_vars(
+                datasource_ref, datasource_type, instance_var, job_var
+            )
+        },
         "time": {
             "from": time_from,
             "to": time_to,
@@ -328,40 +349,101 @@ def build_parser() -> argparse.ArgumentParser:
             "3) Generate a single section panel to a file (for templating):\n"
             "   python3 scripts/generate_grafana_panel.py --section netdev_sysfs --datasource DS_PROMETHEUS --instance-var instance --output out.json\n"
             "4) Generate importable dashboard JSON:\n"
-            "   python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROMETHEUS --instance-var instance --dashboard-title \"Linux Exporter\" --output dashboard.json\n"
+            '   python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROMETHEUS --instance-var instance --dashboard-title "Linux Exporter" --output dashboard.json\n'
         ),
     )
-    parser.add_argument("--schema", default=str(PROJECT_ROOT / "METRICS.schema.json"), help="Path to schema JSON")
-    parser.add_argument("--datasource", default="DS_PROMETHEUS", help="Grafana datasource UID variable name")
-    parser.add_argument("--datasource-type", default="prometheus", help="Grafana datasource type")
-    parser.add_argument("--instance-var", default="instance", help="Grafana variable for dynamic instance selector")
-    parser.add_argument("--job-var", default="", help="Optional Grafana variable for job filtering")
-    parser.add_argument("--section", action="append", help="Metric group name from METRICS.md (repeatable)")
-    parser.add_argument("--metric", action="append", help="Single metric override (repeatable)")
-    parser.add_argument("--metric-regex", help="Optional regex to filter metrics from the selected sections")
-    parser.add_argument("--list", action="store_true", help="List available sections and metric counts")
-    parser.add_argument("--all", action="store_true", help="Generate panel for each section in one JSON array")
-    parser.add_argument("--dashboard", action="store_true", help="Generate full Grafana dashboard JSON with templating")
-    parser.add_argument("--dashboard-title", default="Linux Exporter Metrics", help="Dashboard title when --dashboard is used")
-    parser.add_argument("--time-from", default="now-1h", help="Dashboard default time range start")
-    parser.add_argument("--time-to", default="now", help="Dashboard default time range end")
-    parser.add_argument("--dashboard-refresh", default="", help="Dashboard refresh interval, e.g. 30s or 1m")
-    parser.add_argument("--rate-window", default=COUNTER_RATE_WINDOW_DEFAULT, help="PromQL range for auto rate() conversion")
-    parser.add_argument("--disable-auto-rate", action="store_true", help="Disable automatic rate() conversion for counters")
+    parser.add_argument(
+        "--schema",
+        default=str(PROJECT_ROOT / "METRICS.schema.json"),
+        help="Path to schema JSON",
+    )
+    parser.add_argument(
+        "--datasource",
+        default="DS_PROMETHEUS",
+        help="Grafana datasource UID variable name",
+    )
+    parser.add_argument(
+        "--datasource-type", default="prometheus", help="Grafana datasource type"
+    )
+    parser.add_argument(
+        "--instance-var",
+        default="instance",
+        help="Grafana variable for dynamic instance selector",
+    )
+    parser.add_argument(
+        "--job-var", default="", help="Optional Grafana variable for job filtering"
+    )
+    parser.add_argument(
+        "--section",
+        action="append",
+        help="Metric group name from METRICS.md (repeatable)",
+    )
+    parser.add_argument(
+        "--metric", action="append", help="Single metric override (repeatable)"
+    )
+    parser.add_argument(
+        "--metric-regex",
+        help="Optional regex to filter metrics from the selected sections",
+    )
+    parser.add_argument(
+        "--list", action="store_true", help="List available sections and metric counts"
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Generate panel for each section in one JSON array",
+    )
+    parser.add_argument(
+        "--dashboard",
+        action="store_true",
+        help="Generate full Grafana dashboard JSON with templating",
+    )
+    parser.add_argument(
+        "--dashboard-title",
+        default="Linux Exporter Metrics",
+        help="Dashboard title when --dashboard is used",
+    )
+    parser.add_argument(
+        "--time-from", default="now-1h", help="Dashboard default time range start"
+    )
+    parser.add_argument(
+        "--time-to", default="now", help="Dashboard default time range end"
+    )
+    parser.add_argument(
+        "--dashboard-refresh",
+        default="",
+        help="Dashboard refresh interval, e.g. 30s or 1m",
+    )
+    parser.add_argument(
+        "--rate-window",
+        default=COUNTER_RATE_WINDOW_DEFAULT,
+        help="PromQL range for auto rate() conversion",
+    )
+    parser.add_argument(
+        "--disable-auto-rate",
+        action="store_true",
+        help="Disable automatic rate() conversion for counters",
+    )
     parser.add_argument(
         "--datasource-literal",
         action="store_true",
         help="Use datasource argument as a literal uid/name (skip wrapping as ${...})",
     )
-    parser.add_argument("--panel-width", type=int, default=12, help="Dashboard grid panel width")
-    parser.add_argument("--panel-height", type=int, default=8, help="Dashboard grid panel height")
+    parser.add_argument(
+        "--panel-width", type=int, default=12, help="Dashboard grid panel width"
+    )
+    parser.add_argument(
+        "--panel-height", type=int, default=8, help="Dashboard grid panel height"
+    )
     parser.add_argument(
         "--format",
         default="paste",
         choices=("paste", "array", "ndjson"),
         help="paste=single object, array=JSON array, ndjson=one panel per line",
     )
-    parser.add_argument("--title-prefix", default="", help="Optional prefix for panel titles")
+    parser.add_argument(
+        "--title-prefix", default="", help="Optional prefix for panel titles"
+    )
     parser.add_argument("--output", help="Write output to file instead of stdout")
     parser.add_argument(
         "--pretty",
@@ -375,18 +457,18 @@ def parse_args() -> argparse.Namespace:
     return build_parser().parse_args()
 
 
-def load_schema(path: Path) -> Dict[str, Any]:
+def load_schema(path: Path) -> dict[str, Any]:
     with open(path, encoding="utf-8") as fp:
         return json.load(fp)
 
 
 def find_section_metrics(
-    schema: Dict[str, Any],
-    sections: List[str],
-    metrics: List[str],
-    metric_regex: Optional[str],
-) -> Dict[str, List[Dict[str, Any]]]:
-    selected: Dict[str, List[Dict[str, Any]]] = {}
+    schema: dict[str, Any],
+    sections: list[str],
+    metrics: list[str],
+    metric_regex: str | None,
+) -> dict[str, list[dict[str, Any]]]:
+    selected: dict[str, list[dict[str, Any]]] = {}
     regex = re.compile(metric_regex) if metric_regex else None
 
     for entry in schema.get("metrics", []):
@@ -405,8 +487,10 @@ def find_section_metrics(
     return selected
 
 
-def section_metrics_map(schema: Dict[str, Any], group_names: List[str]) -> Dict[str, List[Dict[str, Any]]]:
-    metrics_map: Dict[str, List[Dict[str, Any]]] = {}
+def section_metrics_map(
+    schema: dict[str, Any], group_names: list[str]
+) -> dict[str, list[dict[str, Any]]]:
+    metrics_map: dict[str, list[dict[str, Any]]] = {}
     for entry in schema.get("metrics", []):
         group = str(entry.get("group", ""))
         if group in group_names:
@@ -414,8 +498,8 @@ def section_metrics_map(schema: Dict[str, Any], group_names: List[str]) -> Dict[
     return metrics_map
 
 
-def list_sections(schema: Dict[str, Any]) -> str:
-    counts: Dict[str, int] = {}
+def list_sections(schema: dict[str, Any]) -> str:
+    counts: dict[str, int] = {}
     for entry in schema.get("metrics", []):
         group = str(entry.get("group", ""))
         counts[group] = counts.get(group, 0) + 1
@@ -426,7 +510,9 @@ def list_sections(schema: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def show_help_if_no_selector(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+def show_help_if_no_selector(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> None:
     if args.list:
         return
     if args.section or args.metric or args.all or args.metric_regex:
@@ -435,8 +521,12 @@ def show_help_if_no_selector(args: argparse.Namespace, parser: argparse.Argument
     parser.print_help()
     print("\nNo section or metric selector provided.")
     print("Use --help for full options, or:\n")
-    print("  python3 scripts/generate_grafana_panel.py --section procfs --datasource DS_PROMETHEUS --instance-var instance")
-    print("  python3 scripts/generate_grafana_panel.py --all --format array --datasource DS_PROMETHEUS --instance-var instance")
+    print(
+        "  python3 scripts/generate_grafana_panel.py --section procfs --datasource DS_PROMETHEUS --instance-var instance"
+    )
+    print(
+        "  python3 scripts/generate_grafana_panel.py --all --format array --datasource DS_PROMETHEUS --instance-var instance"
+    )
     raise SystemExit(0)
 
 
@@ -476,7 +566,9 @@ def main() -> None:
         print(output)
         return
 
-    datasource_ref = args.datasource if args.datasource_literal else f"${{{args.datasource}}}"
+    datasource_ref = (
+        args.datasource if args.datasource_literal else f"${{{args.datasource}}}"
+    )
 
     schema_sections = [g.get("name") for g in schema.get("groups", [])]
 
@@ -485,20 +577,26 @@ def main() -> None:
         unknown = [s for s in sections if s not in schema_sections]
         if unknown:
             raise SystemExit(f"Unknown section(s): {', '.join(unknown)}")
-        selected = find_section_metrics(schema, sections, args.metric or [], args.metric_regex)
+        selected = find_section_metrics(
+            schema, sections, args.metric or [], args.metric_regex
+        )
     else:
         selected = section_metrics_map(schema, schema_sections)
         if args.metric or args.metric_regex:
-            selected = find_section_metrics(schema, [], args.metric or [], args.metric_regex)
+            selected = find_section_metrics(
+                schema, [], args.metric or [], args.metric_regex
+            )
 
     if not selected:
         raise SystemExit("No metrics matched the selection")
 
     if not args.all and len(selected) > 1 and len(selected.keys()) > 1:
-        print("Multiple sections selected; use --all or --section to return one section only.")
+        print(
+            "Multiple sections selected; use --all or --section to return one section only."
+        )
         raise SystemExit(0)
 
-    panels: List[Dict[str, Any]] = []
+    panels: list[dict[str, Any]] = []
     for section_name, metric_names in sorted(selected.items()):
         title = section_name
         if args.title_prefix:

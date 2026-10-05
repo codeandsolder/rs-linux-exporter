@@ -1,6 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
+  "extends": [
+    "config:recommended"
+  ],
   "dependencyDashboard": true,
   "minimumReleaseAge": "3 days",
   "minimumReleaseAgeBehaviour": "timestamp-required",
@@ -12,7 +14,13 @@
   "packageRules": [
     {
       "description": "Automerge ordinary compatible updates after CI",
-      "matchUpdateTypes": ["minor", "patch", "pin", "pinDigest", "digest"],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "pinDigest",
+        "digest"
+      ],
       "matchCurrentVersion": "!/^0/",
       "automerge": true,
       "automergeType": "pr"
@@ -24,14 +32,32 @@
     },
     {
       "description": "Major updates are always attempted but stay open for the maintenance agent",
-      "matchUpdateTypes": ["major"],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "automerge": false
     },
     {
       "description": "Package replacements stay open for the maintenance agent",
-      "matchUpdateTypes": ["replacement"],
+      "matchUpdateTypes": [
+        "replacement"
+      ],
       "minimumReleaseAge": null,
       "automerge": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Keep pinned Python CLI tools in GitHub Actions current",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/.*\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "ruff==(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "ruff",
+      "datasourceTemplate": "pypi"
     }
   ]
 }

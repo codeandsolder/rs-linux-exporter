@@ -1,4 +1,6 @@
+use crate::collection::CollectionReport;
 use crate::metric_support::RegisterMetricResultExt;
+use crate::sysfs::read_trimmed;
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -35,18 +37,14 @@ fn metrics() -> &'static NvmeMetrics {
     NVME_METRICS.get_or_init(NvmeMetrics::new)
 }
 
-fn read_string(path: &Path) -> Option<String> {
-    fs::read_to_string(path).ok().map(|s| s.trim().to_string())
-}
-
 fn update_nvme_device(device_path: &Path, device_name: &str) {
     let metrics = metrics();
 
     // Read device attributes
-    let model = read_string(&device_path.join("model")).unwrap_or_default();
-    let serial = read_string(&device_path.join("serial")).unwrap_or_default();
-    let firmware_rev = read_string(&device_path.join("firmware_rev")).unwrap_or_default();
-    let state = read_string(&device_path.join("state")).unwrap_or_else(|| "unknown".to_string());
+    let model = read_trimmed(&device_path.join("model")).unwrap_or_default();
+    let serial = read_trimmed(&device_path.join("serial")).unwrap_or_default();
+    let firmware_rev = read_trimmed(&device_path.join("firmware_rev")).unwrap_or_default();
+    let state = read_trimmed(&device_path.join("state")).unwrap_or_else(|| "unknown".to_string());
 
     // Set info metric (always 1, labels carry the information)
     metrics
@@ -63,20 +61,20 @@ fn update_nvme_device(device_path: &Path, device_name: &str) {
     }
 }
 
-pub fn update_metrics() {
-    update_metrics_from_path(Path::new("/sys/class/nvme"));
+pub fn update_metrics() -> CollectionReport {
+    update_metrics_from_path(Path::new("/sys/class/nvme"))
 }
 
-fn update_metrics_from_path(base: &Path) {
-    let Ok(entries) = fs::read_dir(base) else {
-        return;
-    };
-
+fn update_metrics_from_path(base: &Path) -> CollectionReport {
     // Drop controllers that are gone, and stale nvme_info series left behind by
-    // a firmware upgrade (the revision is a label).
+    // a firmware upgrade (the revision is a label), even if sysfs vanished.
     let metrics = metrics();
     metrics.info.reset();
     metrics.state.reset();
+
+    let Ok(entries) = fs::read_dir(base) else {
+        return CollectionReport::error();
+    };
 
     for entry in entries.flatten() {
         let Ok(name) = entry.file_name().into_string() else {
@@ -96,6 +94,8 @@ fn update_metrics_from_path(base: &Path) {
             update_nvme_device(&path, &name);
         }
     }
+
+    CollectionReport::success()
 }
 
 #[cfg(test)]
@@ -107,10 +107,10 @@ mod tests {
     fn create_mock_nvme(dir: &Path, name: &str, model: &str, serial: &str, fw: &str, state: &str) {
         let nvme_dir = dir.join(name);
         fs::create_dir_all(&nvme_dir).unwrap();
-        fs::write(nvme_dir.join("model"), format!("{}\n", model)).unwrap();
-        fs::write(nvme_dir.join("serial"), format!("{}\n", serial)).unwrap();
-        fs::write(nvme_dir.join("firmware_rev"), format!("{}\n", fw)).unwrap();
-        fs::write(nvme_dir.join("state"), format!("{}\n", state)).unwrap();
+        fs::write(nvme_dir.join("model"), format!("{model}\n")).unwrap();
+        fs::write(nvme_dir.join("serial"), format!("{serial}\n")).unwrap();
+        fs::write(nvme_dir.join("firmware_rev"), format!("{fw}\n")).unwrap();
+        fs::write(nvme_dir.join("state"), format!("{state}\n")).unwrap();
     }
 
     #[test]
@@ -118,14 +118,14 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("test");
         fs::write(&file, "  hello world  \n").unwrap();
-        assert_eq!(read_string(&file), Some("hello world".to_string()));
+        assert_eq!(read_trimmed(&file), Some("hello world".to_string()));
     }
 
     #[test]
     fn test_read_string_missing_file() {
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("nonexistent");
-        assert_eq!(read_string(&file), None);
+        assert_eq!(read_trimmed(&file), None);
     }
 
     #[test]

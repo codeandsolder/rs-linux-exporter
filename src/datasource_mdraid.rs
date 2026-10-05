@@ -1,3 +1,4 @@
+use crate::collection::CollectionReport;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
@@ -108,17 +109,15 @@ fn reset_metrics(metrics: &MdraidMetrics) {
     metrics.sync_progress.reset();
 }
 
-pub fn update_metrics() {
-    let Ok(contents) = fs::read_to_string(MDSTAT_PATH) else {
-        return;
-    };
-
+pub fn update_metrics() -> CollectionReport {
     let metrics = metrics();
-
-    // Arrays, their states and their sync actions all come and go. Drop the
-    // previous scrape's series so a stale array or a state the array has since
-    // left does not keep reporting 1.
+    // Arrays, their states and their sync actions all come and go. Clear first
+    // so a failed mdstat read cannot preserve a vanished array.
     reset_metrics(metrics);
+
+    let Ok(contents) = fs::read_to_string(MDSTAT_PATH) else {
+        return CollectionReport::error();
+    };
 
     let mut lines = contents.lines().peekable();
 
@@ -226,4 +225,6 @@ pub fn update_metrics() {
                 .set(progress);
         }
     }
+
+    CollectionReport::success()
 }

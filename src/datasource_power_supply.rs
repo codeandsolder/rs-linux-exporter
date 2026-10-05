@@ -1,5 +1,7 @@
+use crate::collection::CollectionReport;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_i64;
+use crate::sysfs::{read_i64, read_trimmed};
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -100,20 +102,12 @@ fn metrics() -> &'static PowerSupplyMetrics {
     POWER_SUPPLY_METRICS.get_or_init(PowerSupplyMetrics::new)
 }
 
-fn read_string(path: &Path) -> Option<String> {
-    fs::read_to_string(path).ok().map(|s| s.trim().to_string())
-}
-
-fn read_i64(path: &Path) -> Option<i64> {
-    read_string(path)?.parse::<i64>().ok()
-}
-
 fn update_power_supply(supply_path: &Path, supply_name: &str) {
     let metrics = metrics();
 
     // Read supply type (Battery, Mains, UPS, USB)
     let supply_type =
-        read_string(&supply_path.join("type")).unwrap_or_else(|| "Unknown".to_string());
+        read_trimmed(&supply_path.join("type")).unwrap_or_else(|| "Unknown".to_string());
 
     // Set info metric
     metrics
@@ -130,7 +124,7 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
     }
 
     // Battery status (Charging, Discharging, Not charging, Full)
-    if let Some(status) = read_string(&supply_path.join("status")) {
+    if let Some(status) = read_trimmed(&supply_path.join("status")) {
         for state in ["Charging", "Discharging", "Not charging", "Full", "Unknown"] {
             metrics
                 .status
@@ -226,13 +220,9 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
     }
 }
 
-pub fn update_metrics() {
-    let base = Path::new("/sys/class/power_supply");
-    let Ok(entries) = fs::read_dir(base) else {
-        return;
-    };
-
-    // Batteries and USB supplies are hot-pluggable.
+pub fn update_metrics() -> CollectionReport {
+    // Batteries and USB supplies are hot-pluggable. Clear first so a sysfs
+    // failure cannot keep a removed supply alive in the registry.
     let metrics = metrics();
     metrics.info.reset();
     metrics.online.reset();
@@ -245,6 +235,11 @@ pub fn update_metrics() {
     metrics.charge_ah.reset();
     metrics.temperature_celsius.reset();
 
+    let base = Path::new("/sys/class/power_supply");
+    let Ok(entries) = fs::read_dir(base) else {
+        return CollectionReport::error();
+    };
+
     for entry in entries.flatten() {
         let Ok(name) = entry.file_name().into_string() else {
             continue;
@@ -256,6 +251,8 @@ pub fn update_metrics() {
 
         update_power_supply(&path, &name);
     }
+
+    CollectionReport::success()
 }
 
 #[cfg(test)]
@@ -267,8 +264,8 @@ mod tests {
         let supply_dir = dir.join(name);
         fs::create_dir_all(&supply_dir).unwrap();
         fs::write(supply_dir.join("type"), "Battery\n").unwrap();
-        fs::write(supply_dir.join("capacity"), format!("{}\n", capacity)).unwrap();
-        fs::write(supply_dir.join("status"), format!("{}\n", status)).unwrap();
+        fs::write(supply_dir.join("capacity"), format!("{capacity}\n")).unwrap();
+        fs::write(supply_dir.join("status"), format!("{status}\n")).unwrap();
         supply_dir
     }
 
@@ -276,7 +273,7 @@ mod tests {
         let supply_dir = dir.join(name);
         fs::create_dir_all(&supply_dir).unwrap();
         fs::write(supply_dir.join("type"), "Mains\n").unwrap();
-        fs::write(supply_dir.join("online"), format!("{}\n", online)).unwrap();
+        fs::write(supply_dir.join("online"), format!("{online}\n")).unwrap();
         supply_dir
     }
 
@@ -285,7 +282,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("type");
         fs::write(&file, "  Battery  \n").unwrap();
-        assert_eq!(read_string(&file), Some("Battery".to_string()));
+        assert_eq!(read_trimmed(&file), Some("Battery".to_string()));
     }
 
     #[test]
@@ -301,7 +298,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("current_now");
         fs::write(&file, "-500000\n").unwrap();
-        assert_eq!(read_i64(&file), Some(-500000));
+        assert_eq!(read_i64(&file), Some(-500_000));
     }
 
     #[test]

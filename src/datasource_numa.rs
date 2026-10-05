@@ -1,5 +1,7 @@
+use crate::collection::CollectionReport;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
+use crate::sysfs::read_trimmed;
 use prometheus::{Gauge, GaugeVec};
 use std::fs;
 use std::path::Path;
@@ -40,24 +42,21 @@ fn metrics() -> &'static NumaMetrics {
     NUMA_METRICS.get_or_init(NumaMetrics::new)
 }
 
-fn read_string(path: &Path) -> Option<String> {
-    fs::read_to_string(path).ok().map(|s| s.trim().to_string())
-}
-
 fn parse_meminfo(content: &str, node_name: &str) {
     let metrics = metrics();
 
     for line in content.lines() {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 4 {
+        let mut parts = line.split_whitespace();
+        let (Some("Node"), Some(_node), Some(field_name), Some(value)) =
+            (parts.next(), parts.next(), parts.next(), parts.next())
+        else {
             continue;
-        }
+        };
 
         // Format: "Node X FieldName: VALUE kB"
-        let field_name = parts[2].trim_end_matches(':');
-        let value: u64 = match parts[3].parse() {
-            Ok(v) => v,
-            Err(_) => continue,
+        let field_name = field_name.trim_end_matches(':');
+        let Ok(value) = value.parse::<u64>() else {
+            continue;
         };
 
         // Convert kB to bytes. A corrupt or absurd value would otherwise panic
@@ -75,15 +74,12 @@ fn parse_numastat(content: &str, node_name: &str) {
     let metrics = metrics();
 
     for line in content.lines() {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 2 {
+        let mut parts = line.split_whitespace();
+        let (Some(stat_name), Some(value)) = (parts.next(), parts.next()) else {
             continue;
-        }
-
-        let stat_name = parts[0];
-        let value: u64 = match parts[1].parse() {
-            Ok(v) => v,
-            Err(_) => continue,
+        };
+        let Ok(value) = value.parse::<u64>() else {
+            continue;
         };
 
         metrics
@@ -95,26 +91,30 @@ fn parse_numastat(content: &str, node_name: &str) {
 
 fn update_numa_node(node_path: &Path, node_name: &str) {
     // Read meminfo
-    if let Some(meminfo) = read_string(&node_path.join("meminfo")) {
+    if let Some(meminfo) = read_trimmed(&node_path.join("meminfo")) {
         parse_meminfo(&meminfo, node_name);
     }
 
     // Read numastat
-    if let Some(numastat) = read_string(&node_path.join("numastat")) {
+    if let Some(numastat) = read_trimmed(&node_path.join("numastat")) {
         parse_numastat(&numastat, node_name);
     }
 }
 
-pub fn update_metrics() {
-    update_metrics_from_path(Path::new("/sys/devices/system/node"));
+pub fn update_metrics() -> CollectionReport {
+    update_metrics_from_path(Path::new("/sys/devices/system/node"))
 }
 
-fn update_metrics_from_path(base: &Path) {
+fn update_metrics_from_path(base: &Path) -> CollectionReport {
+    let metrics = metrics();
+    metrics.meminfo.reset();
+    metrics.numastat.reset();
+    metrics.node_count.set(0.0);
+
     let Ok(entries) = fs::read_dir(base) else {
-        return;
+        return CollectionReport::error();
     };
 
-    let metrics = metrics();
     let mut node_count = 0;
 
     for entry in entries.flatten() {
@@ -133,6 +133,8 @@ fn update_metrics_from_path(base: &Path) {
     }
 
     metrics.node_count.set(f64::from(node_count));
+
+    CollectionReport::success()
 }
 
 #[cfg(test)]
@@ -140,7 +142,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    const MOCK_MEMINFO: &str = r#"Node 0 MemTotal:       16384000 kB
+    const MOCK_MEMINFO: &str = r"Node 0 MemTotal:       16384000 kB
 Node 0 MemFree:         8192000 kB
 Node 0 MemUsed:         8192000 kB
 Node 0 Active:          4096000 kB
@@ -160,15 +162,15 @@ Node 0 Shmem:            128000 kB
 Node 0 KernelStack:       16384 kB
 Node 0 SReclaimable:     512000 kB
 Node 0 SUnreclaim:       128000 kB
-"#;
+";
 
-    const MOCK_NUMASTAT: &str = r#"numa_hit 123456789
+    const MOCK_NUMASTAT: &str = r"numa_hit 123456789
 numa_miss 1234
 numa_foreign 5678
 interleave_hit 9012
 local_node 123456000
 other_node 789
-"#;
+";
 
     fn create_mock_node(dir: &Path, name: &str) -> std::path::PathBuf {
         let node_dir = dir.join(name);
@@ -183,7 +185,7 @@ other_node 789
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("test");
         fs::write(&file, "  content  \n").unwrap();
-        assert_eq!(read_string(&file), Some("content".to_string()));
+        assert_eq!(read_trimmed(&file), Some("content".to_string()));
     }
 
     #[test]
@@ -261,5 +263,24 @@ other_node 789
     fn test_update_metrics_from_path_handles_empty_dir() {
         let dir = TempDir::new().unwrap();
         update_metrics_from_path(dir.path());
+    }
+    #[test]
+    fn vanished_numa_tree_drops_previous_node_series() {
+        const STALE_NODE: &str = "__stale_numa_regression__";
+        let dir = TempDir::new().unwrap();
+        metrics()
+            .meminfo
+            .with_label_values(&[STALE_NODE, "MemTotal"])
+            .set(1.0);
+
+        update_metrics_from_path(&dir.path().join("missing"));
+        assert_eq!(metrics().node_count.get(), 0.0);
+        assert_eq!(
+            metrics()
+                .meminfo
+                .with_label_values(&[STALE_NODE, "MemTotal"])
+                .get(),
+            0.0
+        );
     }
 }

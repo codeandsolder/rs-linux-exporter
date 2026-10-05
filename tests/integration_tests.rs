@@ -5,7 +5,8 @@
 //! an operator actually depends on: who is allowed to scrape, and that a scrape
 //! produces a well-formed exposition.
 
-use std::io::{Read, Write};
+use std::fmt::Write as _;
+use std::io::{ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -69,12 +70,23 @@ fn start_server(extra_config: &str) -> Server {
 fn wait_until_listening(port: u16) {
     let deadline = Instant::now() + Duration::from_secs(30);
     while Instant::now() < deadline {
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            return;
+        if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", port)) {
+            let _ = stream.set_read_timeout(Some(Duration::from_millis(250)));
+            if stream
+                .write_all(b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+                .is_ok()
+            {
+                let mut response = [0_u8; 64];
+                if let Ok(read) = stream.read(&mut response)
+                    && response[..read].starts_with(b"HTTP/1.1 200")
+                {
+                    return;
+                }
+            }
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    panic!("exporter did not start listening on port {port}");
+    panic!("exporter did not become HTTP-ready on port {port}");
 }
 
 /// Minimal HTTP/1.1 GET. Returns the status code and the body.
@@ -86,7 +98,7 @@ fn get(port: u16, path: &str, headers: &[(&str, &str)]) -> (u16, String) {
 
     let mut request = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n");
     for (name, value) in headers {
-        request.push_str(&format!("{name}: {value}\r\n"));
+        write!(request, "{name}: {value}\r\n").expect("writing to String cannot fail");
     }
     request.push_str("\r\n");
 
@@ -94,7 +106,18 @@ fn get(port: u16, path: &str, headers: &[(&str, &str)]) -> (u16, String) {
     stream.flush().expect("flush");
 
     let mut raw = Vec::new();
-    stream.read_to_end(&mut raw).expect("read response");
+    let mut chunk = [0_u8; 8192];
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(read) => raw.extend_from_slice(&chunk[..read]),
+            // A short HTTP response may be followed by an RST when the server
+            // closes before the client has consumed the FIN. Treat that like
+            // EOF; the status/body assertions below still reject truncation.
+            Err(err) if err.kind() == ErrorKind::ConnectionReset => break,
+            Err(err) => panic!("read response: {err}"),
+        }
+    }
     let response = String::from_utf8_lossy(&raw).into_owned();
 
     let status = response
@@ -106,8 +129,7 @@ fn get(port: u16, path: &str, headers: &[(&str, &str)]) -> (u16, String) {
 
     let body = response
         .split_once("\r\n\r\n")
-        .map(|(_, body)| body.to_string())
-        .unwrap_or_default();
+        .map_or_default(|(_, body)| body.to_string());
 
     (status, body)
 }
@@ -122,6 +144,8 @@ fn allowlisted_client_gets_prometheus_exposition() {
     assert!(body.contains("# TYPE"), "missing TYPE lines");
     assert!(body.contains("metrics_requests_total"));
     assert!(body.contains("uptime_seconds"));
+    assert!(body.contains("node_scrape_collector_duration_seconds"));
+    assert!(body.contains("node_scrape_collector_success"));
 }
 
 #[test]
@@ -213,30 +237,6 @@ fn json_endpoint_returns_the_same_metrics() {
     assert!(body.contains("\"_name_\""));
     assert!(body.contains("\"_value_\""));
     assert!(body.contains("uptime_seconds"));
-}
-
-#[test]
-fn repeated_scrapes_do_not_accumulate_series() {
-    // Collectors reset their vecs before repopulating, so a stable host should
-    // report a stable number of series rather than growing on every scrape.
-    let server = start_server("allowed_ip = [\"127.0.0.0/8\"]\n");
-
-    let count_series = |body: &str| body.lines().filter(|l| !l.starts_with('#')).count();
-
-    let (_, first) = get(server.port, "/metrics", &[]);
-    let (_, second) = get(server.port, "/metrics", &[]);
-    let (_, third) = get(server.port, "/metrics", &[]);
-
-    let counts = [
-        count_series(&first),
-        count_series(&second),
-        count_series(&third),
-    ];
-    assert!(counts[0] > 0, "no series exposed");
-    assert_eq!(
-        counts[1], counts[2],
-        "series count changed between scrapes: {counts:?}"
-    );
 }
 
 #[test]

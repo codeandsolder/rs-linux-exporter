@@ -28,8 +28,10 @@ If you add or edit sections for this file, keep these formatting rules or the
 
 | Metric | Type | Description |
 |---|---|---|
-| `metrics_requests_total` | Counter | Total number of `/metrics` requests |
-| `metrics_requests_denied_total` | Counter | Total number of `/metrics` requests denied by ACL |
+| `metrics_requests_total` | Counter | Total number of metrics endpoint requests |
+| `metrics_requests_denied_total` | Counter | Total number of metrics endpoint requests denied by authentication or ACL |
+| `node_scrape_collector_duration_seconds` | GaugeVec | node_exporter-compatible duration of each enabled collector scrape |
+| `node_scrape_collector_success` | GaugeVec | node_exporter-compatible success state for each enabled collector (1 = success) |
 
 ## procfs
 
@@ -82,12 +84,6 @@ If you add or edit sections for this file, keep these formatting rules or the
 | `edac_dimm_correctable_errors_total` | GaugeVec | Correctable errors on this DIMM |
 | `edac_dimm_uncorrectable_errors_total` | GaugeVec | Uncorrectable errors on this DIMM |
 | `edac_dimm_size_mb` | GaugeVec | DIMM size in MB |
-
-## ethtool
-
-| Metric | Type | Description |
-|---|---|---|
-| `ethtool_stats` | GaugeVec | Ethernet statistics via ethtool netlink |
 
 ## filesystems
 
@@ -192,10 +188,6 @@ If you add or edit sections for this file, keep these formatting rules or the
 | `thermal_zone_count` | Gauge | Number of thermal zones |
 | `thermal_cooling_device_count` | Gauge | Number of cooling devices |
 
-## TODO (documentation gaps)
-
-- `ethtool_stats`: collection is currently disabled in `update_metrics` (`ethtool` module exists, but is not enabled yet).
-
 ## Schema generation for Python tooling
 
 `METRICS.md` now includes enough structured content for tooling to parse. Use:
@@ -238,6 +230,10 @@ python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROM
 ```
 
 ## Metric labels and field catalogs
+
+### node_scrape_collector_duration_seconds labels: `collector`
+
+### node_scrape_collector_success labels: `collector`
 
 ### procfs (raw metric families)
 
@@ -654,249 +650,13 @@ python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROM
 - `udp_lite_in_csum_errors`
 - `udp_lite_ignored_multi`
 
-`netstat` field values (`field`) are generated from `/proc/net/netstat` by section + header key.
-Common section prefixes:
+`netstat` field values (`field`) are generated directly from `/proc/net/netstat` by section + header key using the exporter's CamelCase-to-snake-case normalization. The machine-readable schema refreshes the exact host-visible field catalog with `--with-runtime-fields`.
 
-- `tcp_ext_*` (135 fields)
-- `ip_ext_*` (18 fields)
-- `mptcp_ext_*` (76 fields)
+Common section prefixes include:
 
-`tcp_ext_` field values include:
-
-- `tcp_ext_syncookies_sent`
-- `tcp_ext_syncookies_recv`
-- `tcp_ext_syncookies_failed`
-- `tcp_ext_embryonic_rsts`
-- `tcp_ext_prune_called`
-- `tcp_ext_rcv_pruned`
-- `tcp_ext_ofo_pruned`
-- `tcp_ext_out_of_window_icmps`
-- `tcp_ext_lock_dropped_icmps`
-- `tcp_ext_arp_filter`
-- `tcp_ext_tw`
-- `tcp_ext_twrecycled`
-- `tcp_ext_twkilled`
-- `tcp_ext_pawsactive`
-- `tcp_ext_pawsestab`
-- `tcp_ext_beyond_window`
-- `tcp_ext_tsecr_rejected`
-- `tcp_ext_pawsold_ack`
-- `tcp_ext_pawstimewait`
-- `tcp_ext_delayed_acks`
-- `tcp_ext_delayed_acklocked`
-- `tcp_ext_delayed_acklost`
-- `tcp_ext_listen_overflows`
-- `tcp_ext_listen_drops`
-- `tcp_ext_tcphphits`
-- `tcp_ext_tcppure_acks`
-- `tcp_ext_tcphpacks`
-- `tcp_ext_tcpsackrecovery`
-- `tcp_ext_tcpsackreneging`
-- `tcp_ext_tcpsackreorder`
-- `tcp_ext_tcprenoreorder`
-- `tcp_ext_tcptsreorder`
-- `tcp_ext_tcpfull_undo`
-- `tcp_ext_tcpartial_undo`
-- `tcp_ext_tcpdsackundo`
-- `tcp_ext_tcploss_undo`
-- `tcp_ext_tcplost_retransmit`
-- `tcp_ext_tcpreno_failures`
-- `tcp_ext_tcpsack_failures`
-- `tcp_ext_tcploss_failures`
-- `tcp_ext_tcpfast_retrans`
-- `tcp_ext_tcpslow_start_retrans`
-- `tcp_ext_tcptimeouts`
-- `tcp_ext_tcploss_probes`
-- `tcp_ext_tcploss_probe_recovery`
-- `tcp_ext_tcpreno_recovery_fail`
-- `tcp_ext_tcpsack_recovery_fail`
-- `tcp_ext_tcprcv_collapsed`
-- `tcp_ext_tcpbacklog_coalesce`
-- `tcp_ext_tcpdsackold_sent`
-- `tcp_ext_tcpdsackofo_sent`
-- `tcp_ext_tcpdsackrecv`
-- `tcp_ext_tcpdsackofo_recv`
-- `tcp_ext_tcpabort_on_data`
-- `tcp_ext_tcpabort_on_close`
-- `tcp_ext_tcpabort_on_memory`
-- `tcp_ext_tcpabort_on_timeout`
-- `tcp_ext_tcpabort_on_linger`
-- `tcp_ext_tcpabort_failed`
-- `tcp_ext_tcpmemory_pressures`
-- `tcp_ext_tcpmemory_pressures_chrono`
-- `tcp_ext_tcpsackdiscard`
-- `tcp_ext_tcpdsackignored_old`
-- `tcp_ext_tcpdsackignored_no_undo`
-- `tcp_ext_tcpspurious_rtos`
-- `tcp_ext_tcpmd_5_not_found`
-- `tcp_ext_tcpmd_5_unexpected`
-- `tcp_ext_tcpmd_5_failure`
-- `tcp_ext_tcpsack_shifted`
-- `tcp_ext_tcpsack_merged`
-- `tcp_ext_tcpsack_shift_fallback`
-- `tcp_ext_tcpbacklog_drop`
-- `tcp_ext_pfmemalloc_drop`
-- `tcp_ext_tcpminttldrop`
-- `tcp_ext_tcpdefer_accept_drop`
-- `tcp_ext_ip_reverse_path_filter`
-- `tcp_ext_tcptime_wait_overflow`
-- `tcp_ext_tcpreq_qfull_do_cookies`
-- `tcp_ext_tcpreq_qfull_drop`
-- `tcp_ext_tcpp_reatfail`
-- `tcp_ext_tcprcv_coalesce`
-- `tcp_ext_tcpofoqueue`
-- `tcp_ext_tcpofodrop`
-- `tcp_ext_tcpofo_merge`
-- `tcp_ext_tcpchallenge_ack`
-- `tcp_ext_tcpsynchallenge`
-- `tcp_ext_tcpfast_open_active`
-- `tcp_ext_tcpfast_open_active_fail`
-- `tcp_ext_tcpfast_open_passive`
-- `tcp_ext_tcpfast_open_passive_fail`
-- `tcp_ext_tcpfast_open_listen_overflow`
-- `tcp_ext_tcpfast_open_cookie_reqd`
-- `tcp_ext_tcpfast_open_blackhole`
-- `tcp_ext_tcpspurious_rtx_host_queues`
-- `tcp_ext_busy_poll_rx_packets`
-- `tcp_ext_tcpauto_corking`
-- `tcp_ext_tcpfrom_zero_window_adv`
-- `tcp_ext_tcpto_zero_window_adv`
-- `tcp_ext_tcpwant_zero_window_adv`
-- `tcp_ext_tcpsyn_retrans`
-- `tcp_ext_tcporig_data_sent`
-- `tcp_ext_tcphystart_train_detect`
-- `tcp_ext_tcphystart_train_cwnd`
-- `tcp_ext_tcphystart_delay_detect`
-- `tcp_ext_tcphystart_delay_cwnd`
-- `tcp_ext_tcpackskipped_syn_recv`
-- `tcp_ext_tcpackskipped_paws`
-- `tcp_ext_tcpackskipped_seq`
-- `tcp_ext_tcpackskipped_fin_wait_2`
-- `tcp_ext_tcpackskipped_time_wait`
-- `tcp_ext_tcpackskipped_challenge`
-- `tcp_ext_tcpwin_probe`
-- `tcp_ext_tcpkeep_alive`
-- `tcp_ext_tcpmtupfail`
-- `tcp_ext_tcpmtupsuccess`
-- `tcp_ext_tcpdelivered`
-- `tcp_ext_tcpdelivered_ce`
-- `tcp_ext_tcpack_compressed`
-- `tcp_ext_tcpzero_window_drop`
-- `tcp_ext_tcprcv_qdrop`
-- `tcp_ext_tcpwqueue_too_big`
-- `tcp_ext_tcpfast_open_passive_alt_key`
-- `tcp_ext_tcp_timeout_rehash`
-- `tcp_ext_tcp_duplicate_data_rehash`
-- `tcp_ext_tcpdsackrecv_segs`
-- `tcp_ext_tcpdsackignored_dubious`
-- `tcp_ext_tcpmigrate_req_success`
-- `tcp_ext_tcpmigrate_req_failure`
-- `tcp_ext_tcpplb_rehash`
-- `tcp_ext_tcpaorequired`
-- `tcp_ext_tcpaobad`
-- `tcp_ext_tcpao_key_not_found`
-- `tcp_ext_tcpaogood`
-- `tcp_ext_tcpaodropped_icmps`
-
-`ip_ext_` field values include:
-
-- `ip_ext_in_no_routes`
-- `ip_ext_in_truncated_pkts`
-- `ip_ext_in_mcast_pkts`
-- `ip_ext_out_mcast_pkts`
-- `ip_ext_in_bcast_pkts`
-- `ip_ext_out_bcast_pkts`
-- `ip_ext_in_octets`
-- `ip_ext_out_octets`
-- `ip_ext_in_mcast_octets`
-- `ip_ext_out_mcast_octets`
-- `ip_ext_in_bcast_octets`
-- `ip_ext_out_bcast_octets`
-- `ip_ext_in_csum_errors`
-- `ip_ext_in_no_ectpkts`
-- `ip_ext_in_ect_1_pkts`
-- `ip_ext_in_ect_0_pkts`
-- `ip_ext_in_cepkts`
-- `ip_ext_reasm_overlaps`
-
-`mptcp_ext_` field values include:
-
-- `mptcp_ext_mpcapable_synrx`
-- `mptcp_ext_mpcapable_syntx`
-- `mptcp_ext_mpcapable_synackrx`
-- `mptcp_ext_mpcapable_ackrx`
-- `mptcp_ext_mpcapable_fallback_ack`
-- `mptcp_ext_mpcapable_fallback_synack`
-- `mptcp_ext_mpcapable_syntxdrop`
-- `mptcp_ext_mpcapable_syntxdisabled`
-- `mptcp_ext_mpcapable_endp_attempt`
-- `mptcp_ext_mpfallback_token_init`
-- `mptcp_ext_mptcpretrans`
-- `mptcp_ext_mpjoin_no_token_found`
-- `mptcp_ext_mpjoin_syn_rx`
-- `mptcp_ext_mpjoin_syn_backup_rx`
-- `mptcp_ext_mpjoin_syn_ack_rx`
-- `mptcp_ext_mpjoin_syn_ack_backup_rx`
-- `mptcp_ext_mpjoin_syn_ack_h_mac_failure`
-- `mptcp_ext_mpjoin_ack_rx`
-- `mptcp_ext_mpjoin_ack_h_mac_failure`
-- `mptcp_ext_mpjoin_rejected`
-- `mptcp_ext_mpjoin_syn_tx`
-- `mptcp_ext_mpjoin_syn_tx_creat_sk_err`
-- `mptcp_ext_mpjoin_syn_tx_bind_err`
-- `mptcp_ext_mpjoin_syn_tx_connect_err`
-- `mptcp_ext_dssnot_matching`
-- `mptcp_ext_dsscorruption_fallback`
-- `mptcp_ext_dsscorruption_reset`
-- `mptcp_ext_infinite_map_tx`
-- `mptcp_ext_infinite_map_rx`
-- `mptcp_ext_dssno_match_tcp`
-- `mptcp_ext_data_csum_err`
-- `mptcp_ext_ofoqueue_tail`
-- `mptcp_ext_ofoqueue`
-- `mptcp_ext_ofomerge`
-- `mptcp_ext_no_dssin_window`
-- `mptcp_ext_duplicate_data`
-- `mptcp_ext_add_addr`
-- `mptcp_ext_add_addr_tx`
-- `mptcp_ext_add_addr_tx_drop`
-- `mptcp_ext_echo_add`
-- `mptcp_ext_echo_add_tx`
-- `mptcp_ext_echo_add_tx_drop`
-- `mptcp_ext_port_add`
-- `mptcp_ext_add_addr_drop`
-- `mptcp_ext_mpjoin_port_syn_rx`
-- `mptcp_ext_mpjoin_port_syn_ack_rx`
-- `mptcp_ext_mpjoin_port_ack_rx`
-- `mptcp_ext_mismatch_port_syn_rx`
-- `mptcp_ext_mismatch_port_ack_rx`
-- `mptcp_ext_rm_addr`
-- `mptcp_ext_rm_addr_drop`
-- `mptcp_ext_rm_addr_tx`
-- `mptcp_ext_rm_addr_tx_drop`
-- `mptcp_ext_rm_subflow`
-- `mptcp_ext_mpprio_tx`
-- `mptcp_ext_mpprio_rx`
-- `mptcp_ext_mpfail_tx`
-- `mptcp_ext_mpfail_rx`
-- `mptcp_ext_mpfastclose_tx`
-- `mptcp_ext_mpfastclose_rx`
-- `mptcp_ext_mprst_tx`
-- `mptcp_ext_mprst_rx`
-- `mptcp_ext_rcv_pruned`
-- `mptcp_ext_subflow_stale`
-- `mptcp_ext_subflow_recover`
-- `mptcp_ext_snd_wnd_shared`
-- `mptcp_ext_rcv_wnd_shared`
-- `mptcp_ext_rcv_wnd_conflict_update`
-- `mptcp_ext_rcv_wnd_conflict`
-- `mptcp_ext_mpcurr_estab`
-- `mptcp_ext_blackhole`
-- `mptcp_ext_mpcapable_data_fallback`
-- `mptcp_ext_md_5_sig_fallback`
-- `mptcp_ext_dss_fallback`
-- `mptcp_ext_simult_connect_fallback`
-- `mptcp_ext_fallback_failed`
+- `tcp_ext_*`
+- `ip_ext_*`
+- `mp_tcp_ext_*`
 
 ### Conntrack
 

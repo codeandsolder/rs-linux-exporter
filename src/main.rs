@@ -2,6 +2,8 @@ use crate::metric_support::RegisterMetricResultExt;
 #[macro_use]
 extern crate rocket;
 
+mod collection;
+mod collectors;
 mod config;
 mod datasource_conntrack;
 mod datasource_cpufreq;
@@ -18,34 +20,36 @@ mod datasource_procfs;
 mod datasource_rapl;
 mod datasource_softnet;
 mod datasource_thermal;
+mod exposition;
 mod metric_support;
 mod runtime;
+mod sysfs;
 
 use crate::config::AppConfig;
-use prometheus::{Encoder, IntCounter, TextEncoder};
+use crate::exposition::RenderError;
+use prometheus::IntCounter;
 use rocket::Config;
 use rocket::config::TlsConfig;
 use rocket::http::{ContentType, Status};
 use rocket::request::{FromRequest, Outcome, Request};
 use rocket::response::status;
 use rocket::tokio::task::spawn_blocking;
-use serde_json::Value as JsonValue;
 use std::net::IpAddr;
 use std::sync::Mutex;
+use std::time::Instant;
 
 /// Extracts Bearer token from Authorization header
-pub struct BearerToken(Option<String>);
+struct BearerToken<'r>(Option<&'r str>);
 
 #[rocket::async_trait]
-impl<'r> FromRequest<'r> for BearerToken {
+impl<'r> FromRequest<'r> for BearerToken<'r> {
     type Error = ();
 
     async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let token = request
             .headers()
             .get_one("Authorization")
-            .and_then(|header| header.strip_prefix("Bearer "))
-            .map(std::string::ToString::to_string);
+            .and_then(|header| header.strip_prefix("Bearer "));
         Outcome::Success(Self(token))
     }
 }
@@ -55,16 +59,29 @@ static METRICS_REQUESTS_TOTAL: OnceLock<IntCounter> = OnceLock::new();
 static METRICS_REQUESTS_DENIED_TOTAL: OnceLock<IntCounter> = OnceLock::new();
 static APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
 
-/// Serialises scrapes. Collectors reset their vecs and repopulate them, so two
-/// concurrent scrapes would let one observe the other's half-rebuilt state. It
-/// also stops N simultaneous requests from doing N times the hardware polling.
-static SCRAPE_LOCK: Mutex<()> = Mutex::new(());
+/// Serialises collection and exposition. Collectors reset their vecs and repopulate
+/// them, so rendering must not overlap a refresh. Overlapping requests are
+/// coalesced: waiters reuse the snapshot completed after their request started.
+struct ScrapeState {
+    last_completed: Option<Instant>,
+}
+
+impl ScrapeState {
+    fn needs_refresh(&self, requested_at: Instant) -> bool {
+        self.last_completed
+            .is_none_or(|completed| completed < requested_at)
+    }
+}
+
+static SCRAPE_STATE: Mutex<ScrapeState> = Mutex::new(ScrapeState {
+    last_completed: None,
+});
 
 fn metrics_requests_total() -> &'static IntCounter {
     METRICS_REQUESTS_TOTAL.get_or_init(|| {
         prometheus::register_int_counter!(
             "metrics_requests_total",
-            "Total number of /metrics requests"
+            "Total number of metrics endpoint requests"
         )
         .or_exit("metrics_requests_total")
     })
@@ -74,7 +91,7 @@ fn metrics_requests_denied_total() -> &'static IntCounter {
     METRICS_REQUESTS_DENIED_TOTAL.get_or_init(|| {
         prometheus::register_int_counter!(
             "metrics_requests_denied_total",
-            "Total number of /metrics requests denied by ACL"
+            "Total number of metrics endpoint requests denied by authentication or ACL"
         )
         .or_exit("metrics_requests_denied_total")
     })
@@ -84,195 +101,43 @@ fn app_config() -> &'static AppConfig {
     APP_CONFIG.get_or_init(AppConfig::load)
 }
 
-fn update_metrics() {
-    let config = app_config();
-
-    if config.is_datasource_enabled("procfs") {
-        datasource_procfs::update_metrics(config);
-    }
-    if config.is_datasource_enabled("cpufreq") {
-        datasource_cpufreq::update_metrics();
-    }
-    if config.is_datasource_enabled("softnet") {
-        datasource_softnet::update_metrics();
-    }
-    if config.is_datasource_enabled("conntrack") {
-        datasource_conntrack::update_metrics();
-    }
-    if config.is_datasource_enabled("filesystems") {
-        datasource_filesystems::update_metrics(config);
-    }
-    if config.is_datasource_enabled("hwmon") {
-        datasource_hwmon::update_metrics();
-    }
-    if config.is_datasource_enabled("ipmi") {
-        datasource_ipmi::update_metrics();
-    }
-    if config.is_datasource_enabled("mdraid") {
-        datasource_mdraid::update_metrics();
-    }
-    if config.is_datasource_enabled("thermal") {
-        datasource_thermal::update_metrics();
-    }
-    if config.is_datasource_enabled("rapl") {
-        datasource_rapl::update_metrics();
-    }
-    if config.is_datasource_enabled("power_supply") {
-        datasource_power_supply::update_metrics();
-    }
-    if config.is_datasource_enabled("nvme") {
-        datasource_nvme::update_metrics();
-    }
-    if config.is_datasource_enabled("edac") {
-        datasource_edac::update_metrics();
-    }
-    if config.is_datasource_enabled("netdev_sysfs") {
-        datasource_netdev_sysfs::update_metrics(config);
-    }
-    if config.is_datasource_enabled("numa") {
-        datasource_numa::update_metrics();
-    }
-    // TODO: Implementation in progress; ethtool netlink stats disabled for now.
-}
-
-fn push_json_sample(
-    samples: &mut Vec<serde_json::Map<String, JsonValue>>,
-    name: &str,
-    labels: &[(String, String)],
-    value: JsonValue,
-) {
-    let mut map = serde_json::Map::new();
-    map.insert("_name_".to_string(), JsonValue::from(name));
-    for (key, value) in labels {
-        map.insert(key.clone(), JsonValue::from(value.clone()));
-    }
-    map.insert("_value_".to_string(), value);
-    samples.push(map);
-}
-
-fn metrics_json_payload() -> String {
-    let families = prometheus::gather();
-    let mut samples: Vec<serde_json::Map<String, JsonValue>> = Vec::new();
-
-    for family in families {
-        let name = family.name();
-        let metric_type = family.get_field_type();
-        for metric in family.get_metric() {
-            let base_labels: Vec<(String, String)> = metric
-                .get_label()
-                .iter()
-                .map(|label| (label.name().to_string(), label.value().to_string()))
-                .collect();
-
-            match metric_type {
-                prometheus::proto::MetricType::COUNTER => {
-                    let value = JsonValue::from(metric.get_counter().value());
-                    push_json_sample(&mut samples, name, &base_labels, value);
-                }
-                prometheus::proto::MetricType::GAUGE => {
-                    let value = JsonValue::from(metric.get_gauge().value());
-                    push_json_sample(&mut samples, name, &base_labels, value);
-                }
-                prometheus::proto::MetricType::UNTYPED => {
-                    // UNTYPED metrics are not directly supported, skip
-                }
-                prometheus::proto::MetricType::HISTOGRAM => {
-                    let histogram = metric.get_histogram();
-                    for bucket in histogram.get_bucket() {
-                        let mut labels = base_labels.clone();
-                        labels.push(("le".to_string(), bucket.upper_bound().to_string()));
-                        let value = JsonValue::from(bucket.cumulative_count());
-                        let bucket_name = format!("{name}_bucket");
-                        push_json_sample(&mut samples, &bucket_name, &labels, value);
-                    }
-                    let sum_name = format!("{name}_sum");
-                    let count_name = format!("{name}_count");
-                    push_json_sample(
-                        &mut samples,
-                        &sum_name,
-                        &base_labels,
-                        JsonValue::from(histogram.sample_sum()),
-                    );
-                    push_json_sample(
-                        &mut samples,
-                        &count_name,
-                        &base_labels,
-                        JsonValue::from(histogram.sample_count()),
-                    );
-                }
-                prometheus::proto::MetricType::SUMMARY => {
-                    let summary = metric.get_summary();
-                    for quantile in summary.get_quantile() {
-                        let mut labels = base_labels.clone();
-                        labels.push(("quantile".to_string(), quantile.quantile().to_string()));
-                        let value = JsonValue::from(quantile.value());
-                        let quantile_name = format!("{name}_quantile");
-                        push_json_sample(&mut samples, &quantile_name, &labels, value);
-                    }
-                    let sum_name = format!("{name}_sum");
-                    let count_name = format!("{name}_count");
-                    push_json_sample(
-                        &mut samples,
-                        &sum_name,
-                        &base_labels,
-                        JsonValue::from(summary.sample_sum()),
-                    );
-                    push_json_sample(
-                        &mut samples,
-                        &count_name,
-                        &base_labels,
-                        JsonValue::from(summary.sample_count()),
-                    );
-                }
-            }
-        }
-    }
-
-    serde_json::to_string(&samples).unwrap_or_else(|_| "[]".to_string())
-}
-
 /// Refreshes every enabled datasource and renders the result.
 ///
 /// Runs on the blocking pool: collectors do synchronous filesystem and netlink
 /// I/O, and `statvfs` on an unresponsive network mount or an IPMI controller
 /// that is slow to answer can block for seconds. Doing that directly in the
 /// handler would tie up a Rocket worker thread for the duration.
-fn refresh_and_render<T>(render: impl FnOnce() -> T) -> T {
-    let _guard = SCRAPE_LOCK
+#[expect(
+    clippy::significant_drop_tightening,
+    reason = "the scrape mutex must cover rendering so another refresh cannot reset metric vectors mid-encoding"
+)]
+fn refresh_and_render(render: fn() -> Result<String, RenderError>) -> Result<String, RenderError> {
+    let requested_at = Instant::now();
+    let mut state = SCRAPE_STATE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    update_metrics();
-    render()
-}
-
-fn render_text() -> String {
-    let encoder = TextEncoder::new();
-    let metric_families = prometheus::gather();
-    let mut buffer = Vec::new();
-    if let Err(err) = encoder.encode(&metric_families, &mut buffer) {
-        eprintln!("Failed to encode metrics: {err}");
-        return String::new();
+    let needs_refresh = state.needs_refresh(requested_at);
+    if needs_refresh {
+        collectors::update_metrics(app_config());
+        state.last_completed = Some(Instant::now());
     }
-    String::from_utf8(buffer).unwrap_or_default()
+    render()
 }
 
 const fn collection_failed() -> status::Custom<&'static str> {
     status::Custom(Status::InternalServerError, "collection failed")
 }
 
-#[get("/metrics")]
-async fn metrics(
+fn authorize_metrics_request(
+    endpoint: &'static str,
     client_ip: Option<IpAddr>,
-    token: BearerToken,
-) -> Result<(ContentType, String), status::Custom<&'static str>> {
-    metrics_requests_total().inc();
+    token: Option<&str>,
+) -> Result<(), status::Custom<&'static str>> {
     let config = app_config();
-
-    // Check token authentication first
-    if !config.is_token_valid(token.0.as_deref()) {
+    if !config.is_token_valid(token) {
         if config.log_denied_requests {
             eprintln!(
-                "Denied /metrics request from {} (invalid token)",
+                "Denied {endpoint} request from {} (invalid token)",
                 client_ip.map_or_else(|| "<unknown>".to_string(), |ip| ip.to_string())
             );
         }
@@ -280,21 +145,29 @@ async fn metrics(
         return Err(status::Custom(Status::Unauthorized, "unauthorized"));
     }
 
-    // Check IP allowlist
-    let is_allowed = client_ip.is_some_and(|ip| config.is_metrics_ip_allowed(ip));
-    if !is_allowed {
+    if !client_ip.is_some_and(|ip| config.is_metrics_ip_allowed(ip)) {
         if config.log_denied_requests {
             eprintln!(
-                "Denied /metrics request from {}",
+                "Denied {endpoint} request from {}",
                 client_ip.map_or_else(|| "<unknown>".to_string(), |ip| ip.to_string())
             );
         }
         metrics_requests_denied_total().inc();
         return Err(status::Custom(Status::Forbidden, "access denied"));
     }
+    Ok(())
+}
 
-    match spawn_blocking(|| refresh_and_render(render_text)).await {
-        Ok(body) => Ok((ContentType::Plain, body)),
+async fn collect_and_render(
+    renderer: fn() -> Result<String, RenderError>,
+    content_type: ContentType,
+) -> Result<(ContentType, String), status::Custom<&'static str>> {
+    match spawn_blocking(move || refresh_and_render(renderer)).await {
+        Ok(Ok(body)) => Ok((content_type, body)),
+        Ok(Err(err)) => {
+            eprintln!("Metrics rendering failed: {err}");
+            Err(collection_failed())
+        }
         Err(err) => {
             eprintln!("Metrics collection task failed: {err}");
             Err(collection_failed())
@@ -302,46 +175,24 @@ async fn metrics(
     }
 }
 
+#[get("/metrics")]
+async fn metrics(
+    client_ip: Option<IpAddr>,
+    token: BearerToken<'_>,
+) -> Result<(ContentType, String), status::Custom<&'static str>> {
+    metrics_requests_total().inc();
+    authorize_metrics_request("/metrics", client_ip, token.0)?;
+    collect_and_render(exposition::render_text, ContentType::Plain).await
+}
+
 #[get("/metrics.json")]
 async fn metrics_json(
     client_ip: Option<IpAddr>,
-    token: BearerToken,
+    token: BearerToken<'_>,
 ) -> Result<(ContentType, String), status::Custom<&'static str>> {
     metrics_requests_total().inc();
-    let config = app_config();
-
-    // Check token authentication first
-    if !config.is_token_valid(token.0.as_deref()) {
-        if config.log_denied_requests {
-            eprintln!(
-                "Denied /metrics.json request from {} (invalid token)",
-                client_ip.map_or_else(|| "<unknown>".to_string(), |ip| ip.to_string())
-            );
-        }
-        metrics_requests_denied_total().inc();
-        return Err(status::Custom(Status::Unauthorized, "unauthorized"));
-    }
-
-    // Check IP allowlist
-    let is_allowed = client_ip.is_some_and(|ip| config.is_metrics_ip_allowed(ip));
-    if !is_allowed {
-        if config.log_denied_requests {
-            eprintln!(
-                "Denied /metrics.json request from {}",
-                client_ip.map_or_else(|| "<unknown>".to_string(), |ip| ip.to_string())
-            );
-        }
-        metrics_requests_denied_total().inc();
-        return Err(status::Custom(Status::Forbidden, "access denied"));
-    }
-
-    match spawn_blocking(|| refresh_and_render(metrics_json_payload)).await {
-        Ok(body) => Ok((ContentType::JSON, body)),
-        Err(err) => {
-            eprintln!("Metrics collection task failed: {err}");
-            Err(collection_failed())
-        }
-    }
+    authorize_metrics_request("/metrics.json", client_ip, token.0)?;
+    collect_and_render(exposition::render_json, ContentType::JSON).await
 }
 
 #[get("/")]
@@ -366,20 +217,34 @@ fn not_found(request: &rocket::Request<'_>) -> &'static str {
 #[launch]
 fn rocket() -> _ {
     runtime::init();
+    let config = app_config();
+    let _ = metrics_requests_total();
+    let _ = metrics_requests_denied_total();
     if runtime::debug_enabled() {
         eprintln!("Debug logging enabled.");
     }
-    // Initialize config early to run subsystem availability checks and print messages
-    let _ = app_config();
-    let bind = app_config().bind_addr();
+    let bind = match config.bind_addr() {
+        Ok(bind) => bind,
+        Err(err) => {
+            eprintln!("Invalid runtime configuration: {err}");
+            std::process::exit(78);
+        }
+    };
     let mut figment = Config::figment()
         .merge(("address", bind.ip().to_string()))
         .merge(("port", bind.port()))
         .merge(("ip_header", false));
 
-    if let Some((cert, key)) = app_config().tls_config() {
-        figment = figment.merge(("tls", TlsConfig::from_paths(cert, key)));
-        eprintln!("TLS enabled with cert: {cert}");
+    match config.tls_config() {
+        Ok(Some((cert, key))) => {
+            figment = figment.merge(("tls", TlsConfig::from_paths(cert, key)));
+            eprintln!("TLS enabled with cert: {cert}");
+        }
+        Ok(None) => {}
+        Err(err) => {
+            eprintln!("Invalid runtime configuration: {err}");
+            std::process::exit(78);
+        }
     }
 
     rocket::custom(figment)
@@ -389,10 +254,11 @@ fn rocket() -> _ {
 
 #[cfg(test)]
 mod tests {
-    use super::rocket;
+    use super::{ScrapeState, rocket};
     use rocket::http::Status;
     use rocket::local::blocking::Client;
     use std::net::SocketAddr;
+    use std::time::Instant;
 
     #[test]
     fn index_returns_hint() {
@@ -404,6 +270,22 @@ mod tests {
             response.into_string().unwrap_or_default(),
             "rs-linux-exporter: /metrics"
         );
+    }
+
+    #[test]
+    fn overlapping_scrapes_reuse_the_completed_snapshot() {
+        let start = Instant::now();
+        let mut state = ScrapeState {
+            last_completed: None,
+        };
+        assert!(state.needs_refresh(start));
+
+        let overlapping_request = start + std::time::Duration::from_millis(1);
+        state.last_completed = Some(start + std::time::Duration::from_millis(2));
+        assert!(!state.needs_refresh(overlapping_request));
+
+        let later_request = start + std::time::Duration::from_millis(3);
+        assert!(state.needs_refresh(later_request));
     }
 
     #[test]
@@ -469,9 +351,7 @@ mod tests {
         // Counter should have incremented
         assert!(
             count2 > count1,
-            "Counter should increment: {} -> {}",
-            count1,
-            count2
+            "Counter should increment: {count1} -> {count2}"
         );
     }
 

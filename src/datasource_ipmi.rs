@@ -1,3 +1,4 @@
+use crate::collection::CollectionReport;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::runtime::debug_enabled;
 use ipmi_rs::sensor_event::{GetSensorReading, ThresholdReading};
@@ -84,12 +85,14 @@ fn unit_label(sensor: &FullSensorRecord) -> String {
     }
 }
 
-pub fn update_metrics() {
-    let Some(mut ipmi) = open_ipmi() else {
-        return;
-    };
-
+pub fn update_metrics() -> CollectionReport {
     let metrics = metrics();
+    metrics.sensor_reading.reset();
+
+    let Some(mut ipmi) = open_ipmi() else {
+        return CollectionReport::error();
+    };
+    let mut report = CollectionReport::success();
 
     let records: Vec<_> = ipmi.sdrs().collect();
     for record in records {
@@ -101,6 +104,7 @@ pub fn update_metrics() {
         let raw_reading = match ipmi.send_recv(GetSensorReading::for_sensor_key(full.key_data())) {
             Ok(reading) => reading,
             Err(err) => {
+                report.record_error();
                 if debug_enabled() {
                     eprintln!("ipmi: failed reading {}: {err:?}", full.id_string());
                 }
@@ -126,6 +130,8 @@ pub fn update_metrics() {
             .with_label_values(&[&sensor_label, &sensor_type, &unit])
             .set(value);
     }
+
+    report
 }
 
 #[cfg(test)]

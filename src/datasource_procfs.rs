@@ -1,6 +1,8 @@
+use crate::collection::CollectionReport;
 use crate::config::AppConfig;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::{prometheus_i64, prometheus_u64};
+use crate::runtime::debug_enabled;
 use procfs::net::{TcpState, UdpState};
 use procfs::prelude::{Current, CurrentSI};
 use procfs::{CpuTime, KernelStats, LoadAverage, Meminfo, Uptime};
@@ -146,6 +148,21 @@ impl ProcfsMetrics {
             )
             .or_exit("netstat"),
         }
+    }
+
+    fn reset_dynamic(&self) {
+        self.load_average.reset();
+        self.load_processes.reset();
+        self.cpu_seconds_total.reset();
+        self.meminfo.reset();
+        self.vmstat.reset();
+        self.diskstats.reset();
+        self.netdev.reset();
+        self.tcp_sockets.reset();
+        self.udp_sockets.reset();
+        self.arp_entries.reset();
+        self.snmp.reset();
+        self.netstat.reset();
     }
 }
 
@@ -317,9 +334,6 @@ fn update_kernel_stats(metrics: &ProcfsMetrics, stats: &KernelStats) {
 }
 
 fn update_diskstats(metrics: &ProcfsMetrics, stats: &[procfs::DiskStat], config: &AppConfig) {
-    // Devices come and go (hotplug, loop/dm teardown). Without this the series
-    // for a removed device is served forever at its last value.
-    metrics.diskstats.reset();
     for stat in stats {
         let device = stat.name.as_str();
         if config.ignore_loop_devices && device.starts_with("loop") {
@@ -398,8 +412,6 @@ fn update_netdev(
     devs: &std::collections::HashMap<String, procfs::net::DeviceStatus>,
     config: &AppConfig,
 ) {
-    // Interfaces are created and destroyed constantly on container hosts.
-    metrics.netdev.reset();
     for (name, dev) in devs {
         if config.ignore_ppp_interfaces && name.starts_with("ppp") {
             continue;
@@ -541,115 +553,12 @@ fn update_arp(metrics: &ProcfsMetrics, entries: &[procfs::net::ARPEntry]) {
         *counts.entry(entry.device.as_str()).or_insert(0) += 1;
     }
 
-    // The set of devices is dynamic, so drop the previous scrape's series
-    // rather than leaving entries for devices that no longer exist.
-    metrics.arp_entries.reset();
     for (device, count) in counts {
         metrics
             .arp_entries
             .with_label_values(&[device])
             .set(prometheus_u64(count));
     }
-}
-
-fn update_snmp(metrics: &ProcfsMetrics, snmp: &procfs::net::Snmp) {
-    let set = |field: &str, value: u64| {
-        metrics
-            .snmp
-            .with_label_values(&[field])
-            .set(prometheus_u64(value));
-    };
-    let set_i64 = |field: &str, value: i64| {
-        metrics
-            .snmp
-            .with_label_values(&[field])
-            .set(prometheus_i64(value));
-    };
-
-    set("ip_forwarding", u64::from(snmp.ip_forwarding.to_u8()));
-    set("ip_default_ttl", u64::from(snmp.ip_default_ttl));
-    set("ip_in_receives", snmp.ip_in_receives);
-    set("ip_in_hdr_errors", snmp.ip_in_hdr_errors);
-    set("ip_in_addr_errors", snmp.ip_in_addr_errors);
-    set("ip_forw_datagrams", snmp.ip_forw_datagrams);
-    set("ip_in_unknown_protos", snmp.ip_in_unknown_protos);
-    set("ip_in_discards", snmp.ip_in_discards);
-    set("ip_in_delivers", snmp.ip_in_delivers);
-    set("ip_out_requests", snmp.ip_out_requests);
-    set("ip_out_discards", snmp.ip_out_discards);
-    set("ip_out_no_routes", snmp.ip_out_no_routes);
-    set("ip_reasm_timeout", snmp.ip_reasm_timeout);
-    set("ip_reasm_reqds", snmp.ip_reasm_reqds);
-    set("ip_reasm_oks", snmp.ip_reasm_oks);
-    set("ip_reasm_fails", snmp.ip_reasm_fails);
-    set("ip_frag_oks", snmp.ip_frag_oks);
-    set("ip_frag_fails", snmp.ip_frag_fails);
-    set("ip_frag_creates", snmp.ip_frag_creates);
-
-    set("icmp_in_msgs", snmp.icmp_in_msgs);
-    set("icmp_in_errors", snmp.icmp_in_errors);
-    set("icmp_in_csum_errors", snmp.icmp_in_csum_errors);
-    set("icmp_in_dest_unreachs", snmp.icmp_in_dest_unreachs);
-    set("icmp_in_time_excds", snmp.icmp_in_time_excds);
-    set("icmp_in_parm_probs", snmp.icmp_in_parm_probs);
-    set("icmp_in_src_quenchs", snmp.icmp_in_src_quenchs);
-    set("icmp_in_redirects", snmp.icmp_in_redirects);
-    set("icmp_in_echos", snmp.icmp_in_echos);
-    set("icmp_in_echo_reps", snmp.icmp_in_echo_reps);
-    set("icmp_in_timestamps", snmp.icmp_in_timestamps);
-    set("icmp_in_timestamp_reps", snmp.icmp_in_timestamp_reps);
-    set("icmp_in_addr_masks", snmp.icmp_in_addr_masks);
-    set("icmp_in_addr_mask_reps", snmp.icmp_in_addr_mask_reps);
-    set("icmp_out_msgs", snmp.icmp_out_msgs);
-    set("icmp_out_errors", snmp.icmp_out_errors);
-    set("icmp_out_dest_unreachs", snmp.icmp_out_dest_unreachs);
-    set("icmp_out_time_excds", snmp.icmp_out_time_excds);
-    set("icmp_out_parm_probs", snmp.icmp_out_parm_probs);
-    set("icmp_out_src_quenchs", snmp.icmp_out_src_quenchs);
-    set("icmp_out_redirects", snmp.icmp_out_redirects);
-    set("icmp_out_echos", snmp.icmp_out_echos);
-    set("icmp_out_echo_reps", snmp.icmp_out_echo_reps);
-    set("icmp_out_timestamps", snmp.icmp_out_timestamps);
-    set("icmp_out_timestamp_reps", snmp.icmp_out_timestamp_reps);
-    set("icmp_out_addr_masks", snmp.icmp_out_addr_masks);
-    set("icmp_out_addr_mask_reps", snmp.icmp_out_addr_mask_reps);
-
-    set(
-        "tcp_rto_algorithm",
-        u64::from(snmp.tcp_rto_algorithm.to_u8()),
-    );
-    set("tcp_rto_min", snmp.tcp_rto_min);
-    set("tcp_rto_max", snmp.tcp_rto_max);
-    set_i64("tcp_max_conn", snmp.tcp_max_conn);
-    set("tcp_active_opens", snmp.tcp_active_opens);
-    set("tcp_passive_opens", snmp.tcp_passive_opens);
-    set("tcp_attempt_fails", snmp.tcp_attempt_fails);
-    set("tcp_estab_resets", snmp.tcp_estab_resets);
-    set("tcp_curr_estab", snmp.tcp_curr_estab);
-    set("tcp_in_segs", snmp.tcp_in_segs);
-    set("tcp_out_segs", snmp.tcp_out_segs);
-    set("tcp_retrans_segs", snmp.tcp_retrans_segs);
-    set("tcp_in_errs", snmp.tcp_in_errs);
-    set("tcp_out_rsts", snmp.tcp_out_rsts);
-    set("tcp_in_csum_errors", snmp.tcp_in_csum_errors);
-
-    set("udp_in_datagrams", snmp.udp_in_datagrams);
-    set("udp_no_ports", snmp.udp_no_ports);
-    set("udp_in_errors", snmp.udp_in_errors);
-    set("udp_out_datagrams", snmp.udp_out_datagrams);
-    set("udp_rcvbuf_errors", snmp.udp_rcvbuf_errors);
-    set("udp_sndbuf_errors", snmp.udp_sndbuf_errors);
-    set("udp_in_csum_errors", snmp.udp_in_csum_errors);
-    set("udp_ignored_multi", snmp.udp_ignored_multi);
-
-    set("udp_lite_in_datagrams", snmp.udp_lite_in_datagrams);
-    set("udp_lite_no_ports", snmp.udp_lite_no_ports);
-    set("udp_lite_in_errors", snmp.udp_lite_in_errors);
-    set("udp_lite_out_datagrams", snmp.udp_lite_out_datagrams);
-    set("udp_lite_rcvbuf_errors", snmp.udp_lite_rcvbuf_errors);
-    set("udp_lite_sndbuf_errors", snmp.udp_lite_sndbuf_errors);
-    set("udp_lite_in_csum_errors", snmp.udp_lite_in_csum_errors);
-    set("udp_lite_ignored_multi", snmp.udp_lite_ignored_multi);
 }
 
 fn to_snake_case(input: &str) -> String {
@@ -698,55 +607,130 @@ fn to_snake_case(input: &str) -> String {
     }
 }
 
-fn update_netstat(metrics: &ProcfsMetrics) {
-    let Ok(contents) = fs::read_to_string("/proc/net/netstat") else {
-        return;
+fn kernel_counter_field_name(section: &str, field: &str) -> String {
+    let field_key = match (section, field) {
+        ("Ip", "ReasmOKs") => "reasm_oks".to_string(),
+        ("Ip", "FragOKs") => "frag_oks".to_string(),
+        _ => to_snake_case(field),
     };
+    format!("{}_{field_key}", to_snake_case(section))
+}
 
+fn parse_sectioned_integer_table(contents: &str) -> Result<Vec<(String, i64)>, String> {
     let mut headers: HashMap<String, Vec<String>> = HashMap::new();
+    let mut parsed = Vec::new();
 
-    for line in contents.lines() {
+    for (line_index, line) in contents.lines().enumerate() {
+        let line_number = line_index + 1;
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
 
         let mut parts = line.split_whitespace();
-        let Some(section_raw) = parts.next() else {
-            continue;
+        let section_raw = parts
+            .next()
+            .ok_or_else(|| format!("line {line_number}: missing section"))?;
+        let Some(section) = section_raw.strip_suffix(':') else {
+            return Err(format!(
+                "line {line_number}: section {section_raw:?} is missing ':'"
+            ));
         };
-        let section = section_raw.trim_end_matches(':').to_string();
-        let rest: Vec<&str> = parts.collect();
-        if rest.is_empty() {
-            continue;
+        if section.is_empty() {
+            return Err(format!("line {line_number}: empty section name"));
         }
 
-        let is_values = rest.iter().all(|value| value.parse::<i64>().is_ok());
-        if is_values {
-            let Some(fields) = headers.get(&section) else {
-                continue;
-            };
-            if fields.len() != rest.len() {
-                continue;
+        let columns: Vec<&str> = parts.collect();
+        if columns.is_empty() {
+            return Err(format!(
+                "line {line_number}: section {section:?} has no columns"
+            ));
+        }
+
+        if let Some(fields) = headers.remove(section) {
+            if fields.len() != columns.len() {
+                return Err(format!(
+                    "line {line_number}: section {section:?} has {} values for {} fields",
+                    columns.len(),
+                    fields.len()
+                ));
             }
 
-            let section_key = to_snake_case(&section);
-            for (field, value_str) in fields.iter().zip(rest.iter()) {
-                if let Ok(value) = value_str.parse::<i64>() {
-                    let field_key = format!("{section_key}_{}", to_snake_case(field));
-                    metrics
-                        .netstat
-                        .with_label_values(&[field_key.as_str()])
-                        .set(prometheus_i64(value));
-                }
+            for (field, value_text) in fields.iter().zip(columns) {
+                let value = value_text.parse::<i64>().map_err(|error| {
+                    format!(
+                        "line {line_number}: section {section:?} field {field:?} has invalid integer {value_text:?}: {error}"
+                    )
+                })?;
+                parsed.push((kernel_counter_field_name(section, field), value));
             }
         } else {
+            if columns.iter().all(|value| value.parse::<i64>().is_ok()) {
+                return Err(format!(
+                    "line {line_number}: section {section:?} has values without a preceding header"
+                ));
+            }
             headers.insert(
-                section,
-                rest.iter().map(std::string::ToString::to_string).collect(),
+                section.to_string(),
+                columns
+                    .into_iter()
+                    .map(std::string::ToString::to_string)
+                    .collect(),
             );
         }
     }
+
+    if !headers.is_empty() {
+        let mut sections: Vec<_> = headers.into_keys().collect();
+        sections.sort_unstable();
+        return Err(format!(
+            "missing value rows for section header(s): {}",
+            sections.join(", ")
+        ));
+    }
+
+    Ok(parsed)
+}
+
+fn update_sectioned_integer_file(
+    path: &'static str,
+    source: &'static str,
+    metric: &GaugeVec,
+) -> CollectionReport {
+    let contents = match fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(error) => {
+            if debug_enabled() {
+                eprintln!("procfs: failed to collect {source}: {error}");
+            }
+            return CollectionReport::error();
+        }
+    };
+
+    let parsed = match parse_sectioned_integer_table(&contents) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            if debug_enabled() {
+                eprintln!("procfs: failed to collect {source}: {error}");
+            }
+            return CollectionReport::error();
+        }
+    };
+
+    for (field, value) in parsed {
+        metric
+            .with_label_values(&[field.as_str()])
+            .set(prometheus_i64(value));
+    }
+    CollectionReport::success()
+}
+
+fn update_snmp(metrics: &ProcfsMetrics) -> CollectionReport {
+    update_sectioned_integer_file("/proc/net/snmp", "snmp", &metrics.snmp)
+}
+
+fn update_netstat(metrics: &ProcfsMetrics) -> CollectionReport {
+    update_sectioned_integer_file("/proc/net/netstat", "netstat", &metrics.netstat)
 }
 
 fn update_loadavg(metrics: &ProcfsMetrics, loadavg: &LoadAverage) {
@@ -782,59 +766,75 @@ fn update_uptime(metrics: &ProcfsMetrics, uptime: &Uptime) {
     metrics.uptime_idle_seconds.set(uptime.idle);
 }
 
-pub fn update_metrics(config: &AppConfig) {
+fn record_collection_error(
+    report: &mut CollectionReport,
+    source: &'static str,
+    error: &impl std::fmt::Display,
+) {
+    report.record_error();
+    if debug_enabled() {
+        eprintln!("procfs: failed to collect {source}: {error}");
+    }
+}
+
+pub fn update_metrics(config: &AppConfig) -> CollectionReport {
     let metrics = metrics();
+    let mut report = CollectionReport::success();
 
-    if let Ok(uptime) = Uptime::current() {
-        update_uptime(metrics, &uptime);
+    // Dynamic label sets must describe this scrape only. Clear them before
+    // touching /proc so a read failure cannot preserve last scrape's series.
+    metrics.reset_dynamic();
+
+    match Uptime::current() {
+        Ok(uptime) => update_uptime(metrics, &uptime),
+        Err(error) => record_collection_error(&mut report, "uptime", &error),
     }
-
-    if let Ok(loadavg) = LoadAverage::current() {
-        update_loadavg(metrics, &loadavg);
+    match LoadAverage::current() {
+        Ok(loadavg) => update_loadavg(metrics, &loadavg),
+        Err(error) => record_collection_error(&mut report, "loadavg", &error),
     }
-
-    if let Ok(meminfo) = Meminfo::current() {
-        update_meminfo(metrics, &meminfo);
+    match Meminfo::current() {
+        Ok(meminfo) => update_meminfo(metrics, &meminfo),
+        Err(error) => record_collection_error(&mut report, "meminfo", &error),
     }
-
-    if let Ok(stats) = KernelStats::current() {
-        update_kernel_stats(metrics, &stats);
+    match KernelStats::current() {
+        Ok(stats) => update_kernel_stats(metrics, &stats),
+        Err(error) => record_collection_error(&mut report, "stat", &error),
     }
-
-    if let Ok(vmstat) = procfs::vmstat() {
-        for (key, value) in vmstat {
-            metrics
-                .vmstat
-                .with_label_values(&[key.as_str()])
-                .set(prometheus_i64(value));
+    match procfs::vmstat() {
+        Ok(vmstat) => {
+            for (key, value) in vmstat {
+                metrics
+                    .vmstat
+                    .with_label_values(&[key.as_str()])
+                    .set(prometheus_i64(value));
+            }
         }
+        Err(error) => record_collection_error(&mut report, "vmstat", &error),
     }
-
-    if let Ok(stats) = procfs::diskstats() {
-        update_diskstats(metrics, &stats, config);
+    match procfs::diskstats() {
+        Ok(stats) => update_diskstats(metrics, &stats, config),
+        Err(error) => record_collection_error(&mut report, "diskstats", &error),
     }
-
-    if let Ok(devs) = procfs::net::dev_status() {
-        update_netdev(metrics, &devs, config);
+    match procfs::net::dev_status() {
+        Ok(devs) => update_netdev(metrics, &devs, config),
+        Err(error) => record_collection_error(&mut report, "netdev", &error),
     }
-
-    if let Ok(entries) = procfs::net::tcp() {
-        update_tcp(metrics, &entries);
+    match procfs::net::tcp() {
+        Ok(entries) => update_tcp(metrics, &entries),
+        Err(error) => record_collection_error(&mut report, "tcp", &error),
     }
-
-    if let Ok(entries) = procfs::net::udp() {
-        update_udp(metrics, &entries);
+    match procfs::net::udp() {
+        Ok(entries) => update_udp(metrics, &entries),
+        Err(error) => record_collection_error(&mut report, "udp", &error),
     }
-
-    if let Ok(entries) = procfs::net::arp() {
-        update_arp(metrics, &entries);
+    match procfs::net::arp() {
+        Ok(entries) => update_arp(metrics, &entries),
+        Err(error) => record_collection_error(&mut report, "arp", &error),
     }
-
-    if let Ok(snmp) = procfs::net::snmp() {
-        update_snmp(metrics, &snmp);
-    }
-
-    update_netstat(metrics);
+    report.merge(update_snmp(metrics));
+    report.merge(update_netstat(metrics));
+    report
 }
 
 #[cfg(test)]
@@ -867,6 +867,67 @@ mod tests {
                 "{label} missing from TCP_STATE_LABELS"
             );
         }
+    }
+
+    #[test]
+    fn snake_case_matches_exported_kernel_field_names() {
+        assert_eq!(to_snake_case("MemTotal"), "mem_total");
+        assert_eq!(to_snake_case("SyncookiesSent"), "syncookies_sent");
+        assert_eq!(to_snake_case("IcmpMsg"), "icmp_msg");
+        assert_eq!(to_snake_case("InType0"), "in_type_0");
+        assert_eq!(to_snake_case("MPTcpExt"), "mp_tcp_ext");
+        assert_eq!(kernel_counter_field_name("Ip", "ReasmOKs"), "ip_reasm_oks");
+        assert_eq!(kernel_counter_field_name("Ip", "FragOKs"), "ip_frag_oks");
+    }
+
+    #[test]
+    fn sectioned_integer_table_allows_missing_optional_sections() {
+        let input = "Tcp: MaxConn ActiveOpens\nTcp: -1 42\nUdp: InDatagrams NoPorts\nUdp: 7 3\n";
+        let parsed = parse_sectioned_integer_table(input).expect("valid table");
+
+        assert!(parsed.contains(&("tcp_max_conn".to_string(), -1)));
+        assert!(parsed.contains(&("tcp_active_opens".to_string(), 42)));
+        assert!(parsed.contains(&("udp_in_datagrams".to_string(), 7)));
+        assert!(
+            !parsed
+                .iter()
+                .any(|(field, _)| field.starts_with("udp_lite_"))
+        );
+    }
+
+    #[test]
+    fn sectioned_integer_table_includes_new_sections_automatically() {
+        let input = "IcmpMsg: InType0 OutType3\nIcmpMsg: 11 22\n";
+        let parsed = parse_sectioned_integer_table(input).expect("valid table");
+
+        assert_eq!(
+            parsed,
+            vec![
+                ("icmp_msg_in_type_0".to_string(), 11),
+                ("icmp_msg_out_type_3".to_string(), 22),
+            ]
+        );
+    }
+
+    #[test]
+    fn sectioned_integer_table_rejects_cardinality_mismatch() {
+        let input = "Udp: InDatagrams NoPorts\nUdp: 7\n";
+        let error = parse_sectioned_integer_table(input).expect_err("mismatch must fail");
+        assert!(error.contains("1 values for 2 fields"), "{error}");
+    }
+
+    #[test]
+    fn sectioned_integer_table_rejects_orphan_values() {
+        let error =
+            parse_sectioned_integer_table("Udp: 1 2\n").expect_err("orphan values must fail");
+        assert!(error.contains("without a preceding header"), "{error}");
+    }
+
+    #[test]
+    fn sectioned_integer_table_rejects_incomplete_header() {
+        let error = parse_sectioned_integer_table("Udp: InDatagrams NoPorts\n")
+            .expect_err("header without values must fail");
+        assert!(error.contains("missing value rows"), "{error}");
     }
 
     #[test]

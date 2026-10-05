@@ -1,5 +1,7 @@
+use crate::collection::CollectionReport;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_i64;
+use crate::sysfs::{read_i64, read_trimmed};
 use prometheus::{Gauge, GaugeVec};
 use std::fs;
 use std::path::Path;
@@ -66,14 +68,6 @@ fn metrics() -> &'static ThermalMetrics {
     THERMAL_METRICS.get_or_init(ThermalMetrics::new)
 }
 
-fn read_string(path: &Path) -> Option<String> {
-    fs::read_to_string(path).ok().map(|s| s.trim().to_string())
-}
-
-fn read_i64(path: &Path) -> Option<i64> {
-    read_string(path)?.parse::<i64>().ok()
-}
-
 /// Extracts N from a `trip_point_N_temp` filename.
 ///
 /// The prefix and suffix can overlap - `trip_point_temp` starts with one and
@@ -90,7 +84,7 @@ fn update_thermal_zone(zone_path: &Path, zone_name: &str) {
     let metrics = metrics();
 
     // Read zone type
-    let zone_type = read_string(&zone_path.join("type")).unwrap_or_else(|| "unknown".to_string());
+    let zone_type = read_trimmed(&zone_path.join("type")).unwrap_or_else(|| "unknown".to_string());
 
     // Read current temperature (millidegrees Celsius)
     if let Some(millidegrees) = read_i64(&zone_path.join("temp")) {
@@ -116,7 +110,7 @@ fn update_thermal_zone(zone_path: &Path, zone_name: &str) {
         {
             // Try to get the trip point type
             let trip_type_path = zone_path.join(format!("trip_point_{index}_type"));
-            let trip_type = read_string(&trip_type_path).unwrap_or_else(|| "unknown".to_string());
+            let trip_type = read_trimmed(&trip_type_path).unwrap_or_else(|| "unknown".to_string());
 
             metrics
                 .zone_trip_point_celsius
@@ -131,7 +125,7 @@ fn update_cooling_device(device_path: &Path, device_name: &str) {
 
     // Read device type
     let device_type =
-        read_string(&device_path.join("type")).unwrap_or_else(|| "unknown".to_string());
+        read_trimmed(&device_path.join("type")).unwrap_or_else(|| "unknown".to_string());
 
     // Read current state
     if let Some(cur_state) = read_i64(&device_path.join("cur_state")) {
@@ -150,12 +144,7 @@ fn update_cooling_device(device_path: &Path, device_name: &str) {
     }
 }
 
-pub fn update_metrics() {
-    let base = Path::new("/sys/class/thermal");
-    let Ok(entries) = fs::read_dir(base) else {
-        return;
-    };
-
+pub fn update_metrics() -> CollectionReport {
     let metrics = metrics();
 
     // Zones and trip points appear and disappear with driver state.
@@ -163,6 +152,13 @@ pub fn update_metrics() {
     metrics.zone_trip_point_celsius.reset();
     metrics.cooling_device_cur_state.reset();
     metrics.cooling_device_max_state.reset();
+    metrics.zone_count.set(0.0);
+    metrics.cooling_device_count.set(0.0);
+
+    let base = Path::new("/sys/class/thermal");
+    let Ok(entries) = fs::read_dir(base) else {
+        return CollectionReport::error();
+    };
 
     let mut zone_count = 0;
     let mut cooling_count = 0;
@@ -187,6 +183,8 @@ pub fn update_metrics() {
 
     metrics.zone_count.set(f64::from(zone_count));
     metrics.cooling_device_count.set(f64::from(cooling_count));
+
+    CollectionReport::success()
 }
 
 #[cfg(test)]
@@ -202,8 +200,8 @@ mod tests {
     ) -> std::path::PathBuf {
         let zone_dir = dir.join(name);
         fs::create_dir_all(&zone_dir).unwrap();
-        fs::write(zone_dir.join("type"), format!("{}\n", zone_type)).unwrap();
-        fs::write(zone_dir.join("temp"), format!("{}\n", temp)).unwrap();
+        fs::write(zone_dir.join("type"), format!("{zone_type}\n")).unwrap();
+        fs::write(zone_dir.join("temp"), format!("{temp}\n")).unwrap();
         zone_dir
     }
 
@@ -216,9 +214,9 @@ mod tests {
     ) -> std::path::PathBuf {
         let dev_dir = dir.join(name);
         fs::create_dir_all(&dev_dir).unwrap();
-        fs::write(dev_dir.join("type"), format!("{}\n", dev_type)).unwrap();
-        fs::write(dev_dir.join("cur_state"), format!("{}\n", cur)).unwrap();
-        fs::write(dev_dir.join("max_state"), format!("{}\n", max)).unwrap();
+        fs::write(dev_dir.join("type"), format!("{dev_type}\n")).unwrap();
+        fs::write(dev_dir.join("cur_state"), format!("{cur}\n")).unwrap();
+        fs::write(dev_dir.join("max_state"), format!("{max}\n")).unwrap();
         dev_dir
     }
 
@@ -227,7 +225,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("type");
         fs::write(&file, "  x86_pkg_temp  \n").unwrap();
-        assert_eq!(read_string(&file), Some("x86_pkg_temp".to_string()));
+        assert_eq!(read_trimmed(&file), Some("x86_pkg_temp".to_string()));
     }
 
     #[test]

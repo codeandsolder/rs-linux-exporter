@@ -24,3 +24,7 @@ target
 # Added by cargo
 
 /target
+
+# Python tooling caches
+__pycache__/
+*.py[cod]
