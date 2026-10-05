@@ -33,6 +33,23 @@ If you add or edit sections for this file, keep these formatting rules or the
 | `node_scrape_collector_duration_seconds` | GaugeVec | node_exporter-compatible duration of each enabled collector scrape |
 | `node_scrape_collector_success` | GaugeVec | node_exporter-compatible success state for each enabled collector (1 = success) |
 
+## cgroup
+
+| Metric | Type | Description |
+|---|---|---|
+| `cgroup_units` | Gauge | Number of discovered systemd service cgroups |
+| `cgroup_cpu_seconds_total` | CounterVec | Cumulative cgroup v2 CPU time by service and kind |
+| `cgroup_cpu_periods_total` | CounterVec | Cumulative cgroup v2 CPU period/throttling counters |
+| `cgroup_memory_bytes` | GaugeVec | Current/peak memory and swap usage by cgroup v2 service |
+| `cgroup_memory_stat_bytes` | GaugeVec | Selected byte-valued cgroup v2 memory.stat fields (when `cgroup_detailed_metrics = true`) |
+| `cgroup_memory_events_total` | CounterVec | Cumulative cgroup v2 memory event counters |
+| `cgroup_pids_current` | GaugeVec | Current process/thread count in each cgroup v2 service |
+| `cgroup_state` | GaugeVec | cgroup v2 populated/frozen state flags |
+| `cgroup_io_bytes_total` | CounterVec | Cumulative cgroup v2 I/O bytes by device and operation |
+| `cgroup_io_operations_total` | CounterVec | Cumulative cgroup v2 I/O operations by device and operation |
+| `cgroup_pressure_seconds_total` | CounterVec | Cumulative per-service PSI stall time |
+| `cgroup_pressure_stall_ratio` | GaugeVec | Per-service PSI stall fraction over 10/60/300 second windows (when `cgroup_detailed_metrics = true`) |
+
 ## procfs
 
 | Metric | Type | Description |
@@ -250,6 +267,80 @@ python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROM
 ```
 
 ## Metric labels and field catalogs
+
+### cgroup_cpu_seconds_total labels: `cgroup`, `kind`
+
+### cgroup_cpu_periods_total labels: `cgroup`, `kind`
+
+### cgroup_memory_bytes labels: `cgroup`, `kind`
+
+### cgroup_memory_stat_bytes labels: `cgroup`, `field`
+
+### cgroup_memory_events_total labels: `cgroup`, `event`
+
+### cgroup_pids_current labels: `cgroup`
+
+### cgroup_state labels: `cgroup`, `state`
+
+### cgroup_io_bytes_total labels: `cgroup`, `device`, `operation`
+
+### cgroup_io_operations_total labels: `cgroup`, `device`, `operation`
+
+### cgroup_pressure_seconds_total labels: `cgroup`, `resource`, `scope`
+
+### cgroup_pressure_stall_ratio labels: `cgroup`, `resource`, `scope`, `window`
+
+`cgroup_cpu_seconds_total` label values (`kind`):
+
+- `usage`
+- `user`
+- `system`
+- `nice`
+- `force_idle`
+- `throttled`
+- `burst`
+
+`cgroup_cpu_periods_total` label values (`kind`):
+
+- `periods`
+- `throttled`
+- `bursts`
+
+`cgroup_memory_bytes` label values (`kind`):
+
+- `current`
+- `peak`
+- `swap_current`
+- `swap_peak`
+
+`cgroup_io_bytes_total` label values (`operation`):
+
+- `read`
+- `write`
+- `discard`
+
+`cgroup_io_operations_total` label values (`operation`):
+
+- `read`
+- `write`
+- `discard`
+
+`cgroup_pressure_seconds_total` label values (`resource`):
+
+- `cpu`
+- `memory`
+- `io`
+
+`cgroup_pressure_seconds_total` label values (`scope`):
+
+- `some`
+- `full`
+
+`cgroup_pressure_stall_ratio` label values (`window`):
+
+- `10`
+- `60`
+- `300`
 
 ### pressure_stall_ratio labels: `resource`, `scope`, `window`
 

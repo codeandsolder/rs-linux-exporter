@@ -35,6 +35,185 @@
       ]
     },
     {
+      "name": "cgroup_units",
+      "group": "cgroup",
+      "type": "Gauge",
+      "description": "Number of discovered systemd service cgroups",
+      "labels": []
+    },
+    {
+      "name": "cgroup_cpu_seconds_total",
+      "group": "cgroup",
+      "type": "CounterVec",
+      "description": "Cumulative cgroup v2 CPU time by service and kind",
+      "labels": [
+        "cgroup",
+        "kind"
+      ],
+      "label_values": {
+        "kind": [
+          "usage",
+          "user",
+          "system",
+          "nice",
+          "force_idle",
+          "throttled",
+          "burst"
+        ]
+      }
+    },
+    {
+      "name": "cgroup_cpu_periods_total",
+      "group": "cgroup",
+      "type": "CounterVec",
+      "description": "Cumulative cgroup v2 CPU period/throttling counters",
+      "labels": [
+        "cgroup",
+        "kind"
+      ],
+      "label_values": {
+        "kind": [
+          "periods",
+          "throttled",
+          "bursts"
+        ]
+      }
+    },
+    {
+      "name": "cgroup_memory_bytes",
+      "group": "cgroup",
+      "type": "GaugeVec",
+      "description": "Current/peak memory and swap usage by cgroup v2 service",
+      "labels": [
+        "cgroup",
+        "kind"
+      ],
+      "label_values": {
+        "kind": [
+          "current",
+          "peak",
+          "swap_current",
+          "swap_peak"
+        ]
+      }
+    },
+    {
+      "name": "cgroup_memory_stat_bytes",
+      "group": "cgroup",
+      "type": "GaugeVec",
+      "description": "Selected byte-valued cgroup v2 memory.stat fields (when `cgroup_detailed_metrics = true`)",
+      "labels": [
+        "cgroup",
+        "field"
+      ]
+    },
+    {
+      "name": "cgroup_memory_events_total",
+      "group": "cgroup",
+      "type": "CounterVec",
+      "description": "Cumulative cgroup v2 memory event counters",
+      "labels": [
+        "cgroup",
+        "event"
+      ]
+    },
+    {
+      "name": "cgroup_pids_current",
+      "group": "cgroup",
+      "type": "GaugeVec",
+      "description": "Current process/thread count in each cgroup v2 service",
+      "labels": [
+        "cgroup"
+      ]
+    },
+    {
+      "name": "cgroup_state",
+      "group": "cgroup",
+      "type": "GaugeVec",
+      "description": "cgroup v2 populated/frozen state flags",
+      "labels": [
+        "cgroup",
+        "state"
+      ]
+    },
+    {
+      "name": "cgroup_io_bytes_total",
+      "group": "cgroup",
+      "type": "CounterVec",
+      "description": "Cumulative cgroup v2 I/O bytes by device and operation",
+      "labels": [
+        "cgroup",
+        "device",
+        "operation"
+      ],
+      "label_values": {
+        "operation": [
+          "read",
+          "write",
+          "discard"
+        ]
+      }
+    },
+    {
+      "name": "cgroup_io_operations_total",
+      "group": "cgroup",
+      "type": "CounterVec",
+      "description": "Cumulative cgroup v2 I/O operations by device and operation",
+      "labels": [
+        "cgroup",
+        "device",
+        "operation"
+      ],
+      "label_values": {
+        "operation": [
+          "read",
+          "write",
+          "discard"
+        ]
+      }
+    },
+    {
+      "name": "cgroup_pressure_seconds_total",
+      "group": "cgroup",
+      "type": "CounterVec",
+      "description": "Cumulative per-service PSI stall time",
+      "labels": [
+        "cgroup",
+        "resource",
+        "scope"
+      ],
+      "label_values": {
+        "resource": [
+          "cpu",
+          "memory",
+          "io"
+        ],
+        "scope": [
+          "some",
+          "full"
+        ]
+      }
+    },
+    {
+      "name": "cgroup_pressure_stall_ratio",
+      "group": "cgroup",
+      "type": "GaugeVec",
+      "description": "Per-service PSI stall fraction over 10/60/300 second windows (when `cgroup_detailed_metrics = true`)",
+      "labels": [
+        "cgroup",
+        "resource",
+        "scope",
+        "window"
+      ],
+      "label_values": {
+        "window": [
+          "10",
+          "60",
+          "300"
+        ]
+      }
+    },
+    {
       "name": "uptime_seconds",
       "group": "procfs",
       "type": "Gauge",
@@ -1328,6 +1507,23 @@
         "metrics_requests_denied_total",
         "node_scrape_collector_duration_seconds",
         "node_scrape_collector_success"
+      ]
+    },
+    {
+      "name": "cgroup",
+      "metrics": [
+        "cgroup_units",
+        "cgroup_cpu_seconds_total",
+        "cgroup_cpu_periods_total",
+        "cgroup_memory_bytes",
+        "cgroup_memory_stat_bytes",
+        "cgroup_memory_events_total",
+        "cgroup_pids_current",
+        "cgroup_state",
+        "cgroup_io_bytes_total",
+        "cgroup_io_operations_total",
+        "cgroup_pressure_seconds_total",
+        "cgroup_pressure_stall_ratio"
       ]
     },
     {

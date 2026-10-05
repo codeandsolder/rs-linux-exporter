@@ -5,6 +5,7 @@ extern crate rocket;
 mod collection;
 mod collectors;
 mod config;
+mod datasource_cgroup;
 mod datasource_conntrack;
 mod datasource_cpufreq;
 mod datasource_edac;
