@@ -1,4 +1,5 @@
 use ipnet::IpNet;
+use regex::Regex;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::fmt;
@@ -38,6 +39,7 @@ pub enum Datasource {
     Numa,
     Zfs,
     Sccache,
+    Systemd,
 }
 
 impl Datasource {
@@ -62,6 +64,7 @@ impl Datasource {
             Self::Numa => "numa",
             Self::Zfs => "zfs",
             Self::Sccache => "sccache",
+            Self::Systemd => "systemd",
         }
     }
 }
@@ -75,6 +78,9 @@ pub enum ConfigError {
     InvalidCgroupMaxUnits,
     InvalidSccacheTimeout,
     InvalidSccachePort,
+    InvalidSystemdUnitInclude(String),
+    InvalidSystemdUnitExclude(String),
+    InvalidSystemdMaxUnits,
 }
 
 impl fmt::Display for ConfigError {
@@ -108,6 +114,15 @@ impl fmt::Display for ConfigError {
             Self::InvalidSccachePort => {
                 formatter.write_str("sccache_server_port must be greater than zero")
             }
+            Self::InvalidSystemdUnitInclude(value) => {
+                write!(formatter, "invalid systemd_unit_include regex {value:?}")
+            }
+            Self::InvalidSystemdUnitExclude(value) => {
+                write!(formatter, "invalid systemd_unit_exclude regex {value:?}")
+            }
+            Self::InvalidSystemdMaxUnits => {
+                formatter.write_str("systemd_max_units must be greater than zero")
+            }
         }
     }
 }
@@ -122,6 +137,12 @@ struct SubsystemCheck {
 }
 
 const SUBSYSTEM_CHECKS: &[SubsystemCheck] = &[
+    SubsystemCheck {
+        name: Datasource::Systemd,
+        path: "/run/systemd/system",
+        description: "systemd",
+        require_entries: false,
+    },
     SubsystemCheck {
         name: Datasource::Pressure,
         path: "/proc/pressure",
@@ -255,6 +276,10 @@ pub struct AppConfig {
     pub sccache_server_port: u16,
     pub sccache_timeout_ms: u64,
     pub sccache_collect_dist_status: bool,
+    pub systemd_unit_include: String,
+    pub systemd_unit_exclude: String,
+    pub systemd_max_units: usize,
+    pub systemd_detailed_metrics: bool,
     #[serde(default)]
     pub disabled_datasources: Vec<Datasource>,
     pub allowed_ip: Vec<String>,
@@ -284,6 +309,10 @@ impl Default for AppConfig {
             sccache_server_port: 4226,
             sccache_timeout_ms: 1_000,
             sccache_collect_dist_status: false,
+            systemd_unit_include: ".+".to_string(),
+            systemd_unit_exclude: r".+\.(automount|device|mount|scope|slice)".to_string(),
+            systemd_max_units: 512,
+            systemd_detailed_metrics: false,
             disabled_datasources: Vec::new(),
             allowed_ip: vec!["127.0.0.0/8".to_string()],
             bind: "127.0.0.1:9100".to_string(),
@@ -376,6 +405,19 @@ impl AppConfig {
         Ok(())
     }
 
+    fn validate_systemd_settings(&self) -> Result<(), ConfigError> {
+        if self.systemd_max_units == 0 {
+            return Err(ConfigError::InvalidSystemdMaxUnits);
+        }
+        Regex::new(&self.systemd_unit_include).map_err(|_| {
+            ConfigError::InvalidSystemdUnitInclude(self.systemd_unit_include.clone())
+        })?;
+        Regex::new(&self.systemd_unit_exclude).map_err(|_| {
+            ConfigError::InvalidSystemdUnitExclude(self.systemd_unit_exclude.clone())
+        })?;
+        Ok(())
+    }
+
     fn build_allowed_metrics_nets(&mut self) -> Result<(), ConfigError> {
         let mut nets = Vec::new();
         for entry in &self.allowed_ip {
@@ -398,6 +440,7 @@ impl AppConfig {
         self.build_allowed_metrics_nets()?;
         self.validate_cgroup_settings()?;
         self.validate_sccache_settings()?;
+        self.validate_systemd_settings()?;
         let _ = self.bind_addr()?;
         let _ = self.tls_config()?;
         Ok(())
@@ -593,6 +636,52 @@ mod tests {
         assert_eq!(config.sccache_timeout_ms, 1_000);
         assert!(!config.sccache_collect_dist_status);
         assert_eq!(config.validate_sccache_settings(), Ok(()));
+    }
+
+    #[test]
+    fn invalid_systemd_regexes_are_rejected() {
+        let include = AppConfig {
+            systemd_unit_include: "[".to_string(),
+            ..Default::default()
+        };
+        assert!(matches!(
+            include.validate_systemd_settings(),
+            Err(ConfigError::InvalidSystemdUnitInclude(_))
+        ));
+
+        let exclude = AppConfig {
+            systemd_unit_exclude: "[".to_string(),
+            ..Default::default()
+        };
+        assert!(matches!(
+            exclude.validate_systemd_settings(),
+            Err(ConfigError::InvalidSystemdUnitExclude(_))
+        ));
+    }
+
+    #[test]
+    fn zero_systemd_unit_cap_is_rejected() {
+        let config = AppConfig {
+            systemd_max_units: 0,
+            ..Default::default()
+        };
+        assert_eq!(
+            config.validate_systemd_settings(),
+            Err(ConfigError::InvalidSystemdMaxUnits)
+        );
+    }
+
+    #[test]
+    fn default_systemd_filter_matches_node_exporter_baseline() {
+        let config = AppConfig::default();
+        assert_eq!(config.systemd_unit_include, ".+");
+        assert_eq!(
+            config.systemd_unit_exclude,
+            r".+\.(automount|device|mount|scope|slice)"
+        );
+        assert_eq!(config.systemd_max_units, 512);
+        assert!(!config.systemd_detailed_metrics);
+        assert!(config.validate_systemd_settings().is_ok());
     }
 
     #[test]
