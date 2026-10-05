@@ -7,7 +7,6 @@ description = "Linux monitoring exporter"
 repository = "https://github.com/nuclearcat/rs-linux-exporter"
 readme = "README.md"
 license = "LGPL-2.1-or-later"
-homepage = "https://github.com/nuclearcat/rs-linux-exporter"
 keywords = ["prometheus", "exporter", "linux", "metrics", "monitoring"]
 categories = ["command-line-utilities", "network-programming"]
 
