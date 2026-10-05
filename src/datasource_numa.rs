@@ -264,22 +264,18 @@ other_node 789
     #[test]
     fn vanished_numa_tree_drops_previous_node_series() {
         let dir = TempDir::new().unwrap();
-        create_mock_node(dir.path(), "node0");
-        update_metrics_from_path(dir.path());
-        assert!(
-            metrics()
-                .meminfo
-                .with_label_values(&["node0", "MemTotal"])
-                .get()
-                > 0.0
-        );
+        const STALE_NODE: &str = "__stale_numa_regression__";
+        metrics()
+            .meminfo
+            .with_label_values(&[STALE_NODE, "MemTotal"])
+            .set(1.0);
 
         update_metrics_from_path(&dir.path().join("missing"));
         assert_eq!(metrics().node_count.get(), 0.0);
         assert_eq!(
             metrics()
                 .meminfo
-                .with_label_values(&["node0", "MemTotal"])
+                .with_label_values(&[STALE_NODE, "MemTotal"])
                 .get(),
             0.0
         );

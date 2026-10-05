@@ -348,11 +348,19 @@ mod tests {
     #[test]
     fn vanished_edac_tree_drops_previous_controller_series() {
         let dir = TempDir::new().unwrap();
-        create_mock_mc(dir.path(), "mc0", "EDAC_MC", 7, 3, 1024);
-        update_metrics_from_path(dir.path());
-        assert_eq!(metrics().mc_ce_count.with_label_values(&["mc0"]).get(), 7.0);
+        const STALE_LABEL: &str = "__stale_edac_regression__";
+        metrics()
+            .mc_ce_count
+            .with_label_values(&[STALE_LABEL])
+            .set(7.0);
 
         update_metrics_from_path(&dir.path().join("missing"));
-        assert_eq!(metrics().mc_ce_count.with_label_values(&["mc0"]).get(), 0.0);
+        assert_eq!(
+            metrics()
+                .mc_ce_count
+                .with_label_values(&[STALE_LABEL])
+                .get(),
+            0.0
+        );
     }
 }
