@@ -1249,7 +1249,6 @@ version = "0.1.6"
 dependencies = [
  "ipmi-rs",
  "ipnet",
- "libc",
  "netlink-bindings",
  "procfs",
  "prometheus",

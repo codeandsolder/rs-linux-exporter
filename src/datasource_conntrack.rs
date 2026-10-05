@@ -6,6 +6,7 @@
 use crate::metric_support::{RegisterMetricResultExt, prometheus_u64};
 use netlink_bindings::builtin::Nlmsghdr;
 use netlink_bindings::conntrack::{self, ConntrackStatsAttrs, OpGetStatsDump};
+use netlink_bindings::consts::{NETLINK_NETFILTER, NLM_F_REQUEST};
 use netlink_bindings::traits::{NetlinkRequest, Protocol};
 use prometheus::GaugeVec;
 use rustix::net::netlink::SocketAddrNetlink;
@@ -18,6 +19,12 @@ use std::io;
 use std::path::Path;
 use std::sync::OnceLock;
 use std::time::Duration;
+
+// Generic netlink control message types from linux/netlink.h.
+const NLMSG_NOOP: u16 = 1;
+const NLMSG_ERROR: u16 = 2;
+const NLMSG_DONE: u16 = 3;
+const NLMSG_OVERRUN: u16 = 4;
 
 const RECV_TIMEOUT: Duration = Duration::from_secs(2);
 const SEQUENCE: u32 = 1;
@@ -108,8 +115,7 @@ enum PacketDisposition {
 
 fn encode_request() -> Result<EncodedRequest, String> {
     let mut nf_header = conntrack::Nfgenmsg::new();
-    nf_header.nfgen_family = u8::try_from(libc::AF_UNSPEC)
-        .map_err(|_| "AF_UNSPEC does not fit nfgen_family".to_string())?;
+    nf_header.nfgen_family = 0; // AF_UNSPEC
     nf_header.version = 0;
     nf_header.set_res_id(0);
 
@@ -121,7 +127,7 @@ fn encode_request() -> Result<EncodedRequest, String> {
     else {
         return Err("conntrack stats unexpectedly used generic netlink".to_string());
     };
-    let expected_protocol = u16::try_from(libc::NETLINK_NETFILTER)
+    let expected_protocol = u16::try_from(NETLINK_NETFILTER)
         .map_err(|_| "NETLINK_NETFILTER does not fit u16".to_string())?;
     if protonum != expected_protocol {
         return Err(format!("unexpected conntrack netlink protocol {protonum}"));
@@ -133,8 +139,8 @@ fn encode_request() -> Result<EncodedRequest, String> {
         .ok_or_else(|| "conntrack request length overflow".to_string())?;
     let message_len = u32::try_from(message_len)
         .map_err(|_| "conntrack request length does not fit nlmsghdr".to_string())?;
-    let request_flag = u16::try_from(libc::NLM_F_REQUEST)
-        .map_err(|_| "NLM_F_REQUEST does not fit u16".to_string())?;
+    let request_flag =
+        u16::try_from(NLM_F_REQUEST).map_err(|_| "NLM_F_REQUEST does not fit u16".to_string())?;
     let header = Nlmsghdr {
         len: message_len,
         r#type: request_type,
@@ -232,8 +238,8 @@ fn decode_message(
     response_type: u16,
     result: &mut Vec<ConntrackStat>,
 ) -> Result<PacketDisposition, String> {
-    match i32::from(message_type) {
-        libc::NLMSG_DONE => {
+    match message_type {
+        NLMSG_DONE => {
             if !payload.is_empty() {
                 let code = decode_error_code(payload)?;
                 if code != 0 {
@@ -245,7 +251,7 @@ fn decode_message(
             }
             Ok(PacketDisposition::Done)
         }
-        libc::NLMSG_ERROR => {
+        NLMSG_ERROR => {
             let code = decode_error_code(payload)?;
             if code != 0 {
                 return Err(format!(
@@ -255,9 +261,9 @@ fn decode_message(
             }
             Ok(PacketDisposition::Continue)
         }
-        libc::NLMSG_NOOP => Ok(PacketDisposition::Continue),
-        libc::NLMSG_OVERRUN => Err("conntrack netlink receive overrun".to_string()),
-        kind if kind == i32::from(response_type) => {
+        NLMSG_NOOP => Ok(PacketDisposition::Continue),
+        NLMSG_OVERRUN => Err("conntrack netlink receive overrun".to_string()),
+        kind if kind == response_type => {
             decode_stats_payload(payload, result)?;
             Ok(PacketDisposition::Continue)
         }
@@ -356,8 +362,8 @@ mod tests {
     fn completion_error_codes_use_native_endian() {
         assert_eq!(decode_error_code(&0_i32.to_ne_bytes()), Ok(0));
         assert_eq!(
-            decode_error_code(&(-libc::EPERM).to_ne_bytes()),
-            Ok(-libc::EPERM)
+            decode_error_code(&(-(rustix::io::Errno::PERM.raw_os_error())).to_ne_bytes()),
+            Ok(-(rustix::io::Errno::PERM.raw_os_error()))
         );
         assert!(decode_error_code(&[0, 1, 2]).is_err());
     }

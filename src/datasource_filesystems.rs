@@ -2,8 +2,8 @@ use crate::config::AppConfig;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
+use rustix::fs::statvfs;
 use std::collections::HashSet;
-use std::ffi::CString;
 use std::sync::OnceLock;
 
 struct FilesystemMetrics {
@@ -119,10 +119,6 @@ fn reset_metrics(metrics: &FilesystemMetrics) {
     metrics.files_used.reset();
 }
 
-fn stat_value_u64<T: Into<u64>>(value: T) -> u64 {
-    value.into()
-}
-
 pub fn update_metrics(config: &AppConfig) {
     let metrics = metrics();
     // Rebuild from scratch before reading mount state: a failed mount-table
@@ -148,33 +144,23 @@ pub fn update_metrics(config: &AppConfig) {
             continue;
         }
 
-        let Ok(mount_cstring) = CString::new(mount.fs_file.as_bytes()) else {
+        let Ok(stat) = statvfs(mount.fs_file.as_str()) else {
             continue;
         };
-
-        let mut stat = std::mem::MaybeUninit::<libc::statvfs>::uninit();
-        // SAFETY: `mount_cstring` is NUL-terminated and alive for the call;
-        // `stat` points to writable storage large enough for one `statvfs`.
-        let rc = unsafe { libc::statvfs(mount_cstring.as_ptr(), stat.as_mut_ptr()) };
-        if rc != 0 {
-            continue;
-        }
-        // SAFETY: POSIX `statvfs` initializes the output object on success.
-        let stat = unsafe { stat.assume_init() };
 
         let block_size = if stat.f_frsize > 0 {
-            stat_value_u64(stat.f_frsize)
+            stat.f_frsize
         } else {
-            stat_value_u64(stat.f_bsize)
+            stat.f_bsize
         };
 
-        let total_bytes = stat_value_u64(stat.f_blocks) * block_size;
-        let free_bytes = stat_value_u64(stat.f_bfree) * block_size;
-        let avail_bytes = stat_value_u64(stat.f_bavail) * block_size;
+        let total_bytes = stat.f_blocks.saturating_mul(block_size);
+        let free_bytes = stat.f_bfree.saturating_mul(block_size);
+        let avail_bytes = stat.f_bavail.saturating_mul(block_size);
         let used_bytes = total_bytes.saturating_sub(free_bytes);
 
-        let files_total = stat_value_u64(stat.f_files);
-        let files_free = stat_value_u64(stat.f_ffree);
+        let files_total = stat.f_files;
+        let files_free = stat.f_ffree;
         let files_used = files_total.saturating_sub(files_free);
 
         metrics
