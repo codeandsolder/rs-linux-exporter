@@ -1,6 +1,7 @@
 use ipnet::IpNet;
 use serde::Deserialize;
 use std::collections::HashSet;
+use std::fmt;
 use std::fs;
 use std::io::ErrorKind;
 use std::net::IpAddr;
@@ -12,9 +13,80 @@ use std::str::FromStr;
 /// WorkingDirectory=/etc/rs-linux-exporter.
 const CONFIG_PATH: &str = "config.toml";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Datasource {
+    Procfs,
+    CpuFreq,
+    Softnet,
+    Conntrack,
+    Filesystems,
+    Hwmon,
+    Ipmi,
+    Mdraid,
+    Thermal,
+    Rapl,
+    PowerSupply,
+    Nvme,
+    Edac,
+    NetdevSysfs,
+    Numa,
+}
+
+impl Datasource {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Procfs => "procfs",
+            Self::CpuFreq => "cpufreq",
+            Self::Softnet => "softnet",
+            Self::Conntrack => "conntrack",
+            Self::Filesystems => "filesystems",
+            Self::Hwmon => "hwmon",
+            Self::Ipmi => "ipmi",
+            Self::Mdraid => "mdraid",
+            Self::Thermal => "thermal",
+            Self::Rapl => "rapl",
+            Self::PowerSupply => "power_supply",
+            Self::Nvme => "nvme",
+            Self::Edac => "edac",
+            Self::NetdevSysfs => "netdev_sysfs",
+            Self::Numa => "numa",
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ConfigError {
+    InvalidAllowedIp(String),
+    InvalidBind(String),
+    IncompleteTls,
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidAllowedIp(value) => {
+                write!(
+                    formatter,
+                    "invalid allowed_ip entry {value:?}: expected an IP or CIDR"
+                )
+            }
+            Self::InvalidBind(value) => {
+                write!(
+                    formatter,
+                    "invalid bind address {value:?}: expected IP:port"
+                )
+            }
+            Self::IncompleteTls => formatter.write_str(
+                "tls_cert and tls_key must either both be configured or both be omitted",
+            ),
+        }
+    }
+}
+
 /// Subsystem availability checks
 struct SubsystemCheck {
-    name: &'static str,
+    name: Datasource,
     path: &'static str,
     description: &'static str,
     /// If true, check that directory has entries (not just exists)
@@ -23,61 +95,61 @@ struct SubsystemCheck {
 
 const SUBSYSTEM_CHECKS: &[SubsystemCheck] = &[
     SubsystemCheck {
-        name: "numa",
+        name: Datasource::Numa,
         path: "/sys/devices/system/node",
         description: "NUMA",
         require_entries: true,
     },
     SubsystemCheck {
-        name: "edac",
+        name: Datasource::Edac,
         path: "/sys/devices/system/edac/mc",
         description: "EDAC (memory error detection)",
         require_entries: true,
     },
     SubsystemCheck {
-        name: "rapl",
+        name: Datasource::Rapl,
         path: "/sys/class/powercap",
         description: "RAPL (power monitoring)",
         require_entries: true,
     },
     SubsystemCheck {
-        name: "hwmon",
+        name: Datasource::Hwmon,
         path: "/sys/class/hwmon",
         description: "Hardware monitoring",
         require_entries: true,
     },
     SubsystemCheck {
-        name: "thermal",
+        name: Datasource::Thermal,
         path: "/sys/class/thermal",
         description: "Thermal zones",
         require_entries: true,
     },
     SubsystemCheck {
-        name: "power_supply",
+        name: Datasource::PowerSupply,
         path: "/sys/class/power_supply",
         description: "Power supply",
         require_entries: true,
     },
     SubsystemCheck {
-        name: "nvme",
+        name: Datasource::Nvme,
         path: "/sys/class/nvme",
         description: "NVMe devices",
         require_entries: true,
     },
     SubsystemCheck {
-        name: "ipmi",
+        name: Datasource::Ipmi,
         path: "/dev/ipmi0",
         description: "IPMI device",
         require_entries: false,
     },
     SubsystemCheck {
-        name: "mdraid",
+        name: Datasource::Mdraid,
         path: "/proc/mdstat",
         description: "MD RAID status",
         require_entries: false,
     },
     SubsystemCheck {
-        name: "netdev_sysfs",
+        name: Datasource::NetdevSysfs,
         path: "/sys/class/net",
         description: "Network interfaces",
         require_entries: true,
@@ -141,7 +213,7 @@ pub struct AppConfig {
     pub ignore_ppp_interfaces: bool,
     pub ignore_veth_interfaces: bool,
     #[serde(default)]
-    pub disabled_datasources: Vec<String>,
+    pub disabled_datasources: Vec<Datasource>,
     pub allowed_ip: Vec<String>,
     pub bind: String,
     pub log_denied_requests: bool,
@@ -150,7 +222,7 @@ pub struct AppConfig {
     pub tls_key: Option<String>,
     pub auth_token: Option<String>,
     #[serde(skip)]
-    disabled_set: HashSet<String>,
+    disabled_set: HashSet<Datasource>,
     #[serde(skip)]
     allowed_metrics_nets: Vec<IpNet>,
 }
@@ -177,17 +249,17 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
-    pub fn bind_addr(&self) -> SocketAddr {
-        self.bind.parse().unwrap_or_else(|err| {
-            eprintln!("Invalid bind address '{}': {err}", self.bind);
-            std::net::SocketAddr::from(([127, 0, 0, 1], 9100))
-        })
+    pub fn bind_addr(&self) -> Result<SocketAddr, ConfigError> {
+        self.bind
+            .parse()
+            .map_err(|_| ConfigError::InvalidBind(self.bind.clone()))
     }
 
-    pub fn tls_config(&self) -> Option<(&str, &str)> {
+    pub fn tls_config(&self) -> Result<Option<(&str, &str)>, ConfigError> {
         match (&self.tls_cert, &self.tls_key) {
-            (Some(cert), Some(key)) => Some((cert, key)),
-            _ => None,
+            (Some(cert), Some(key)) => Ok(Some((cert, key))),
+            (None, None) => Ok(None),
+            _ => Err(ConfigError::IncompleteTls),
         }
     }
 
@@ -208,19 +280,19 @@ impl AppConfig {
             .any(|net| net.contains(&ip))
     }
 
-    pub fn is_datasource_enabled(&self, name: &str) -> bool {
-        !self.disabled_set.contains(name)
+    pub fn is_datasource_enabled(&self, datasource: Datasource) -> bool {
+        !self.disabled_set.contains(&datasource)
     }
 
-    pub fn disable_datasource(&mut self, name: &str) {
-        self.disabled_set.insert(name.to_string());
+    pub fn disable_datasource(&mut self, datasource: Datasource) {
+        self.disabled_set.insert(datasource);
     }
 
     fn build_disabled_set(&mut self) {
-        self.disabled_set = self.disabled_datasources.iter().cloned().collect();
+        self.disabled_set = self.disabled_datasources.iter().copied().collect();
     }
 
-    fn build_allowed_metrics_nets(&mut self) {
+    fn build_allowed_metrics_nets(&mut self) -> Result<(), ConfigError> {
         let mut nets = Vec::new();
         for entry in &self.allowed_ip {
             // Try parsing as CIDR first, then as single IP
@@ -230,10 +302,19 @@ impl AppConfig {
                 // Single IP without prefix - convert to /32 (IPv4) or /128 (IPv6)
                 nets.push(IpNet::from(ip));
             } else {
-                eprintln!("Invalid allowed_ip entry {entry}: not a valid IP or CIDR");
+                return Err(ConfigError::InvalidAllowedIp(entry.clone()));
             }
         }
         self.allowed_metrics_nets = nets;
+        Ok(())
+    }
+
+    fn validate(&mut self) -> Result<(), ConfigError> {
+        self.build_disabled_set();
+        self.build_allowed_metrics_nets()?;
+        let _ = self.bind_addr()?;
+        let _ = self.tls_config()?;
+        Ok(())
     }
 
     pub fn load() -> Self {
@@ -263,8 +344,11 @@ impl AppConfig {
             }
         };
 
-        config.build_disabled_set();
-        config.build_allowed_metrics_nets();
+        if let Err(err) = config.validate() {
+            eprintln!("Invalid {CONFIG_PATH}: {err}");
+            eprintln!("Refusing to start with an invalid configuration.");
+            std::process::exit(78);
+        }
         config.check_subsystems();
         config
     }
@@ -279,7 +363,9 @@ impl AppConfig {
             if !check_subsystem_available(check) {
                 eprintln!(
                     "{} subsystem not available ({}), disabling {} datasource.",
-                    check.description, check.path, check.name
+                    check.description,
+                    check.path,
+                    check.name.as_str()
                 );
                 self.disable_datasource(check.name);
             }
@@ -321,29 +407,29 @@ mod tests {
     #[test]
     fn test_default_config_all_enabled() {
         let config = AppConfig::default();
-        assert!(config.is_datasource_enabled("numa"));
-        assert!(config.is_datasource_enabled("edac"));
-        assert!(config.is_datasource_enabled("procfs"));
+        assert!(config.is_datasource_enabled(Datasource::Numa));
+        assert!(config.is_datasource_enabled(Datasource::Edac));
+        assert!(config.is_datasource_enabled(Datasource::Procfs));
     }
 
     #[test]
     fn test_disable_datasource() {
         let mut config = AppConfig::default();
-        assert!(config.is_datasource_enabled("test"));
-        config.disable_datasource("test");
-        assert!(!config.is_datasource_enabled("test"));
+        assert!(config.is_datasource_enabled(Datasource::Thermal));
+        config.disable_datasource(Datasource::Thermal);
+        assert!(!config.is_datasource_enabled(Datasource::Thermal));
     }
 
     #[test]
     fn test_build_disabled_set_from_vec() {
         let mut config = AppConfig {
-            disabled_datasources: vec!["thermal".to_string(), "numa".to_string()],
+            disabled_datasources: vec![Datasource::Thermal, Datasource::Numa],
             ..Default::default()
         };
         config.build_disabled_set();
-        assert!(!config.is_datasource_enabled("thermal"));
-        assert!(!config.is_datasource_enabled("numa"));
-        assert!(config.is_datasource_enabled("procfs"));
+        assert!(!config.is_datasource_enabled(Datasource::Thermal));
+        assert!(!config.is_datasource_enabled(Datasource::Numa));
+        assert!(config.is_datasource_enabled(Datasource::Procfs));
     }
 
     #[test]
@@ -352,7 +438,7 @@ mod tests {
             allowed_ip: vec!["10.0.0.0/8".to_string()],
             ..Default::default()
         };
-        config.build_allowed_metrics_nets();
+        config.build_allowed_metrics_nets().expect("valid test ACL");
 
         let allowed_ip: IpAddr = "10.1.2.3".parse().unwrap();
         let denied_ip: IpAddr = "192.168.1.10".parse().unwrap();
@@ -366,7 +452,7 @@ mod tests {
             allowed_ip: vec!["127.0.0.0/8".to_string()],
             ..Default::default()
         };
-        config.build_allowed_metrics_nets();
+        config.build_allowed_metrics_nets().expect("valid test ACL");
 
         // What a dual-stack listener reports for a loopback IPv4 client.
         let mapped: IpAddr = "::ffff:127.0.0.1".parse().unwrap();
@@ -382,10 +468,65 @@ mod tests {
             allowed_ip: vec!["fd00::/8".to_string()],
             ..Default::default()
         };
-        config.build_allowed_metrics_nets();
+        config.build_allowed_metrics_nets().expect("valid test ACL");
 
         assert!(config.is_metrics_ip_allowed("fd00::1".parse().unwrap()));
         assert!(!config.is_metrics_ip_allowed("2001:db8::1".parse().unwrap()));
+    }
+
+    #[test]
+    fn unknown_datasource_name_is_rejected_by_toml() {
+        let parsed = toml::from_str::<AppConfig>(r#"disabled_datasources = ["theraml"]"#);
+        assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn invalid_allowed_ip_is_rejected() {
+        let mut config = AppConfig {
+            allowed_ip: vec!["not-an-ip".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(
+            config.build_allowed_metrics_nets(),
+            Err(ConfigError::InvalidAllowedIp("not-an-ip".to_string()))
+        );
+    }
+
+    #[test]
+    fn invalid_bind_is_rejected() {
+        let config = AppConfig {
+            bind: "localhost:9100".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(
+            config.bind_addr(),
+            Err(ConfigError::InvalidBind("localhost:9100".to_string()))
+        );
+    }
+
+    #[test]
+    fn incomplete_tls_is_rejected() {
+        let cert_only = AppConfig {
+            tls_cert: Some("cert.pem".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(cert_only.tls_config(), Err(ConfigError::IncompleteTls));
+
+        let key_only = AppConfig {
+            tls_key: Some("key.pem".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(key_only.tls_config(), Err(ConfigError::IncompleteTls));
+    }
+
+    #[test]
+    fn complete_tls_pair_is_accepted() {
+        let config = AppConfig {
+            tls_cert: Some("cert.pem".to_string()),
+            tls_key: Some("key.pem".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(config.tls_config(), Ok(Some(("cert.pem", "key.pem"))));
     }
 
     #[test]

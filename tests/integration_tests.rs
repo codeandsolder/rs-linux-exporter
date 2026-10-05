@@ -5,7 +5,7 @@
 //! an operator actually depends on: who is allowed to scrape, and that a scrape
 //! produces a well-formed exposition.
 
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -94,7 +94,18 @@ fn get(port: u16, path: &str, headers: &[(&str, &str)]) -> (u16, String) {
     stream.flush().expect("flush");
 
     let mut raw = Vec::new();
-    stream.read_to_end(&mut raw).expect("read response");
+    let mut chunk = [0_u8; 8192];
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(read) => raw.extend_from_slice(&chunk[..read]),
+            // A short HTTP response may be followed by an RST when the server
+            // closes before the client has consumed the FIN. Treat that like
+            // EOF; the status/body assertions below still reject truncation.
+            Err(err) if err.kind() == ErrorKind::ConnectionReset => break,
+            Err(err) => panic!("read response: {err}"),
+        }
+    }
     let response = String::from_utf8_lossy(&raw).into_owned();
 
     let status = response

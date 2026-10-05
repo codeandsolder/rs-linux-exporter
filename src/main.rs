@@ -21,7 +21,7 @@ mod datasource_thermal;
 mod metric_support;
 mod runtime;
 
-use crate::config::AppConfig;
+use crate::config::{AppConfig, Datasource};
 use prometheus::{Encoder, IntCounter, TextEncoder};
 use rocket::Config;
 use rocket::config::TlsConfig;
@@ -87,49 +87,49 @@ fn app_config() -> &'static AppConfig {
 fn update_metrics() {
     let config = app_config();
 
-    if config.is_datasource_enabled("procfs") {
+    if config.is_datasource_enabled(Datasource::Procfs) {
         datasource_procfs::update_metrics(config);
     }
-    if config.is_datasource_enabled("cpufreq") {
+    if config.is_datasource_enabled(Datasource::CpuFreq) {
         datasource_cpufreq::update_metrics();
     }
-    if config.is_datasource_enabled("softnet") {
+    if config.is_datasource_enabled(Datasource::Softnet) {
         datasource_softnet::update_metrics();
     }
-    if config.is_datasource_enabled("conntrack") {
+    if config.is_datasource_enabled(Datasource::Conntrack) {
         datasource_conntrack::update_metrics();
     }
-    if config.is_datasource_enabled("filesystems") {
+    if config.is_datasource_enabled(Datasource::Filesystems) {
         datasource_filesystems::update_metrics(config);
     }
-    if config.is_datasource_enabled("hwmon") {
+    if config.is_datasource_enabled(Datasource::Hwmon) {
         datasource_hwmon::update_metrics();
     }
-    if config.is_datasource_enabled("ipmi") {
+    if config.is_datasource_enabled(Datasource::Ipmi) {
         datasource_ipmi::update_metrics();
     }
-    if config.is_datasource_enabled("mdraid") {
+    if config.is_datasource_enabled(Datasource::Mdraid) {
         datasource_mdraid::update_metrics();
     }
-    if config.is_datasource_enabled("thermal") {
+    if config.is_datasource_enabled(Datasource::Thermal) {
         datasource_thermal::update_metrics();
     }
-    if config.is_datasource_enabled("rapl") {
+    if config.is_datasource_enabled(Datasource::Rapl) {
         datasource_rapl::update_metrics();
     }
-    if config.is_datasource_enabled("power_supply") {
+    if config.is_datasource_enabled(Datasource::PowerSupply) {
         datasource_power_supply::update_metrics();
     }
-    if config.is_datasource_enabled("nvme") {
+    if config.is_datasource_enabled(Datasource::Nvme) {
         datasource_nvme::update_metrics();
     }
-    if config.is_datasource_enabled("edac") {
+    if config.is_datasource_enabled(Datasource::Edac) {
         datasource_edac::update_metrics();
     }
-    if config.is_datasource_enabled("netdev_sysfs") {
+    if config.is_datasource_enabled(Datasource::NetdevSysfs) {
         datasource_netdev_sysfs::update_metrics(config);
     }
-    if config.is_datasource_enabled("numa") {
+    if config.is_datasource_enabled(Datasource::Numa) {
         datasource_numa::update_metrics();
     }
     // TODO: Implementation in progress; ethtool netlink stats disabled for now.
@@ -371,15 +371,28 @@ fn rocket() -> _ {
     }
     // Initialize config early to run subsystem availability checks and print messages
     let _ = app_config();
-    let bind = app_config().bind_addr();
+    let bind = match app_config().bind_addr() {
+        Ok(bind) => bind,
+        Err(err) => {
+            eprintln!("Invalid runtime configuration: {err}");
+            std::process::exit(78);
+        }
+    };
     let mut figment = Config::figment()
         .merge(("address", bind.ip().to_string()))
         .merge(("port", bind.port()))
         .merge(("ip_header", false));
 
-    if let Some((cert, key)) = app_config().tls_config() {
-        figment = figment.merge(("tls", TlsConfig::from_paths(cert, key)));
-        eprintln!("TLS enabled with cert: {cert}");
+    match app_config().tls_config() {
+        Ok(Some((cert, key))) => {
+            figment = figment.merge(("tls", TlsConfig::from_paths(cert, key)));
+            eprintln!("TLS enabled with cert: {cert}");
+        }
+        Ok(None) => {}
+        Err(err) => {
+            eprintln!("Invalid runtime configuration: {err}");
+            std::process::exit(78);
+        }
     }
 
     rocket::custom(figment)
