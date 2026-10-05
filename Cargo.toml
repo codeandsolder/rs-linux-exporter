@@ -20,6 +20,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 ipnet = "2"
 ipmi-rs = "0.5.0"
+subtle = "2.6"
 
 [dev-dependencies]
 tempfile = "3"

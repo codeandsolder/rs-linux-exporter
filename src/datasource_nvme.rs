@@ -1,4 +1,5 @@
 use crate::metric_support::RegisterMetricResultExt;
+use crate::sysfs::read_trimmed;
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -35,18 +36,14 @@ fn metrics() -> &'static NvmeMetrics {
     NVME_METRICS.get_or_init(NvmeMetrics::new)
 }
 
-fn read_string(path: &Path) -> Option<String> {
-    fs::read_to_string(path).ok().map(|s| s.trim().to_string())
-}
-
 fn update_nvme_device(device_path: &Path, device_name: &str) {
     let metrics = metrics();
 
     // Read device attributes
-    let model = read_string(&device_path.join("model")).unwrap_or_default();
-    let serial = read_string(&device_path.join("serial")).unwrap_or_default();
-    let firmware_rev = read_string(&device_path.join("firmware_rev")).unwrap_or_default();
-    let state = read_string(&device_path.join("state")).unwrap_or_else(|| "unknown".to_string());
+    let model = read_trimmed(&device_path.join("model")).unwrap_or_default();
+    let serial = read_trimmed(&device_path.join("serial")).unwrap_or_default();
+    let firmware_rev = read_trimmed(&device_path.join("firmware_rev")).unwrap_or_default();
+    let state = read_trimmed(&device_path.join("state")).unwrap_or_else(|| "unknown".to_string());
 
     // Set info metric (always 1, labels carry the information)
     metrics
@@ -118,14 +115,14 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("test");
         fs::write(&file, "  hello world  \n").unwrap();
-        assert_eq!(read_string(&file), Some("hello world".to_string()));
+        assert_eq!(read_trimmed(&file), Some("hello world".to_string()));
     }
 
     #[test]
     fn test_read_string_missing_file() {
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("nonexistent");
-        assert_eq!(read_string(&file), None);
+        assert_eq!(read_trimmed(&file), None);
     }
 
     #[test]

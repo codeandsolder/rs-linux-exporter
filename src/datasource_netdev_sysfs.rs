@@ -1,6 +1,7 @@
 use crate::config::AppConfig;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_i64;
+use crate::sysfs::{read_i64, read_trimmed};
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -84,14 +85,6 @@ fn metrics() -> &'static NetdevSysfsMetrics {
     NETDEV_SYSFS_METRICS.get_or_init(NetdevSysfsMetrics::new)
 }
 
-fn read_string(path: &Path) -> Option<String> {
-    fs::read_to_string(path).ok().map(|s| s.trim().to_string())
-}
-
-fn read_i64(path: &Path) -> Option<i64> {
-    read_string(path)?.parse::<i64>().ok()
-}
-
 /// Maps the numeric autonegotiation flag onto the exported label values.
 ///
 /// Where sysfs exposes `autoneg` at all it holds 0 or 1, so comparing against
@@ -134,7 +127,7 @@ fn should_skip_interface(name: &str, config: &AppConfig) -> bool {
 
 fn update_interface(metrics: &NetdevSysfsMetrics, iface_path: &Path, iface: &str) {
     if let Some(state) =
-        read_string(&iface_path.join("operstate")).map(|value| value.to_lowercase())
+        read_trimmed(&iface_path.join("operstate")).map(|value| value.to_lowercase())
     {
         set_state_metric(&metrics.operstate, iface, &state, &OPERSTATES);
     }
@@ -175,13 +168,13 @@ fn update_interface(metrics: &NetdevSysfsMetrics, iface_path: &Path, iface: &str
             .set(prometheus_i64(speed));
     }
 
-    if let Some(duplex) = read_string(&iface_path.join("duplex")).map(|value| value.to_lowercase())
+    if let Some(duplex) = read_trimmed(&iface_path.join("duplex")).map(|value| value.to_lowercase())
     {
         set_state_metric(&metrics.duplex, iface, &duplex, &DUPLEX_STATES);
     }
 
     if let Some(autoneg) =
-        read_string(&iface_path.join("autoneg")).map(|value| value.to_lowercase())
+        read_trimmed(&iface_path.join("autoneg")).map(|value| value.to_lowercase())
     {
         set_state_metric(
             &metrics.autoneg,

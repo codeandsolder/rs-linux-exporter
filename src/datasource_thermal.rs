@@ -1,5 +1,6 @@
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_i64;
+use crate::sysfs::{read_i64, read_trimmed};
 use prometheus::{Gauge, GaugeVec};
 use std::fs;
 use std::path::Path;
@@ -66,14 +67,6 @@ fn metrics() -> &'static ThermalMetrics {
     THERMAL_METRICS.get_or_init(ThermalMetrics::new)
 }
 
-fn read_string(path: &Path) -> Option<String> {
-    fs::read_to_string(path).ok().map(|s| s.trim().to_string())
-}
-
-fn read_i64(path: &Path) -> Option<i64> {
-    read_string(path)?.parse::<i64>().ok()
-}
-
 /// Extracts N from a `trip_point_N_temp` filename.
 ///
 /// The prefix and suffix can overlap - `trip_point_temp` starts with one and
@@ -90,7 +83,7 @@ fn update_thermal_zone(zone_path: &Path, zone_name: &str) {
     let metrics = metrics();
 
     // Read zone type
-    let zone_type = read_string(&zone_path.join("type")).unwrap_or_else(|| "unknown".to_string());
+    let zone_type = read_trimmed(&zone_path.join("type")).unwrap_or_else(|| "unknown".to_string());
 
     // Read current temperature (millidegrees Celsius)
     if let Some(millidegrees) = read_i64(&zone_path.join("temp")) {
@@ -116,7 +109,7 @@ fn update_thermal_zone(zone_path: &Path, zone_name: &str) {
         {
             // Try to get the trip point type
             let trip_type_path = zone_path.join(format!("trip_point_{index}_type"));
-            let trip_type = read_string(&trip_type_path).unwrap_or_else(|| "unknown".to_string());
+            let trip_type = read_trimmed(&trip_type_path).unwrap_or_else(|| "unknown".to_string());
 
             metrics
                 .zone_trip_point_celsius
@@ -131,7 +124,7 @@ fn update_cooling_device(device_path: &Path, device_name: &str) {
 
     // Read device type
     let device_type =
-        read_string(&device_path.join("type")).unwrap_or_else(|| "unknown".to_string());
+        read_trimmed(&device_path.join("type")).unwrap_or_else(|| "unknown".to_string());
 
     // Read current state
     if let Some(cur_state) = read_i64(&device_path.join("cur_state")) {
@@ -229,7 +222,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("type");
         fs::write(&file, "  x86_pkg_temp  \n").unwrap();
-        assert_eq!(read_string(&file), Some("x86_pkg_temp".to_string()));
+        assert_eq!(read_trimmed(&file), Some("x86_pkg_temp".to_string()));
     }
 
     #[test]

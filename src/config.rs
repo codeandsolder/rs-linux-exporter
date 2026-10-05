@@ -8,6 +8,7 @@ use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::str::FromStr;
+use subtle::ConstantTimeEq;
 
 /// Read relative to the working directory; the packaged unit sets
 /// WorkingDirectory=/etc/rs-linux-exporter.
@@ -167,22 +168,9 @@ fn unmap_ipv4(ip: IpAddr) -> IpAddr {
     }
 }
 
-/// Compares two byte strings without returning early on the first difference.
-///
-/// `==` on strings stops at the first mismatching byte, which makes the time it
-/// takes depend on how many leading bytes a guess got right. The length is not
-/// protected - it is not secret - but the contents are.
-#[inline(never)]
+/// Compares equal-length secret byte strings in constant time.
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-
-    let mut diff = 0u8;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    std::hint::black_box(diff) == 0
+    a.len() == b.len() && bool::from(a.ct_eq(b))
 }
 
 fn check_path_available(path: &Path, require_entries: bool) -> bool {

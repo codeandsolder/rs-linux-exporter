@@ -20,6 +20,7 @@ mod datasource_softnet;
 mod datasource_thermal;
 mod metric_support;
 mod runtime;
+mod sysfs;
 
 use crate::config::{AppConfig, Datasource};
 use prometheus::{Encoder, IntCounter, TextEncoder};

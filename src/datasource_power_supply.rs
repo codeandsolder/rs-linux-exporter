@@ -1,5 +1,6 @@
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_i64;
+use crate::sysfs::{read_i64, read_trimmed};
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -100,20 +101,12 @@ fn metrics() -> &'static PowerSupplyMetrics {
     POWER_SUPPLY_METRICS.get_or_init(PowerSupplyMetrics::new)
 }
 
-fn read_string(path: &Path) -> Option<String> {
-    fs::read_to_string(path).ok().map(|s| s.trim().to_string())
-}
-
-fn read_i64(path: &Path) -> Option<i64> {
-    read_string(path)?.parse::<i64>().ok()
-}
-
 fn update_power_supply(supply_path: &Path, supply_name: &str) {
     let metrics = metrics();
 
     // Read supply type (Battery, Mains, UPS, USB)
     let supply_type =
-        read_string(&supply_path.join("type")).unwrap_or_else(|| "Unknown".to_string());
+        read_trimmed(&supply_path.join("type")).unwrap_or_else(|| "Unknown".to_string());
 
     // Set info metric
     metrics
@@ -130,7 +123,7 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
     }
 
     // Battery status (Charging, Discharging, Not charging, Full)
-    if let Some(status) = read_string(&supply_path.join("status")) {
+    if let Some(status) = read_trimmed(&supply_path.join("status")) {
         for state in ["Charging", "Discharging", "Not charging", "Full", "Unknown"] {
             metrics
                 .status
@@ -286,7 +279,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("type");
         fs::write(&file, "  Battery  \n").unwrap();
-        assert_eq!(read_string(&file), Some("Battery".to_string()));
+        assert_eq!(read_trimmed(&file), Some("Battery".to_string()));
     }
 
     #[test]

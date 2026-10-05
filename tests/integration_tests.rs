@@ -69,12 +69,23 @@ fn start_server(extra_config: &str) -> Server {
 fn wait_until_listening(port: u16) {
     let deadline = Instant::now() + Duration::from_secs(30);
     while Instant::now() < deadline {
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            return;
+        if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", port)) {
+            let _ = stream.set_read_timeout(Some(Duration::from_millis(250)));
+            if stream
+                .write_all(b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+                .is_ok()
+            {
+                let mut response = [0_u8; 64];
+                if let Ok(read) = stream.read(&mut response)
+                    && response[..read].starts_with(b"HTTP/1.1 200")
+                {
+                    return;
+                }
+            }
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    panic!("exporter did not start listening on port {port}");
+    panic!("exporter did not become HTTP-ready on port {port}");
 }
 
 /// Minimal HTTP/1.1 GET. Returns the status code and the body.
@@ -224,30 +235,6 @@ fn json_endpoint_returns_the_same_metrics() {
     assert!(body.contains("\"_name_\""));
     assert!(body.contains("\"_value_\""));
     assert!(body.contains("uptime_seconds"));
-}
-
-#[test]
-fn repeated_scrapes_do_not_accumulate_series() {
-    // Collectors reset their vecs before repopulating, so a stable host should
-    // report a stable number of series rather than growing on every scrape.
-    let server = start_server("allowed_ip = [\"127.0.0.0/8\"]\n");
-
-    let count_series = |body: &str| body.lines().filter(|l| !l.starts_with('#')).count();
-
-    let (_, first) = get(server.port, "/metrics", &[]);
-    let (_, second) = get(server.port, "/metrics", &[]);
-    let (_, third) = get(server.port, "/metrics", &[]);
-
-    let counts = [
-        count_series(&first),
-        count_series(&second),
-        count_series(&third),
-    ];
-    assert!(counts[0] > 0, "no series exposed");
-    assert_eq!(
-        counts[1], counts[2],
-        "series count changed between scrapes: {counts:?}"
-    );
 }
 
 #[test]

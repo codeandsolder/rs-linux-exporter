@@ -1,5 +1,6 @@
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_i64;
+use crate::sysfs::{read_i64, read_trimmed};
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -60,23 +61,13 @@ fn metrics() -> &'static HwmonMetrics {
     HWMON_METRICS.get_or_init(HwmonMetrics::new)
 }
 
-fn read_value(path: &Path) -> Option<i64> {
-    let contents = fs::read_to_string(path).ok()?;
-    contents.trim().parse::<i64>().ok()
-}
-
-fn read_string(path: &Path) -> Option<String> {
-    let contents = fs::read_to_string(path).ok()?;
-    Some(contents.trim().to_string())
-}
-
 fn get_sensor_label(hwmon_dir: &Path, sensor_type: &str, index: &str) -> String {
     let label_path = hwmon_dir.join(format!("{sensor_type}_{index}_label"));
-    read_string(&label_path).unwrap_or_else(|| format!("{sensor_type}_{index}"))
+    read_trimmed(&label_path).unwrap_or_else(|| format!("{sensor_type}_{index}"))
 }
 
 fn update_hwmon_device(hwmon_dir: &Path) {
-    let Some(chip_name) = read_string(&hwmon_dir.join("name")) else {
+    let Some(chip_name) = read_trimmed(&hwmon_dir.join("name")) else {
         return;
     };
 
@@ -94,7 +85,7 @@ fn update_hwmon_device(hwmon_dir: &Path) {
         // Temperature sensors: temp[1-*]_input (millidegrees Celsius)
         if file_name.starts_with("temp") && file_name.ends_with("_input") {
             let index = &file_name[4..file_name.len() - 6];
-            if let Some(millidegrees) = read_value(&entry.path()) {
+            if let Some(millidegrees) = read_i64(&entry.path()) {
                 let label = get_sensor_label(hwmon_dir, "temp", index);
                 metrics
                     .temperature_celsius
@@ -105,7 +96,7 @@ fn update_hwmon_device(hwmon_dir: &Path) {
         // Fan sensors: fan[1-*]_input (RPM)
         else if file_name.starts_with("fan") && file_name.ends_with("_input") {
             let index = &file_name[3..file_name.len() - 6];
-            if let Some(rpm) = read_value(&entry.path()) {
+            if let Some(rpm) = read_i64(&entry.path()) {
                 let label = get_sensor_label(hwmon_dir, "fan", index);
                 metrics
                     .fan_rpm
@@ -117,7 +108,7 @@ fn update_hwmon_device(hwmon_dir: &Path) {
         else if file_name.starts_with("in") && file_name.ends_with("_input") {
             let index = &file_name[2..file_name.len() - 6];
             if index.chars().all(|c| c.is_ascii_digit())
-                && let Some(millivolts) = read_value(&entry.path())
+                && let Some(millivolts) = read_i64(&entry.path())
             {
                 let label = get_sensor_label(hwmon_dir, "in", index);
                 metrics
@@ -129,7 +120,7 @@ fn update_hwmon_device(hwmon_dir: &Path) {
         // Power sensors: power[1-*]_input (microwatts)
         else if file_name.starts_with("power") && file_name.ends_with("_input") {
             let index = &file_name[5..file_name.len() - 6];
-            if let Some(microwatts) = read_value(&entry.path()) {
+            if let Some(microwatts) = read_i64(&entry.path()) {
                 let label = get_sensor_label(hwmon_dir, "power", index);
                 metrics
                     .power_watts
@@ -140,7 +131,7 @@ fn update_hwmon_device(hwmon_dir: &Path) {
         // Current sensors: curr[1-*]_input (milliamps)
         else if file_name.starts_with("curr") && file_name.ends_with("_input") {
             let index = &file_name[4..file_name.len() - 6];
-            if let Some(milliamps) = read_value(&entry.path()) {
+            if let Some(milliamps) = read_i64(&entry.path()) {
                 let label = get_sensor_label(hwmon_dir, "curr", index);
                 metrics
                     .current_amps
@@ -198,7 +189,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("temp1_input");
         fs::write(&file, "45000\n").unwrap();
-        assert_eq!(read_value(&file), Some(45000));
+        assert_eq!(read_i64(&file), Some(45000));
     }
 
     #[test]
@@ -206,7 +197,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("temp1_input");
         fs::write(&file, "not_a_number\n").unwrap();
-        assert_eq!(read_value(&file), None);
+        assert_eq!(read_i64(&file), None);
     }
 
     #[test]
@@ -214,7 +205,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("name");
         fs::write(&file, "  coretemp  \n").unwrap();
-        assert_eq!(read_string(&file), Some("coretemp".to_string()));
+        assert_eq!(read_trimmed(&file), Some("coretemp".to_string()));
     }
 
     #[test]

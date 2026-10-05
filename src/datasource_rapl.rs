@@ -1,5 +1,6 @@
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
+use crate::sysfs::{read_trimmed, read_u64};
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -36,19 +37,11 @@ fn metrics() -> &'static RaplMetrics {
     RAPL_METRICS.get_or_init(RaplMetrics::new)
 }
 
-fn read_string(path: &Path) -> Option<String> {
-    fs::read_to_string(path).ok().map(|s| s.trim().to_string())
-}
-
-fn read_u64(path: &Path) -> Option<u64> {
-    read_string(path)?.parse::<u64>().ok()
-}
-
 fn update_rapl_zone(zone_path: &Path, zone_id: &str) {
     let metrics = metrics();
 
     // Read zone name (e.g., "package-0", "core", "uncore", "dram")
-    let name = read_string(&zone_path.join("name")).unwrap_or_else(|| "unknown".to_string());
+    let name = read_trimmed(&zone_path.join("name")).unwrap_or_else(|| "unknown".to_string());
 
     // Read energy counter in microjoules, convert to joules
     if let Some(energy_uj) = read_u64(&zone_path.join("energy_uj")) {
@@ -76,7 +69,7 @@ fn update_rapl_zone(zone_path: &Path, zone_id: &str) {
             // Subzones have names like "intel-rapl:0:0" (contain two colons)
             if entry_name.contains(':')
                 && entry.path().is_dir()
-                && let Some(subzone_name) = read_string(&entry.path().join("name"))
+                && let Some(subzone_name) = read_trimmed(&entry.path().join("name"))
             {
                 // Read subzone energy
                 if let Some(energy_uj) = read_u64(&entry.path().join("energy_uj")) {
@@ -154,7 +147,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("name");
         fs::write(&file, "  package-0  \n").unwrap();
-        assert_eq!(read_string(&file), Some("package-0".to_string()));
+        assert_eq!(read_trimmed(&file), Some("package-0".to_string()));
     }
 
     #[test]

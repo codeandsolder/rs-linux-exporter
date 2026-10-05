@@ -1,5 +1,6 @@
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
+use crate::sysfs::read_trimmed;
 use prometheus::{Gauge, GaugeVec};
 use std::fs;
 use std::path::Path;
@@ -40,24 +41,21 @@ fn metrics() -> &'static NumaMetrics {
     NUMA_METRICS.get_or_init(NumaMetrics::new)
 }
 
-fn read_string(path: &Path) -> Option<String> {
-    fs::read_to_string(path).ok().map(|s| s.trim().to_string())
-}
-
 fn parse_meminfo(content: &str, node_name: &str) {
     let metrics = metrics();
 
     for line in content.lines() {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 4 {
+        let mut parts = line.split_whitespace();
+        let (Some("Node"), Some(_node), Some(field_name), Some(value)) =
+            (parts.next(), parts.next(), parts.next(), parts.next())
+        else {
             continue;
-        }
+        };
 
         // Format: "Node X FieldName: VALUE kB"
-        let field_name = parts[2].trim_end_matches(':');
-        let value: u64 = match parts[3].parse() {
-            Ok(v) => v,
-            Err(_) => continue,
+        let field_name = field_name.trim_end_matches(':');
+        let Ok(value) = value.parse::<u64>() else {
+            continue;
         };
 
         // Convert kB to bytes. A corrupt or absurd value would otherwise panic
@@ -75,15 +73,12 @@ fn parse_numastat(content: &str, node_name: &str) {
     let metrics = metrics();
 
     for line in content.lines() {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 2 {
+        let mut parts = line.split_whitespace();
+        let (Some(stat_name), Some(value)) = (parts.next(), parts.next()) else {
             continue;
-        }
-
-        let stat_name = parts[0];
-        let value: u64 = match parts[1].parse() {
-            Ok(v) => v,
-            Err(_) => continue,
+        };
+        let Ok(value) = value.parse::<u64>() else {
+            continue;
         };
 
         metrics
@@ -95,12 +90,12 @@ fn parse_numastat(content: &str, node_name: &str) {
 
 fn update_numa_node(node_path: &Path, node_name: &str) {
     // Read meminfo
-    if let Some(meminfo) = read_string(&node_path.join("meminfo")) {
+    if let Some(meminfo) = read_trimmed(&node_path.join("meminfo")) {
         parse_meminfo(&meminfo, node_name);
     }
 
     // Read numastat
-    if let Some(numastat) = read_string(&node_path.join("numastat")) {
+    if let Some(numastat) = read_trimmed(&node_path.join("numastat")) {
         parse_numastat(&numastat, node_name);
     }
 }
@@ -187,7 +182,7 @@ other_node 789
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("test");
         fs::write(&file, "  content  \n").unwrap();
-        assert_eq!(read_string(&file), Some("content".to_string()));
+        assert_eq!(read_trimmed(&file), Some("content".to_string()));
     }
 
     #[test]

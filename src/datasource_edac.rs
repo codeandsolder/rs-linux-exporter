@@ -1,5 +1,6 @@
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
+use crate::sysfs::{read_trimmed, read_u64};
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -100,19 +101,11 @@ fn metrics() -> &'static EdacMetrics {
     EDAC_METRICS.get_or_init(EdacMetrics::new)
 }
 
-fn read_string(path: &Path) -> Option<String> {
-    fs::read_to_string(path).ok().map(|s| s.trim().to_string())
-}
-
-fn read_u64(path: &Path) -> Option<u64> {
-    read_string(path)?.parse::<u64>().ok()
-}
-
 fn update_dimm(mc_path: &Path, mc_name: &str, dimm_name: &str) {
     let dimm_path = mc_path.join(dimm_name);
     let metrics = metrics();
 
-    let dimm_label = read_string(&dimm_path.join("dimm_label")).unwrap_or_default();
+    let dimm_label = read_trimmed(&dimm_path.join("dimm_label")).unwrap_or_default();
 
     if let Some(ce) = read_u64(&dimm_path.join("dimm_ce_count")) {
         metrics
@@ -141,7 +134,7 @@ fn update_memory_controller(mc_path: &Path, mc_name: &str) {
 
     // Read controller name
     let controller_type =
-        read_string(&mc_path.join("mc_name")).unwrap_or_else(|| "unknown".to_string());
+        read_trimmed(&mc_path.join("mc_name")).unwrap_or_else(|| "unknown".to_string());
 
     metrics
         .mc_info
@@ -283,7 +276,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("mc_name");
         fs::write(&file, "  EDAC_MC  \n").unwrap();
-        assert_eq!(read_string(&file), Some("EDAC_MC".to_string()));
+        assert_eq!(read_trimmed(&file), Some("EDAC_MC".to_string()));
     }
 
     #[test]
