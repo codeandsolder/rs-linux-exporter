@@ -20,6 +20,7 @@ mod datasource_power_supply;
 mod datasource_pressure;
 mod datasource_procfs;
 mod datasource_rapl;
+mod datasource_sccache;
 mod datasource_softnet;
 mod datasource_thermal;
 mod datasource_zfs;
