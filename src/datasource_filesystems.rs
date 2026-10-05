@@ -1,4 +1,5 @@
 use crate::config::AppConfig;
+use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::collections::HashSet;
 use std::ffi::CString;
@@ -176,30 +177,30 @@ pub fn update_metrics(config: &AppConfig) {
         metrics
             .filesystem_size_bytes
             .with_label_values(&labels)
-            .set(total_bytes as f64);
+            .set(prometheus_u64(total_bytes));
         metrics
             .filesystem_free_bytes
             .with_label_values(&labels)
-            .set(free_bytes as f64);
+            .set(prometheus_u64(free_bytes));
         metrics
             .filesystem_avail_bytes
             .with_label_values(&labels)
-            .set(avail_bytes as f64);
+            .set(prometheus_u64(avail_bytes));
         metrics
             .filesystem_used_bytes
             .with_label_values(&labels)
-            .set(used_bytes as f64);
+            .set(prometheus_u64(used_bytes));
         metrics
             .filesystem_files
             .with_label_values(&labels)
-            .set(files_total as f64);
+            .set(prometheus_u64(files_total));
         metrics
             .filesystem_files_free
             .with_label_values(&labels)
-            .set(files_free as f64);
+            .set(prometheus_u64(files_free));
         metrics
             .filesystem_files_used
             .with_label_values(&labels)
-            .set(files_used as f64);
+            .set(prometheus_u64(files_used));
     }
 }

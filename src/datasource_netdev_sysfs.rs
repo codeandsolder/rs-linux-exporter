@@ -1,4 +1,5 @@
 use crate::config::AppConfig;
+use crate::metric_support::prometheus_i64;
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -143,7 +144,7 @@ fn update_interface(metrics: &NetdevSysfsMetrics, iface_path: &Path, iface: &str
         metrics
             .carrier
             .with_label_values(&[iface])
-            .set(carrier as f64);
+            .set(prometheus_i64(carrier));
     }
 
     if let Some(changes) = read_i64(&iface_path.join("carrier_changes"))
@@ -152,7 +153,7 @@ fn update_interface(metrics: &NetdevSysfsMetrics, iface_path: &Path, iface: &str
         metrics
             .carrier_changes
             .with_label_values(&[iface])
-            .set(changes as f64);
+            .set(prometheus_i64(changes));
     }
 
     if let Some(dormant) = read_i64(&iface_path.join("dormant"))
@@ -161,7 +162,7 @@ fn update_interface(metrics: &NetdevSysfsMetrics, iface_path: &Path, iface: &str
         metrics
             .dormant
             .with_label_values(&[iface])
-            .set(dormant as f64);
+            .set(prometheus_i64(dormant));
     }
 
     if let Some(speed) = read_i64(&iface_path.join("speed"))
@@ -170,7 +171,7 @@ fn update_interface(metrics: &NetdevSysfsMetrics, iface_path: &Path, iface: &str
         metrics
             .speed_mbps
             .with_label_values(&[iface])
-            .set(speed as f64);
+            .set(prometheus_i64(speed));
     }
 
     if let Some(duplex) = read_string(&iface_path.join("duplex")).map(|value| value.to_lowercase())

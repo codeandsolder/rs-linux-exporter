@@ -17,6 +17,7 @@ mod datasource_procfs;
 mod datasource_rapl;
 mod datasource_softnet;
 mod datasource_thermal;
+mod metric_support;
 mod runtime;
 
 use crate::config::AppConfig;

@@ -1,3 +1,4 @@
+use crate::metric_support::prometheus_i64;
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -124,7 +125,7 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
         metrics
             .online
             .with_label_values(&[supply_name, &supply_type])
-            .set(online as f64);
+            .set(prometheus_i64(online));
     }
 
     // Battery status (Charging, Discharging, Not charging, Full)
@@ -142,7 +143,7 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
         metrics
             .capacity_percent
             .with_label_values(&[supply_name])
-            .set(capacity as f64);
+            .set(prometheus_i64(capacity));
     }
 
     // Voltage (microvolts -> volts)
@@ -150,13 +151,13 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
         metrics
             .voltage_volts
             .with_label_values(&[supply_name, "now"])
-            .set(voltage as f64 / 1_000_000.0);
+            .set(prometheus_i64(voltage) / 1_000_000.0);
     }
     if let Some(voltage) = read_i64(&supply_path.join("voltage_min_design")) {
         metrics
             .voltage_volts
             .with_label_values(&[supply_name, "min_design"])
-            .set(voltage as f64 / 1_000_000.0);
+            .set(prometheus_i64(voltage) / 1_000_000.0);
     }
 
     // Current (microamps -> amps)
@@ -164,7 +165,7 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
         metrics
             .current_amps
             .with_label_values(&[supply_name, "now"])
-            .set(current as f64 / 1_000_000.0);
+            .set(prometheus_i64(current) / 1_000_000.0);
     }
 
     // Power (microwatts -> watts)
@@ -172,7 +173,7 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
         metrics
             .power_watts
             .with_label_values(&[supply_name])
-            .set(power as f64 / 1_000_000.0);
+            .set(prometheus_i64(power) / 1_000_000.0);
     }
 
     // Energy (microwatt-hours -> watt-hours)
@@ -180,19 +181,19 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
         metrics
             .energy_wh
             .with_label_values(&[supply_name, "now"])
-            .set(energy as f64 / 1_000_000.0);
+            .set(prometheus_i64(energy) / 1_000_000.0);
     }
     if let Some(energy) = read_i64(&supply_path.join("energy_full")) {
         metrics
             .energy_wh
             .with_label_values(&[supply_name, "full"])
-            .set(energy as f64 / 1_000_000.0);
+            .set(prometheus_i64(energy) / 1_000_000.0);
     }
     if let Some(energy) = read_i64(&supply_path.join("energy_full_design")) {
         metrics
             .energy_wh
             .with_label_values(&[supply_name, "full_design"])
-            .set(energy as f64 / 1_000_000.0);
+            .set(prometheus_i64(energy) / 1_000_000.0);
     }
 
     // Charge (microamp-hours -> amp-hours)
@@ -200,19 +201,19 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
         metrics
             .charge_ah
             .with_label_values(&[supply_name, "now"])
-            .set(charge as f64 / 1_000_000.0);
+            .set(prometheus_i64(charge) / 1_000_000.0);
     }
     if let Some(charge) = read_i64(&supply_path.join("charge_full")) {
         metrics
             .charge_ah
             .with_label_values(&[supply_name, "full"])
-            .set(charge as f64 / 1_000_000.0);
+            .set(prometheus_i64(charge) / 1_000_000.0);
     }
     if let Some(charge) = read_i64(&supply_path.join("charge_full_design")) {
         metrics
             .charge_ah
             .with_label_values(&[supply_name, "full_design"])
-            .set(charge as f64 / 1_000_000.0);
+            .set(prometheus_i64(charge) / 1_000_000.0);
     }
 
     // Temperature (tenths of degree Celsius -> Celsius)
@@ -220,7 +221,7 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
         metrics
             .temperature_celsius
             .with_label_values(&[supply_name])
-            .set(temp as f64 / 10.0);
+            .set(prometheus_i64(temp) / 10.0);
     }
 }
 

@@ -3,6 +3,7 @@
 //! This module queries per-CPU conntrack statistics using the netfilter netlink
 //! protocol, similar to `conntrack -S`.
 
+use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::collections::HashMap;
 use std::io::{self, Error};
@@ -426,7 +427,7 @@ pub fn update_metrics() {
                     metrics
                         .conntrack
                         .with_label_values(&[cpu_label.as_str(), name.as_str()])
-                        .set(value as f64);
+                        .set(prometheus_u64(value));
                 }
             }
         }

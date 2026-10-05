@@ -1,3 +1,4 @@
+use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::fs;
 use std::sync::OnceLock;
@@ -188,21 +189,21 @@ pub fn update_metrics() {
             metrics
                 .array_disks
                 .with_label_values(&[&name, &role])
-                .set(total as f64);
+                .set(prometheus_u64(total));
         }
         if let Some(active) = active {
             let role = "active".to_string();
             metrics
                 .array_disks
                 .with_label_values(&[&name, &role])
-                .set(active as f64);
+                .set(prometheus_u64(active));
         }
         if let Some(working) = working {
             let role = "working".to_string();
             metrics
                 .array_disks
                 .with_label_values(&[&name, &role])
-                .set(working as f64);
+                .set(prometheus_u64(working));
         }
 
         let degraded = match (total, active.or(working)) {

@@ -1,3 +1,4 @@
+use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -38,7 +39,7 @@ fn update_cpu(cpu_name: &str, cpufreq_dir: &Path) {
         metrics
             .cpu_frequency_hz
             .with_label_values(&[cpu_name, "scaling_cur_freq"])
-            .set((khz * 1000) as f64);
+            .set(prometheus_u64(khz * 1000));
         return;
     }
 
@@ -47,7 +48,7 @@ fn update_cpu(cpu_name: &str, cpufreq_dir: &Path) {
         metrics
             .cpu_frequency_hz
             .with_label_values(&[cpu_name, "cpuinfo_cur_freq"])
-            .set((khz * 1000) as f64);
+            .set(prometheus_u64(khz * 1000));
     }
 }
 

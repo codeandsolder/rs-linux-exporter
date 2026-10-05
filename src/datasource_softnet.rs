@@ -1,3 +1,4 @@
+use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::fs;
 use std::sync::OnceLock;
@@ -53,7 +54,7 @@ pub fn update_metrics() {
         let set_metric = |field: &str, value: u64| {
             metric
                 .with_label_values(&[cpu_label.as_str(), field])
-                .set(value as f64);
+                .set(prometheus_u64(value));
         };
 
         if let Some(value) = parse_column(&columns, 0) {

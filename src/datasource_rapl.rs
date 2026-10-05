@@ -1,3 +1,4 @@
+use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -53,7 +54,7 @@ fn update_rapl_zone(zone_path: &Path, zone_id: &str) {
         metrics
             .energy_joules
             .with_label_values(&[zone_id, &name])
-            .set(energy_uj as f64 / 1_000_000.0);
+            .set(prometheus_u64(energy_uj) / 1_000_000.0);
     }
 
     // Read max energy range in microjoules, convert to joules
@@ -61,7 +62,7 @@ fn update_rapl_zone(zone_path: &Path, zone_id: &str) {
         metrics
             .max_energy_joules
             .with_label_values(&[zone_id, &name])
-            .set(max_energy_uj as f64 / 1_000_000.0);
+            .set(prometheus_u64(max_energy_uj) / 1_000_000.0);
     }
 
     // Process subzones (e.g., intel-rapl:0:0, intel-rapl:0:1)
@@ -82,7 +83,7 @@ fn update_rapl_zone(zone_path: &Path, zone_id: &str) {
                     metrics
                         .energy_joules
                         .with_label_values(&[&entry_name, &subzone_name])
-                        .set(energy_uj as f64 / 1_000_000.0);
+                        .set(prometheus_u64(energy_uj) / 1_000_000.0);
                 }
 
                 // Read subzone max energy range
@@ -90,7 +91,7 @@ fn update_rapl_zone(zone_path: &Path, zone_id: &str) {
                     metrics
                         .max_energy_joules
                         .with_label_values(&[&entry_name, &subzone_name])
-                        .set(max_energy_uj as f64 / 1_000_000.0);
+                        .set(prometheus_u64(max_energy_uj) / 1_000_000.0);
                 }
             }
         }

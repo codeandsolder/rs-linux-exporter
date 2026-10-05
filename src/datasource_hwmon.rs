@@ -1,3 +1,4 @@
+use crate::metric_support::prometheus_i64;
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -100,7 +101,7 @@ fn update_hwmon_device(hwmon_dir: &Path) {
                 metrics
                     .temperature_celsius
                     .with_label_values(&[&chip_name, &label])
-                    .set(millidegrees as f64 / 1000.0);
+                    .set(prometheus_i64(millidegrees) / 1000.0);
             }
         }
         // Fan sensors: fan[1-*]_input (RPM)
@@ -111,7 +112,7 @@ fn update_hwmon_device(hwmon_dir: &Path) {
                 metrics
                     .fan_rpm
                     .with_label_values(&[&chip_name, &label])
-                    .set(rpm as f64);
+                    .set(prometheus_i64(rpm));
             }
         }
         // Voltage sensors: in[0-*]_input (millivolts)
@@ -124,7 +125,7 @@ fn update_hwmon_device(hwmon_dir: &Path) {
                 metrics
                     .voltage_volts
                     .with_label_values(&[&chip_name, &label])
-                    .set(millivolts as f64 / 1000.0);
+                    .set(prometheus_i64(millivolts) / 1000.0);
             }
         }
         // Power sensors: power[1-*]_input (microwatts)
@@ -135,7 +136,7 @@ fn update_hwmon_device(hwmon_dir: &Path) {
                 metrics
                     .power_watts
                     .with_label_values(&[&chip_name, &label])
-                    .set(microwatts as f64 / 1_000_000.0);
+                    .set(prometheus_i64(microwatts) / 1_000_000.0);
             }
         }
         // Current sensors: curr[1-*]_input (milliamps)
@@ -146,7 +147,7 @@ fn update_hwmon_device(hwmon_dir: &Path) {
                 metrics
                     .current_amps
                     .with_label_values(&[&chip_name, &label])
-                    .set(milliamps as f64 / 1000.0);
+                    .set(prometheus_i64(milliamps) / 1000.0);
             }
         }
     }

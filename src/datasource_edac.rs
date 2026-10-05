@@ -1,3 +1,4 @@
+use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -116,21 +117,21 @@ fn update_dimm(mc_path: &Path, mc_name: &str, dimm_name: &str) {
         metrics
             .dimm_ce_count
             .with_label_values(&[mc_name, dimm_name, &dimm_label])
-            .set(ce as f64);
+            .set(prometheus_u64(ce));
     }
 
     if let Some(ue) = read_u64(&dimm_path.join("dimm_ue_count")) {
         metrics
             .dimm_ue_count
             .with_label_values(&[mc_name, dimm_name, &dimm_label])
-            .set(ue as f64);
+            .set(prometheus_u64(ue));
     }
 
     if let Some(size) = read_u64(&dimm_path.join("size")) {
         metrics
             .dimm_size_mb
             .with_label_values(&[mc_name, dimm_name, &dimm_label])
-            .set(size as f64);
+            .set(prometheus_u64(size));
     }
 }
 
@@ -151,28 +152,28 @@ fn update_memory_controller(mc_path: &Path, mc_name: &str) {
         metrics
             .mc_ce_count
             .with_label_values(&[mc_name])
-            .set(ce as f64);
+            .set(prometheus_u64(ce));
     }
 
     if let Some(ue) = read_u64(&mc_path.join("ue_count")) {
         metrics
             .mc_ue_count
             .with_label_values(&[mc_name])
-            .set(ue as f64);
+            .set(prometheus_u64(ue));
     }
 
     if let Some(ce_noinfo) = read_u64(&mc_path.join("ce_noinfo_count")) {
         metrics
             .mc_ce_noinfo_count
             .with_label_values(&[mc_name])
-            .set(ce_noinfo as f64);
+            .set(prometheus_u64(ce_noinfo));
     }
 
     if let Some(ue_noinfo) = read_u64(&mc_path.join("ue_noinfo_count")) {
         metrics
             .mc_ue_noinfo_count
             .with_label_values(&[mc_name])
-            .set(ue_noinfo as f64);
+            .set(prometheus_u64(ue_noinfo));
     }
 
     // Read size
@@ -180,7 +181,7 @@ fn update_memory_controller(mc_path: &Path, mc_name: &str) {
         metrics
             .mc_size_mb
             .with_label_values(&[mc_name])
-            .set(size as f64);
+            .set(prometheus_u64(size));
     }
 
     // Read seconds since reset
@@ -188,7 +189,7 @@ fn update_memory_controller(mc_path: &Path, mc_name: &str) {
         metrics
             .mc_seconds_since_reset
             .with_label_values(&[mc_name])
-            .set(seconds as f64);
+            .set(prometheus_u64(seconds));
     }
 
     // Process DIMMs and ranks

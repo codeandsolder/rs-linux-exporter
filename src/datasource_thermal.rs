@@ -1,3 +1,4 @@
+use crate::metric_support::prometheus_i64;
 use prometheus::{Gauge, GaugeVec};
 use std::fs;
 use std::path::Path;
@@ -95,7 +96,7 @@ fn update_thermal_zone(zone_path: &Path, zone_name: &str) {
         metrics
             .zone_temperature_celsius
             .with_label_values(&[zone_name, &zone_type])
-            .set(millidegrees as f64 / 1000.0);
+            .set(prometheus_i64(millidegrees) / 1000.0);
     }
 
     // Read trip points
@@ -121,7 +122,7 @@ fn update_thermal_zone(zone_path: &Path, zone_name: &str) {
             metrics
                 .zone_trip_point_celsius
                 .with_label_values(&[zone_name, &zone_type, index, &trip_type])
-                .set(millidegrees as f64 / 1000.0);
+                .set(prometheus_i64(millidegrees) / 1000.0);
         }
     }
 }
@@ -138,7 +139,7 @@ fn update_cooling_device(device_path: &Path, device_name: &str) {
         metrics
             .cooling_device_cur_state
             .with_label_values(&[device_name, &device_type])
-            .set(cur_state as f64);
+            .set(prometheus_i64(cur_state));
     }
 
     // Read max state
@@ -146,7 +147,7 @@ fn update_cooling_device(device_path: &Path, device_name: &str) {
         metrics
             .cooling_device_max_state
             .with_label_values(&[device_name, &device_type])
-            .set(max_state as f64);
+            .set(prometheus_i64(max_state));
     }
 }
 

@@ -1,3 +1,4 @@
+use crate::metric_support::prometheus_u64;
 use prometheus::{Gauge, GaugeVec};
 use std::fs;
 use std::path::Path;
@@ -65,7 +66,7 @@ fn parse_meminfo(content: &str, node_name: &str) {
         metrics
             .meminfo
             .with_label_values(&[node_name, field_name])
-            .set(bytes as f64);
+            .set(prometheus_u64(bytes));
     }
 }
 
@@ -87,7 +88,7 @@ fn parse_numastat(content: &str, node_name: &str) {
         metrics
             .numastat
             .with_label_values(&[node_name, stat_name])
-            .set(value as f64);
+            .set(prometheus_u64(value));
     }
 }
 
