@@ -18,17 +18,20 @@ mod datasource_kernel_hung;
 mod datasource_mdraid;
 mod datasource_netdev_sysfs;
 mod datasource_nfs;
+mod datasource_ntp;
 mod datasource_numa;
 mod datasource_nvme;
 mod datasource_os;
 mod datasource_power_supply;
 mod datasource_pressure;
+mod datasource_probe;
 mod datasource_procfs;
 mod datasource_rapl;
 mod datasource_sccache;
 mod datasource_schedstat;
 mod datasource_softnet;
 mod datasource_systemd;
+mod datasource_tailscale;
 mod datasource_thermal;
 mod datasource_time;
 mod datasource_timex;
@@ -37,7 +40,10 @@ mod datasource_watchdog;
 mod datasource_zfs;
 mod exposition;
 mod metric_support;
+mod plugin;
+mod probe;
 mod runtime;
+mod subprocess;
 mod sysfs;
 
 use crate::config::AppConfig;
@@ -235,6 +241,12 @@ fn rocket() -> _ {
     let config = app_config();
     let _ = metrics_requests_total();
     let _ = metrics_requests_denied_total();
+    if let Some(path) = config.plugin_socket.as_deref()
+        && let Err(error) = plugin::start_server(std::path::Path::new(path))
+    {
+        eprintln!("Failed to start plugin socket: {error}");
+        std::process::exit(78);
+    }
     if runtime::debug_enabled() {
         eprintln!("Debug logging enabled.");
     }

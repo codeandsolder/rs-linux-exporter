@@ -136,13 +136,20 @@ fn json_from_families(families: Vec<MetricFamily>) -> Result<String, RenderError
     serde_json::to_string(&samples).map_err(RenderError::Json)
 }
 
+fn gather_all() -> Vec<MetricFamily> {
+    let mut families = prometheus::gather();
+    families.extend(crate::plugin::metric_families());
+    families.sort_by(|left, right| left.name().cmp(right.name()));
+    families
+}
+
 pub fn render_json() -> Result<String, RenderError> {
-    json_from_families(prometheus::gather())
+    json_from_families(gather_all())
 }
 
 pub fn render_text() -> Result<String, RenderError> {
     let encoder = TextEncoder::new();
-    let metric_families = prometheus::gather();
+    let metric_families = gather_all();
     let mut buffer = Vec::new();
     encoder
         .encode(&metric_families, &mut buffer)

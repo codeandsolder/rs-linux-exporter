@@ -571,6 +571,477 @@
       ]
     },
     {
+      "name": "ntp_tracking_info",
+      "group": "ntp",
+      "type": "GaugeVec",
+      "description": "Current chrony reference identifier and leap status",
+      "labels": [
+        "reference",
+        "leap_status"
+      ]
+    },
+    {
+      "name": "ntp_stratum",
+      "group": "ntp",
+      "type": "Gauge",
+      "description": "Current local NTP stratum",
+      "labels": []
+    },
+    {
+      "name": "ntp_reference_time_seconds",
+      "group": "ntp",
+      "type": "Gauge",
+      "description": "Unix timestamp of the current reference measurement",
+      "labels": []
+    },
+    {
+      "name": "ntp_system_offset_seconds",
+      "group": "ntp",
+      "type": "Gauge",
+      "description": "Current system-clock offset from NTP time",
+      "labels": []
+    },
+    {
+      "name": "ntp_last_offset_seconds",
+      "group": "ntp",
+      "type": "Gauge",
+      "description": "Last chrony clock offset sample",
+      "labels": []
+    },
+    {
+      "name": "ntp_rms_offset_seconds",
+      "group": "ntp",
+      "type": "Gauge",
+      "description": "RMS clock offset maintained by chrony",
+      "labels": []
+    },
+    {
+      "name": "ntp_frequency_ppm",
+      "group": "ntp",
+      "type": "Gauge",
+      "description": "Current clock frequency correction in ppm",
+      "labels": []
+    },
+    {
+      "name": "ntp_residual_frequency_ppm",
+      "group": "ntp",
+      "type": "Gauge",
+      "description": "Residual frequency error in ppm",
+      "labels": []
+    },
+    {
+      "name": "ntp_skew_ppm",
+      "group": "ntp",
+      "type": "Gauge",
+      "description": "Estimated frequency error bound in ppm",
+      "labels": []
+    },
+    {
+      "name": "ntp_root_delay_seconds",
+      "group": "ntp",
+      "type": "Gauge",
+      "description": "Root network delay to the reference clock",
+      "labels": []
+    },
+    {
+      "name": "ntp_root_dispersion_seconds",
+      "group": "ntp",
+      "type": "Gauge",
+      "description": "Root dispersion to the reference clock",
+      "labels": []
+    },
+    {
+      "name": "ntp_update_interval_seconds",
+      "group": "ntp",
+      "type": "Gauge",
+      "description": "Interval between the last two chrony clock updates",
+      "labels": []
+    },
+    {
+      "name": "ntp_source_info",
+      "group": "ntp",
+      "type": "GaugeVec",
+      "description": "Known chrony source and source mode",
+      "labels": [
+        "source",
+        "mode"
+      ]
+    },
+    {
+      "name": "ntp_source_state",
+      "group": "ntp",
+      "type": "GaugeVec",
+      "description": "One-hot current chrony source-selection state",
+      "labels": [
+        "source",
+        "state"
+      ]
+    },
+    {
+      "name": "ntp_source_stratum",
+      "group": "ntp",
+      "type": "GaugeVec",
+      "description": "Stratum reported for each source",
+      "labels": [
+        "source"
+      ]
+    },
+    {
+      "name": "ntp_source_poll_interval_seconds",
+      "group": "ntp",
+      "type": "GaugeVec",
+      "description": "Poll interval for each source",
+      "labels": [
+        "source"
+      ]
+    },
+    {
+      "name": "ntp_source_reachability",
+      "group": "ntp",
+      "type": "GaugeVec",
+      "description": "Chrony 8-bit reachability register as an integer",
+      "labels": [
+        "source"
+      ]
+    },
+    {
+      "name": "ntp_source_last_rx_seconds",
+      "group": "ntp",
+      "type": "GaugeVec",
+      "description": "Seconds since the last sample from each source",
+      "labels": [
+        "source"
+      ]
+    },
+    {
+      "name": "ntp_source_offset_seconds",
+      "group": "ntp",
+      "type": "GaugeVec",
+      "description": "Adjusted/original source offset",
+      "labels": [
+        "source",
+        "kind"
+      ]
+    },
+    {
+      "name": "ntp_source_error_seconds",
+      "group": "ntp",
+      "type": "GaugeVec",
+      "description": "Estimated source error bound",
+      "labels": [
+        "source"
+      ]
+    },
+    {
+      "name": "ntp_sources",
+      "group": "ntp",
+      "type": "GaugeVec",
+      "description": "Chrony source activity counts by state",
+      "labels": [
+        "state"
+      ]
+    },
+    {
+      "name": "probe_ping_success",
+      "group": "probe",
+      "type": "GaugeVec",
+      "description": "Whether the most recent configured ping succeeded",
+      "labels": [
+        "target"
+      ]
+    },
+    {
+      "name": "probe_ping_rtt_seconds",
+      "group": "probe",
+      "type": "GaugeVec",
+      "description": "RTT of the most recent successful configured ping",
+      "labels": [
+        "target"
+      ]
+    },
+    {
+      "name": "probe_traceroute_success",
+      "group": "probe",
+      "type": "GaugeVec",
+      "description": "Whether the most recent traceroute completed with parseable output",
+      "labels": [
+        "target"
+      ]
+    },
+    {
+      "name": "probe_traceroute_reached",
+      "group": "probe",
+      "type": "GaugeVec",
+      "description": "Whether the destination appeared in the most recent traceroute",
+      "labels": [
+        "target"
+      ]
+    },
+    {
+      "name": "probe_traceroute_hops",
+      "group": "probe",
+      "type": "GaugeVec",
+      "description": "Number of hop positions in the most recent traceroute",
+      "labels": [
+        "target"
+      ]
+    },
+    {
+      "name": "probe_traceroute_hop_rtt_seconds",
+      "group": "probe",
+      "type": "GaugeVec",
+      "description": "RTT keyed only by stable target + hop position",
+      "labels": [
+        "target",
+        "hop"
+      ]
+    },
+    {
+      "name": "probe_traceroute_hop_info",
+      "group": "probe",
+      "type": "GaugeVec",
+      "description": "Address identity observed at a hop; intentionally churns when the route changes",
+      "labels": [
+        "target",
+        "hop",
+        "address"
+      ]
+    },
+    {
+      "name": "probe_last_refresh_timestamp_seconds",
+      "group": "probe",
+      "type": "GaugeVec",
+      "description": "Unix timestamp of the last completed active probe",
+      "labels": [
+        "target"
+      ]
+    },
+    {
+      "name": "probe_refresh_in_progress",
+      "group": "probe",
+      "type": "Gauge",
+      "description": "Whether the background probe worker is currently refreshing targets",
+      "labels": []
+    },
+    {
+      "name": "tailscale_backend_state_info",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Current tailscaled backend state",
+      "labels": [
+        "state"
+      ]
+    },
+    {
+      "name": "tailscale_self_info",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Local Tailscale hostname, DNS name, and home relay",
+      "labels": [
+        "hostname",
+        "dns_name",
+        "relay"
+      ]
+    },
+    {
+      "name": "tailscale_public_endpoint_info",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Public v4/v6 address reported by Tailscale netcheck",
+      "labels": [
+        "family",
+        "address"
+      ]
+    },
+    {
+      "name": "tailscale_public_endpoint_port",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Public NAT-mapped port by address family",
+      "labels": [
+        "family"
+      ]
+    },
+    {
+      "name": "tailscale_preferred_derp",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Preferred DERP region",
+      "labels": [
+        "region"
+      ]
+    },
+    {
+      "name": "tailscale_derp_latency_seconds",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Tailscale netcheck DERP latency by region and address family",
+      "labels": [
+        "region",
+        "family"
+      ]
+    },
+    {
+      "name": "tailscale_peer_info",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Tailnet peer identity, OS, and relay metadata",
+      "labels": [
+        "peer",
+        "hostname",
+        "dns_name",
+        "os",
+        "relay"
+      ]
+    },
+    {
+      "name": "tailscale_peer_online",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Peer online state from the network map",
+      "labels": [
+        "peer"
+      ]
+    },
+    {
+      "name": "tailscale_peer_active",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Whether the peer currently has active traffic",
+      "labels": [
+        "peer"
+      ]
+    },
+    {
+      "name": "tailscale_peer_path_state",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "One-hot direct/peer-relay/DERP/offline/unknown path state",
+      "labels": [
+        "peer",
+        "path"
+      ]
+    },
+    {
+      "name": "tailscale_peer_endpoint_info",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Current direct public peer address when known",
+      "labels": [
+        "peer",
+        "address"
+      ]
+    },
+    {
+      "name": "tailscale_peer_endpoint_port",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Current direct public peer port when known",
+      "labels": [
+        "peer"
+      ]
+    },
+    {
+      "name": "tailscale_peer_ping_success",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Most recent per-peer TSMP/ICMP probe success",
+      "labels": [
+        "peer",
+        "type"
+      ]
+    },
+    {
+      "name": "tailscale_peer_ping_rtt_seconds",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Most recent successful TSMP/ICMP peer RTT",
+      "labels": [
+        "peer",
+        "type"
+      ]
+    },
+    {
+      "name": "tailscale_peer_external_traceroute_success",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Whether the underlay traceroute to a direct peer endpoint completed",
+      "labels": [
+        "peer"
+      ]
+    },
+    {
+      "name": "tailscale_peer_external_traceroute_reached",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Whether the underlay traceroute reached the direct peer endpoint",
+      "labels": [
+        "peer"
+      ]
+    },
+    {
+      "name": "tailscale_peer_external_traceroute_hops",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Number of positions in the underlay traceroute",
+      "labels": [
+        "peer"
+      ]
+    },
+    {
+      "name": "tailscale_peer_external_traceroute_hop_rtt_seconds",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Underlay RTT keyed by peer + stable hop position",
+      "labels": [
+        "peer",
+        "hop"
+      ]
+    },
+    {
+      "name": "tailscale_peer_external_traceroute_hop_info",
+      "group": "tailscale",
+      "type": "GaugeVec",
+      "description": "Underlay address observed at each hop position",
+      "labels": [
+        "peer",
+        "hop",
+        "address"
+      ]
+    },
+    {
+      "name": "tailscale_last_refresh_timestamp_seconds",
+      "group": "tailscale",
+      "type": "Gauge",
+      "description": "Unix timestamp of the last completed Tailscale refresh",
+      "labels": []
+    },
+    {
+      "name": "tailscale_refresh_in_progress",
+      "group": "tailscale",
+      "type": "Gauge",
+      "description": "Whether a background Tailscale refresh is currently running",
+      "labels": []
+    },
+    {
+      "name": "plugin_snapshot_age_seconds",
+      "group": "plugins",
+      "type": "GaugeVec",
+      "description": "Age of the most recently accepted snapshot for each plugin",
+      "labels": [
+        "plugin"
+      ]
+    },
+    {
+      "name": "plugin_snapshot_valid",
+      "group": "plugins",
+      "type": "GaugeVec",
+      "description": "Whether the cached plugin snapshot remains inside its declared TTL",
+      "labels": [
+        "plugin"
+      ]
+    },
+    {
       "name": "timex_offset_seconds",
       "group": "timex",
       "type": "GaugeVec",
@@ -2475,6 +2946,79 @@
       "name": "dmi",
       "metrics": [
         "dmi_info"
+      ]
+    },
+    {
+      "name": "ntp",
+      "metrics": [
+        "ntp_tracking_info",
+        "ntp_stratum",
+        "ntp_reference_time_seconds",
+        "ntp_system_offset_seconds",
+        "ntp_last_offset_seconds",
+        "ntp_rms_offset_seconds",
+        "ntp_frequency_ppm",
+        "ntp_residual_frequency_ppm",
+        "ntp_skew_ppm",
+        "ntp_root_delay_seconds",
+        "ntp_root_dispersion_seconds",
+        "ntp_update_interval_seconds",
+        "ntp_source_info",
+        "ntp_source_state",
+        "ntp_source_stratum",
+        "ntp_source_poll_interval_seconds",
+        "ntp_source_reachability",
+        "ntp_source_last_rx_seconds",
+        "ntp_source_offset_seconds",
+        "ntp_source_error_seconds",
+        "ntp_sources"
+      ]
+    },
+    {
+      "name": "probe",
+      "metrics": [
+        "probe_ping_success",
+        "probe_ping_rtt_seconds",
+        "probe_traceroute_success",
+        "probe_traceroute_reached",
+        "probe_traceroute_hops",
+        "probe_traceroute_hop_rtt_seconds",
+        "probe_traceroute_hop_info",
+        "probe_last_refresh_timestamp_seconds",
+        "probe_refresh_in_progress"
+      ]
+    },
+    {
+      "name": "tailscale",
+      "metrics": [
+        "tailscale_backend_state_info",
+        "tailscale_self_info",
+        "tailscale_public_endpoint_info",
+        "tailscale_public_endpoint_port",
+        "tailscale_preferred_derp",
+        "tailscale_derp_latency_seconds",
+        "tailscale_peer_info",
+        "tailscale_peer_online",
+        "tailscale_peer_active",
+        "tailscale_peer_path_state",
+        "tailscale_peer_endpoint_info",
+        "tailscale_peer_endpoint_port",
+        "tailscale_peer_ping_success",
+        "tailscale_peer_ping_rtt_seconds",
+        "tailscale_peer_external_traceroute_success",
+        "tailscale_peer_external_traceroute_reached",
+        "tailscale_peer_external_traceroute_hops",
+        "tailscale_peer_external_traceroute_hop_rtt_seconds",
+        "tailscale_peer_external_traceroute_hop_info",
+        "tailscale_last_refresh_timestamp_seconds",
+        "tailscale_refresh_in_progress"
+      ]
+    },
+    {
+      "name": "plugins",
+      "metrics": [
+        "plugin_snapshot_age_seconds",
+        "plugin_snapshot_valid"
       ]
     },
     {

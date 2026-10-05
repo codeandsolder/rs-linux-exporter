@@ -138,6 +138,85 @@ The datasource follows `/proc/net/rpc/nfsd` dynamically with the same healthy/no
 |---|---|---|
 | `dmi_info` | GaugeVec | BIOS, board, chassis and product DMI identity |
 
+## ntp
+
+| Metric | Type | Description |
+|---|---|---|
+| `ntp_tracking_info` | GaugeVec | Current chrony reference identifier and leap status |
+| `ntp_stratum` | Gauge | Current local NTP stratum |
+| `ntp_reference_time_seconds` | Gauge | Unix timestamp of the current reference measurement |
+| `ntp_system_offset_seconds` | Gauge | Current system-clock offset from NTP time |
+| `ntp_last_offset_seconds` | Gauge | Last chrony clock offset sample |
+| `ntp_rms_offset_seconds` | Gauge | RMS clock offset maintained by chrony |
+| `ntp_frequency_ppm` | Gauge | Current clock frequency correction in ppm |
+| `ntp_residual_frequency_ppm` | Gauge | Residual frequency error in ppm |
+| `ntp_skew_ppm` | Gauge | Estimated frequency error bound in ppm |
+| `ntp_root_delay_seconds` | Gauge | Root network delay to the reference clock |
+| `ntp_root_dispersion_seconds` | Gauge | Root dispersion to the reference clock |
+| `ntp_update_interval_seconds` | Gauge | Interval between the last two chrony clock updates |
+| `ntp_source_info` | GaugeVec | Known chrony source and source mode |
+| `ntp_source_state` | GaugeVec | One-hot current chrony source-selection state |
+| `ntp_source_stratum` | GaugeVec | Stratum reported for each source |
+| `ntp_source_poll_interval_seconds` | GaugeVec | Poll interval for each source |
+| `ntp_source_reachability` | GaugeVec | Chrony 8-bit reachability register as an integer |
+| `ntp_source_last_rx_seconds` | GaugeVec | Seconds since the last sample from each source |
+| `ntp_source_offset_seconds` | GaugeVec | Adjusted/original source offset |
+| `ntp_source_error_seconds` | GaugeVec | Estimated source error bound |
+| `ntp_sources` | GaugeVec | Chrony source activity counts by state |
+
+## probe
+
+| Metric | Type | Description |
+|---|---|---|
+| `probe_ping_success` | GaugeVec | Whether the most recent configured ping succeeded |
+| `probe_ping_rtt_seconds` | GaugeVec | RTT of the most recent successful configured ping |
+| `probe_traceroute_success` | GaugeVec | Whether the most recent traceroute completed with parseable output |
+| `probe_traceroute_reached` | GaugeVec | Whether the destination appeared in the most recent traceroute |
+| `probe_traceroute_hops` | GaugeVec | Number of hop positions in the most recent traceroute |
+| `probe_traceroute_hop_rtt_seconds` | GaugeVec | RTT keyed only by stable target + hop position |
+| `probe_traceroute_hop_info` | GaugeVec | Address identity observed at a hop; intentionally churns when the route changes |
+| `probe_last_refresh_timestamp_seconds` | GaugeVec | Unix timestamp of the last completed active probe |
+| `probe_refresh_in_progress` | Gauge | Whether the background probe worker is currently refreshing targets |
+
+Traceroutes never run on the scrape path. A scrape starts a background refresh when the cache is stale and immediately serves the previous completed snapshot. Keeping the address out of the RTT metric avoids replacing every latency series on a path change; only the companion `_info{address=...}` identity series churns.
+
+## tailscale
+
+| Metric | Type | Description |
+|---|---|---|
+| `tailscale_backend_state_info` | GaugeVec | Current tailscaled backend state |
+| `tailscale_self_info` | GaugeVec | Local Tailscale hostname, DNS name, and home relay |
+| `tailscale_public_endpoint_info` | GaugeVec | Public v4/v6 address reported by Tailscale netcheck |
+| `tailscale_public_endpoint_port` | GaugeVec | Public NAT-mapped port by address family |
+| `tailscale_preferred_derp` | GaugeVec | Preferred DERP region |
+| `tailscale_derp_latency_seconds` | GaugeVec | Tailscale netcheck DERP latency by region and address family |
+| `tailscale_peer_info` | GaugeVec | Tailnet peer identity, OS, and relay metadata |
+| `tailscale_peer_online` | GaugeVec | Peer online state from the network map |
+| `tailscale_peer_active` | GaugeVec | Whether the peer currently has active traffic |
+| `tailscale_peer_path_state` | GaugeVec | One-hot direct/peer-relay/DERP/offline/unknown path state |
+| `tailscale_peer_endpoint_info` | GaugeVec | Current direct public peer address when known |
+| `tailscale_peer_endpoint_port` | GaugeVec | Current direct public peer port when known |
+| `tailscale_peer_ping_success` | GaugeVec | Most recent per-peer TSMP/ICMP probe success |
+| `tailscale_peer_ping_rtt_seconds` | GaugeVec | Most recent successful TSMP/ICMP peer RTT |
+| `tailscale_peer_external_traceroute_success` | GaugeVec | Whether the underlay traceroute to a direct peer endpoint completed |
+| `tailscale_peer_external_traceroute_reached` | GaugeVec | Whether the underlay traceroute reached the direct peer endpoint |
+| `tailscale_peer_external_traceroute_hops` | GaugeVec | Number of positions in the underlay traceroute |
+| `tailscale_peer_external_traceroute_hop_rtt_seconds` | GaugeVec | Underlay RTT keyed by peer + stable hop position |
+| `tailscale_peer_external_traceroute_hop_info` | GaugeVec | Underlay address observed at each hop position |
+| `tailscale_last_refresh_timestamp_seconds` | Gauge | Unix timestamp of the last completed Tailscale refresh |
+| `tailscale_refresh_in_progress` | Gauge | Whether a background Tailscale refresh is currently running |
+
+Tailscale status/netcheck and active probes refresh in the background. Public endpoints come from `tailscale netcheck --format=json`; peer direct endpoints come from `tailscale status --json`. External traceroute targets the peer's current public `CurAddr` address rather than its Tailscale overlay address.
+
+## plugins
+
+| Metric | Type | Description |
+|---|---|---|
+| `plugin_snapshot_age_seconds` | GaugeVec | Age of the most recently accepted snapshot for each plugin |
+| `plugin_snapshot_valid` | GaugeVec | Whether the cached plugin snapshot remains inside its declared TTL |
+
+Plugin-provided metric names are dynamic and therefore are not enumerated in this static catalog. Each accepted family is namespaced as `<plugin>_<metric>` at exposition time.
+
 ## timex
 
 | Metric | Type | Description |
@@ -426,6 +505,84 @@ python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROM
 ```
 
 ## Metric labels and field catalogs
+
+### ntp_tracking_info labels: `reference`, `leap_status`
+
+### ntp_source_info labels: `source`, `mode`
+
+### ntp_source_state labels: `source`, `state`
+
+### ntp_source_stratum labels: `source`
+
+### ntp_source_poll_interval_seconds labels: `source`
+
+### ntp_source_reachability labels: `source`
+
+### ntp_source_last_rx_seconds labels: `source`
+
+### ntp_source_offset_seconds labels: `source`, `kind`
+
+### ntp_source_error_seconds labels: `source`
+
+### ntp_sources labels: `state`
+
+### probe_ping_success labels: `target`
+
+### probe_ping_rtt_seconds labels: `target`
+
+### probe_traceroute_success labels: `target`
+
+### probe_traceroute_reached labels: `target`
+
+### probe_traceroute_hops labels: `target`
+
+### probe_traceroute_hop_rtt_seconds labels: `target`, `hop`
+
+### probe_traceroute_hop_info labels: `target`, `hop`, `address`
+
+### probe_last_refresh_timestamp_seconds labels: `target`
+
+### tailscale_backend_state_info labels: `state`
+
+### tailscale_self_info labels: `hostname`, `dns_name`, `relay`
+
+### tailscale_public_endpoint_info labels: `family`, `address`
+
+### tailscale_public_endpoint_port labels: `family`
+
+### tailscale_preferred_derp labels: `region`
+
+### tailscale_derp_latency_seconds labels: `region`, `family`
+
+### tailscale_peer_info labels: `peer`, `hostname`, `dns_name`, `os`, `relay`
+
+### tailscale_peer_online labels: `peer`
+
+### tailscale_peer_active labels: `peer`
+
+### tailscale_peer_path_state labels: `peer`, `path`
+
+### tailscale_peer_endpoint_info labels: `peer`, `address`
+
+### tailscale_peer_endpoint_port labels: `peer`
+
+### tailscale_peer_ping_success labels: `peer`, `type`
+
+### tailscale_peer_ping_rtt_seconds labels: `peer`, `type`
+
+### tailscale_peer_external_traceroute_success labels: `peer`
+
+### tailscale_peer_external_traceroute_reached labels: `peer`
+
+### tailscale_peer_external_traceroute_hops labels: `peer`
+
+### tailscale_peer_external_traceroute_hop_rtt_seconds labels: `peer`, `hop`
+
+### tailscale_peer_external_traceroute_hop_info labels: `peer`, `hop`, `address`
+
+### plugin_snapshot_age_seconds labels: `plugin`
+
+### plugin_snapshot_valid labels: `plugin`
 
 ### cgroup_cpu_seconds_total labels: `cgroup`, `kind`
 

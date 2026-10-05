@@ -35,6 +35,9 @@ and the software reliable.
 | `os` | Operating-system identity and lifecycle data from `os-release` |
 | `dmi` | BIOS, board, chassis and system DMI identity from sysfs |
 | `timex` | Kernel NTP discipline, synchronization, error and PPS statistics via read-only `adjtimex(2)` |
+| `ntp` | Chrony daemon tracking, source state/reachability, offsets, frequency/skew, and activity via stable CSV output |
+| `probe` | Cached background ICMP ping and traceroute probes to explicitly configured targets |
+| `tailscale` | Tailnet peer/path state, TSMP/ICMP RTT, public mappings, DERP latency, and optional underlay traceroutes |
 | `time` | Current Unix time and Linux kernel clocksource information |
 | `nfs` | Global NFS client RPC, network, and procedure counters when the kernel interface is present |
 | `nfsd` | Global kernel NFS server RPC, cache, I/O, thread, and procedure counters when active |
@@ -174,8 +177,44 @@ systemd_max_units = 512
 # enabled in baseline mode.
 systemd_detailed_metrics = false
 
+# Chrony/NTP daemon telemetry. The datasource auto-disables if chronyc is absent.
+ntp_binary = "chronyc"
+ntp_timeout_ms = 1000
+
+# Generic active network probes. Empty by default, so the exporter generates no
+# external probe traffic unless targets are explicitly configured. Expensive
+# traceroutes refresh in a background worker and never block /metrics.
+probe_interval_seconds = 30
+probe_timeout_ms = 1000
+probe_traceroute_timeout_ms = 10000
+probe_traceroute_max_hops = 30
+probe_ping_binary = "ping"
+probe_mtr_binary = "mtr"
+
+[[probe_targets]]
+name = "cloudflare-dns"
+address = "1.1.1.1"
+ping = true
+traceroute = true
+
+# Tailscale telemetry. If tailscale is installed, status/netcheck and online-peer
+# TSMP/ICMP probes refresh in the background. External traceroute follows the
+# peer's current direct public endpoint when Tailscale exposes one.
+tailscale_binary = "tailscale"
+tailscale_interval_seconds = 30
+tailscale_timeout_ms = 5000
+tailscale_ping_timeout_ms = 1000
+tailscale_probe_tsmp = true
+tailscale_probe_icmp = true
+tailscale_external_traceroute = true
+
+# Optional push-plugin endpoint. Plugins send bounded TTL snapshots over a Unix
+# stream socket; scrapes only read the last accepted snapshot and never call the
+# plugin synchronously. The socket is created mode 0660.
+# plugin_socket = "/run/rs-linux-exporter/plugins.sock"
+
 # Disable specific datasources (will not be polled)
-# Available: procfs, filefd, schedstat, cgroup, sccache, systemd, cpufreq, softnet, conntrack, filesystems, hwmon, ipmi, mdraid,
+# Available: procfs, filefd, schedstat, cgroup, sccache, systemd, ntp, probe, tailscale, cpufreq, softnet, conntrack, filesystems, hwmon, ipmi, mdraid,
 # thermal, rapl, power_supply, pressure, nvme, edac, netdev_sysfs, numa, zfs
 disabled_datasources = ["thermal", "conntrack"]
 
@@ -198,6 +237,33 @@ log_404_requests = false
 # Bearer token for authentication (optional)
 # auth_token = "your-secret-token-here"
 ```
+
+
+### Unix-socket plugin snapshots
+
+`plugin_socket` enables a small push-only extension point for application metrics. The exporter owns the Unix stream socket; plugins publish a complete snapshot and receive a framed JSON acknowledgement. A snapshot is a 4-byte big-endian length followed by JSON:
+
+```json
+{
+  "version": 1,
+  "plugin": "searxrs2",
+  "ttl_seconds": 15,
+  "metrics": [
+    {
+      "name": "requests_total",
+      "help": "Cumulative requests",
+      "type": "counter",
+      "samples": [
+        {"labels": {"engine": "brave"}, "value": 42}
+      ]
+    }
+  ]
+}
+```
+
+Metric families are exported as `<plugin>_<name>` (for example `searxrs2_requests_total`). Counter, gauge, and untyped snapshots are supported. Messages are capped at 1 MiB, plugin/metric/sample/label counts are bounded, labels must use one stable schema per family, and stale snapshots disappear after their declared TTL. `plugin_snapshot_age_seconds{plugin=...}` and `plugin_snapshot_valid{plugin=...}` remain visible so missing publishers are observable.
+
+This is intentionally not shared-memory IPC: metric snapshots are tiny and infrequent, while Unix sockets give a simpler failure and permission model. Plugins never execute on the Prometheus scrape path.
 
 ## Token Authentication
 

@@ -45,12 +45,15 @@ pub enum Datasource {
     Edac,
     NetdevSysfs,
     Nfs,
+    Ntp,
+    Probe,
     Nfsd,
     Numa,
     Zfs,
     Sccache,
     Schedstat,
     Systemd,
+    Tailscale,
 }
 
 impl Datasource {
@@ -81,12 +84,15 @@ impl Datasource {
             Self::Edac => "edac",
             Self::NetdevSysfs => "netdev_sysfs",
             Self::Nfs => "nfs",
+            Self::Ntp => "ntp",
+            Self::Probe => "probe",
             Self::Nfsd => "nfsd",
             Self::Numa => "numa",
             Self::Zfs => "zfs",
             Self::Sccache => "sccache",
             Self::Schedstat => "schedstat",
             Self::Systemd => "systemd",
+            Self::Tailscale => "tailscale",
         }
     }
 }
@@ -95,14 +101,24 @@ impl Datasource {
 pub enum ConfigError {
     InvalidAllowedIp(String),
     InvalidBind(String),
+    InvalidPluginSocket(String),
     IncompleteTls,
     InvalidCgroupRoot(String),
     InvalidCgroupMaxUnits,
     InvalidSccacheTimeout,
+    InvalidNtpTimeout,
+    InvalidProbeTarget(String),
+    InvalidProbeInterval,
+    InvalidProbeTimeout,
+    InvalidProbeTracerouteTimeout,
+    InvalidProbeMaxHops,
     InvalidSccachePort,
     InvalidSystemdUnitInclude(String),
     InvalidSystemdUnitExclude(String),
     InvalidSystemdMaxUnits,
+    InvalidTailscaleInterval,
+    InvalidTailscaleTimeout,
+    InvalidTailscalePingTimeout,
 }
 
 impl fmt::Display for ConfigError {
@@ -120,6 +136,10 @@ impl fmt::Display for ConfigError {
                     "invalid bind address {value:?}: expected IP:port"
                 )
             }
+            Self::InvalidPluginSocket(value) => write!(
+                formatter,
+                "invalid plugin_socket {value:?}: expected an absolute Unix socket path"
+            ),
             Self::IncompleteTls => formatter.write_str(
                 "tls_cert and tls_key must either both be configured or both be omitted",
             ),
@@ -129,6 +149,24 @@ impl fmt::Display for ConfigError {
             ),
             Self::InvalidCgroupMaxUnits => {
                 formatter.write_str("cgroup_max_units must be greater than zero")
+            }
+            Self::InvalidNtpTimeout => {
+                formatter.write_str("ntp_timeout_ms must be between 10 and 60000 milliseconds")
+            }
+            Self::InvalidProbeTarget(value) => {
+                write!(formatter, "invalid probe target: {value}")
+            }
+            Self::InvalidProbeInterval => {
+                formatter.write_str("probe_interval_seconds must be between 1 and 3600")
+            }
+            Self::InvalidProbeTimeout => {
+                formatter.write_str("probe_timeout_ms must be between 10 and 60000")
+            }
+            Self::InvalidProbeTracerouteTimeout => {
+                formatter.write_str("probe_traceroute_timeout_ms must be between 100 and 120000")
+            }
+            Self::InvalidProbeMaxHops => {
+                formatter.write_str("probe_traceroute_max_hops must be between 1 and 64")
             }
             Self::InvalidSccacheTimeout => {
                 formatter.write_str("sccache_timeout_ms must be between 10 and 60000 milliseconds")
@@ -144,6 +182,15 @@ impl fmt::Display for ConfigError {
             }
             Self::InvalidSystemdMaxUnits => {
                 formatter.write_str("systemd_max_units must be greater than zero")
+            }
+            Self::InvalidTailscaleInterval => {
+                formatter.write_str("tailscale_interval_seconds must be between 1 and 3600")
+            }
+            Self::InvalidTailscaleTimeout => {
+                formatter.write_str("tailscale_timeout_ms must be between 100 and 120000")
+            }
+            Self::InvalidTailscalePingTimeout => {
+                formatter.write_str("tailscale_ping_timeout_ms must be between 10 and 60000")
             }
         }
     }
@@ -292,6 +339,26 @@ fn executable_file(path: &Path) -> bool {
         .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ProbeTarget {
+    pub name: String,
+    pub address: String,
+    pub ping: bool,
+    pub traceroute: bool,
+}
+
+impl Default for ProbeTarget {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            address: String::new(),
+            ping: true,
+            traceroute: true,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 #[expect(
@@ -307,6 +374,15 @@ pub struct AppConfig {
     pub cgroup_max_units: usize,
     pub cgroup_detailed_metrics: bool,
     pub sccache_binary: String,
+    pub ntp_binary: String,
+    pub ntp_timeout_ms: u64,
+    pub probe_targets: Vec<ProbeTarget>,
+    pub probe_interval_seconds: u64,
+    pub probe_timeout_ms: u64,
+    pub probe_traceroute_timeout_ms: u64,
+    pub probe_traceroute_max_hops: u32,
+    pub probe_ping_binary: String,
+    pub probe_mtr_binary: String,
     pub sccache_server_port: u16,
     pub sccache_timeout_ms: u64,
     pub sccache_collect_dist_status: bool,
@@ -314,10 +390,18 @@ pub struct AppConfig {
     pub systemd_unit_exclude: String,
     pub systemd_max_units: usize,
     pub systemd_detailed_metrics: bool,
+    pub tailscale_binary: String,
+    pub tailscale_interval_seconds: u64,
+    pub tailscale_timeout_ms: u64,
+    pub tailscale_ping_timeout_ms: u64,
+    pub tailscale_probe_tsmp: bool,
+    pub tailscale_probe_icmp: bool,
+    pub tailscale_external_traceroute: bool,
     #[serde(default)]
     pub disabled_datasources: Vec<Datasource>,
     pub allowed_ip: Vec<String>,
     pub bind: String,
+    pub plugin_socket: Option<String>,
     pub log_denied_requests: bool,
     pub log_404_requests: bool,
     pub tls_cert: Option<String>,
@@ -340,6 +424,15 @@ impl Default for AppConfig {
             cgroup_max_units: 256,
             cgroup_detailed_metrics: false,
             sccache_binary: "sccache".to_string(),
+            ntp_binary: "chronyc".to_string(),
+            ntp_timeout_ms: 1_000,
+            probe_targets: Vec::new(),
+            probe_interval_seconds: 30,
+            probe_timeout_ms: 1_000,
+            probe_traceroute_timeout_ms: 10_000,
+            probe_traceroute_max_hops: 30,
+            probe_ping_binary: "ping".to_string(),
+            probe_mtr_binary: "mtr".to_string(),
             sccache_server_port: 4226,
             sccache_timeout_ms: 1_000,
             sccache_collect_dist_status: false,
@@ -347,9 +440,17 @@ impl Default for AppConfig {
             systemd_unit_exclude: r".+\.(automount|device|mount|scope|slice)".to_string(),
             systemd_max_units: 512,
             systemd_detailed_metrics: false,
+            tailscale_binary: "tailscale".to_string(),
+            tailscale_interval_seconds: 30,
+            tailscale_timeout_ms: 5_000,
+            tailscale_ping_timeout_ms: 1_000,
+            tailscale_probe_tsmp: true,
+            tailscale_probe_icmp: true,
+            tailscale_external_traceroute: true,
             disabled_datasources: Vec::new(),
             allowed_ip: vec!["127.0.0.0/8".to_string()],
             bind: "127.0.0.1:9100".to_string(),
+            plugin_socket: None,
             log_denied_requests: true,
             log_404_requests: false,
             tls_cert: None,
@@ -429,12 +530,68 @@ impl AppConfig {
         Ok(())
     }
 
+    fn validate_ntp_settings(&self) -> Result<(), ConfigError> {
+        if !(10..=60_000).contains(&self.ntp_timeout_ms) {
+            return Err(ConfigError::InvalidNtpTimeout);
+        }
+        Ok(())
+    }
+
+    fn validate_probe_settings(&self) -> Result<(), ConfigError> {
+        if !(1..=3_600).contains(&self.probe_interval_seconds) {
+            return Err(ConfigError::InvalidProbeInterval);
+        }
+        if !(10..=60_000).contains(&self.probe_timeout_ms) {
+            return Err(ConfigError::InvalidProbeTimeout);
+        }
+        if !(100..=120_000).contains(&self.probe_traceroute_timeout_ms) {
+            return Err(ConfigError::InvalidProbeTracerouteTimeout);
+        }
+        if !(1..=64).contains(&self.probe_traceroute_max_hops) {
+            return Err(ConfigError::InvalidProbeMaxHops);
+        }
+        let mut names = HashSet::new();
+        for target in &self.probe_targets {
+            if target.name.trim().is_empty() || target.address.trim().is_empty() {
+                return Err(ConfigError::InvalidProbeTarget(
+                    "name and address must be non-empty".to_string(),
+                ));
+            }
+            if !target.ping && !target.traceroute {
+                return Err(ConfigError::InvalidProbeTarget(format!(
+                    "target {:?} enables neither ping nor traceroute",
+                    target.name
+                )));
+            }
+            if !names.insert(target.name.clone()) {
+                return Err(ConfigError::InvalidProbeTarget(format!(
+                    "duplicate target name {:?}",
+                    target.name
+                )));
+            }
+        }
+        Ok(())
+    }
+
     fn validate_sccache_settings(&self) -> Result<(), ConfigError> {
         if self.sccache_server_port == 0 {
             return Err(ConfigError::InvalidSccachePort);
         }
         if !(10..=60_000).contains(&self.sccache_timeout_ms) {
             return Err(ConfigError::InvalidSccacheTimeout);
+        }
+        Ok(())
+    }
+
+    fn validate_tailscale_settings(&self) -> Result<(), ConfigError> {
+        if !(1..=3_600).contains(&self.tailscale_interval_seconds) {
+            return Err(ConfigError::InvalidTailscaleInterval);
+        }
+        if !(100..=120_000).contains(&self.tailscale_timeout_ms) {
+            return Err(ConfigError::InvalidTailscaleTimeout);
+        }
+        if !(10..=60_000).contains(&self.tailscale_ping_timeout_ms) {
+            return Err(ConfigError::InvalidTailscalePingTimeout);
         }
         Ok(())
     }
@@ -474,7 +631,16 @@ impl AppConfig {
         self.build_allowed_metrics_nets()?;
         self.validate_cgroup_settings()?;
         self.validate_sccache_settings()?;
+        self.validate_ntp_settings()?;
+        self.validate_probe_settings()?;
         self.validate_systemd_settings()?;
+        self.validate_tailscale_settings()?;
+        if let Some(path) = self.plugin_socket.as_deref() {
+            let path = Path::new(path);
+            if !path.is_absolute() || path.as_os_str().is_empty() {
+                return Err(ConfigError::InvalidPluginSocket(path.display().to_string()));
+            }
+        }
         let _ = self.bind_addr()?;
         let _ = self.tls_config()?;
         Ok(())
@@ -520,8 +686,8 @@ impl AppConfig {
         cgroup_roots_available_at(Path::new("/sys/fs/cgroup"), &self.cgroup_roots)
     }
 
-    fn sccache_binary_available(&self) -> bool {
-        let binary = Path::new(&self.sccache_binary);
+    fn command_available(command: &str) -> bool {
+        let binary = Path::new(command);
         if binary.components().count() > 1 {
             return executable_file(binary);
         }
@@ -531,7 +697,60 @@ impl AppConfig {
     }
 
     fn check_subsystems(&mut self) {
-        if self.is_datasource_enabled(Datasource::Sccache) && !self.sccache_binary_available() {
+        if self.is_datasource_enabled(Datasource::Tailscale)
+            && !Self::command_available(&self.tailscale_binary)
+        {
+            eprintln!(
+                "Tailscale binary {:?} not available, disabling tailscale datasource.",
+                self.tailscale_binary
+            );
+            self.disable_datasource(Datasource::Tailscale);
+        }
+        if self.is_datasource_enabled(Datasource::Tailscale)
+            && self.tailscale_external_traceroute
+            && !Self::command_available(&self.probe_mtr_binary)
+        {
+            eprintln!(
+                "mtr binary {:?} not available, disabling Tailscale external traceroutes.",
+                self.probe_mtr_binary
+            );
+            self.tailscale_external_traceroute = false;
+        }
+        if self.is_datasource_enabled(Datasource::Probe) && self.probe_targets.is_empty() {
+            self.disable_datasource(Datasource::Probe);
+        }
+        if self.is_datasource_enabled(Datasource::Probe)
+            && self.probe_targets.iter().any(|target| target.ping)
+            && !Self::command_available(&self.probe_ping_binary)
+        {
+            eprintln!(
+                "ping binary {:?} not available, disabling probe datasource.",
+                self.probe_ping_binary
+            );
+            self.disable_datasource(Datasource::Probe);
+        }
+        if self.is_datasource_enabled(Datasource::Probe)
+            && self.probe_targets.iter().any(|target| target.traceroute)
+            && !Self::command_available(&self.probe_mtr_binary)
+        {
+            eprintln!(
+                "mtr binary {:?} not available, disabling probe datasource.",
+                self.probe_mtr_binary
+            );
+            self.disable_datasource(Datasource::Probe);
+        }
+        if self.is_datasource_enabled(Datasource::Ntp) && !Self::command_available(&self.ntp_binary)
+        {
+            eprintln!(
+                "NTP client binary {:?} not available, disabling ntp datasource.",
+                self.ntp_binary
+            );
+            self.disable_datasource(Datasource::Ntp);
+        }
+
+        if self.is_datasource_enabled(Datasource::Sccache)
+            && !Self::command_available(&self.sccache_binary)
+        {
             eprintln!(
                 "sccache binary {:?} not available, disabling sccache datasource.",
                 self.sccache_binary
@@ -716,6 +935,92 @@ mod tests {
         assert_eq!(config.systemd_max_units, 512);
         assert!(!config.systemd_detailed_metrics);
         assert!(config.validate_systemd_settings().is_ok());
+    }
+
+    #[test]
+    fn network_probe_settings_are_bounded_and_targets_are_unique() {
+        let valid = AppConfig {
+            probe_targets: vec![ProbeTarget {
+                name: "dns".to_string(),
+                address: "1.1.1.1".to_string(),
+                ping: true,
+                traceroute: false,
+            }],
+            ..Default::default()
+        };
+        assert_eq!(valid.validate_probe_settings(), Ok(()));
+
+        let duplicate = AppConfig {
+            probe_targets: vec![
+                ProbeTarget {
+                    name: "dns".to_string(),
+                    address: "1.1.1.1".to_string(),
+                    ping: true,
+                    traceroute: false,
+                },
+                ProbeTarget {
+                    name: "dns".to_string(),
+                    address: "8.8.8.8".to_string(),
+                    ping: true,
+                    traceroute: false,
+                },
+            ],
+            ..Default::default()
+        };
+        assert!(matches!(
+            duplicate.validate_probe_settings(),
+            Err(ConfigError::InvalidProbeTarget(_))
+        ));
+
+        let disabled = AppConfig {
+            probe_targets: vec![ProbeTarget {
+                name: "dns".to_string(),
+                address: "1.1.1.1".to_string(),
+                ping: false,
+                traceroute: false,
+            }],
+            ..Default::default()
+        };
+        assert!(matches!(
+            disabled.validate_probe_settings(),
+            Err(ConfigError::InvalidProbeTarget(_))
+        ));
+    }
+
+    #[test]
+    fn ntp_and_tailscale_timeouts_are_bounded() {
+        let ntp = AppConfig {
+            ntp_timeout_ms: 9,
+            ..Default::default()
+        };
+        assert_eq!(
+            ntp.validate_ntp_settings(),
+            Err(ConfigError::InvalidNtpTimeout)
+        );
+
+        let tailscale = AppConfig {
+            tailscale_interval_seconds: 0,
+            ..Default::default()
+        };
+        assert_eq!(
+            tailscale.validate_tailscale_settings(),
+            Err(ConfigError::InvalidTailscaleInterval)
+        );
+    }
+
+    #[test]
+    fn plugin_socket_must_be_absolute() {
+        let mut invalid = AppConfig {
+            plugin_socket: Some("plugins.sock".to_string()),
+            ..Default::default()
+        };
+        assert!(matches!(
+            invalid.validate(),
+            Err(ConfigError::InvalidPluginSocket(_))
+        ));
+
+        invalid.plugin_socket = Some("/run/rs-linux-exporter/plugins.sock".to_string());
+        assert!(invalid.validate().is_ok());
     }
 
     #[test]
