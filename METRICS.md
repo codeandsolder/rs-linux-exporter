@@ -65,6 +65,40 @@ If you add or edit sections for this file, keep these formatting rules or the
 | `schedstat_waiting_seconds_total` | CounterVec | Cumulative seconds processes spent waiting for each CPU |
 | `schedstat_timeslices_total` | CounterVec | Cumulative timeslices executed by each CPU |
 
+## nfs
+
+| Metric | Type | Description |
+|---|---|---|
+| `nfs_packets_total` | CounterVec | Cumulative NFS client network packets by protocol |
+| `nfs_connections_total` | CounterVec | Cumulative NFS client TCP connections |
+| `nfs_rpcs_total` | CounterVec | Cumulative NFS client RPC operations |
+| `nfs_rpc_retransmissions_total` | CounterVec | Cumulative NFS client RPC retransmissions |
+| `nfs_rpc_authentication_refreshes_total` | CounterVec | Cumulative NFS client RPC authentication refreshes |
+| `nfs_requests_total` | CounterVec | Cumulative NFS client requests by protocol version and procedure |
+
+The datasource follows `/proc/net/rpc/nfs` dynamically: an absent file is healthy/no-data and does not require restarting the exporter if NFS becomes active later. Known procedure names follow node_exporter/procfs naming; additional future procedure slots are retained as `op_N` labels.
+
+## nfsd
+
+| Metric | Type | Description |
+|---|---|---|
+| `nfsd_reply_cache_hits_total` | CounterVec | Cumulative NFSd reply-cache hits |
+| `nfsd_reply_cache_misses_total` | CounterVec | Cumulative NFSd reply-cache misses |
+| `nfsd_reply_cache_nocache_total` | CounterVec | Cumulative NFSd non-cacheable reply-cache operations |
+| `nfsd_file_handles_stale_total` | CounterVec | Cumulative NFSd stale file handles |
+| `nfsd_disk_bytes_read_total` | CounterVec | Cumulative bytes read by NFSd |
+| `nfsd_disk_bytes_written_total` | CounterVec | Cumulative bytes written by NFSd |
+| `nfsd_server_threads` | GaugeVec | Current number of NFSd kernel threads |
+| `nfsd_read_ahead_cache_size_blocks` | GaugeVec | Current NFSd read-ahead cache size in blocks |
+| `nfsd_read_ahead_cache_not_found_total` | CounterVec | Cumulative NFSd read-ahead cache misses |
+| `nfsd_packets_total` | CounterVec | Cumulative NFSd network packets by protocol |
+| `nfsd_connections_total` | CounterVec | Cumulative NFSd TCP connections |
+| `nfsd_rpc_errors_total` | CounterVec | Cumulative NFSd RPC errors by type |
+| `nfsd_server_rpcs_total` | CounterVec | Cumulative NFSd RPC operations |
+| `nfsd_requests_total` | CounterVec | Cumulative NFSd requests by protocol version and procedure |
+
+The datasource follows `/proc/net/rpc/nfsd` dynamically with the same healthy/no-data behavior when the kernel server is inactive. Variable-length NFSv4 operation tables retain counters beyond the known legacy catalog as `op_N` labels.
+
 ## systemd
 
 | Metric | Type | Description |
@@ -402,6 +436,16 @@ python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROM
 ### schedstat_waiting_seconds_total labels: `cpu`
 
 ### schedstat_timeslices_total labels: `cpu`
+
+### nfs_packets_total labels: `protocol`
+
+### nfs_requests_total labels: `proto`, `method`
+
+### nfsd_packets_total labels: `proto`
+
+### nfsd_rpc_errors_total labels: `error`
+
+### nfsd_requests_total labels: `proto`, `method`
 
 ### systemd_unit_state labels: `name`, `state`, `type`
 

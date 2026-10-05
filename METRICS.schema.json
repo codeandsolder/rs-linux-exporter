@@ -255,6 +255,158 @@
       ]
     },
     {
+      "name": "nfs_packets_total",
+      "group": "nfs",
+      "type": "CounterVec",
+      "description": "Cumulative NFS client network packets by protocol",
+      "labels": [
+        "protocol"
+      ]
+    },
+    {
+      "name": "nfs_connections_total",
+      "group": "nfs",
+      "type": "CounterVec",
+      "description": "Cumulative NFS client TCP connections",
+      "labels": []
+    },
+    {
+      "name": "nfs_rpcs_total",
+      "group": "nfs",
+      "type": "CounterVec",
+      "description": "Cumulative NFS client RPC operations",
+      "labels": []
+    },
+    {
+      "name": "nfs_rpc_retransmissions_total",
+      "group": "nfs",
+      "type": "CounterVec",
+      "description": "Cumulative NFS client RPC retransmissions",
+      "labels": []
+    },
+    {
+      "name": "nfs_rpc_authentication_refreshes_total",
+      "group": "nfs",
+      "type": "CounterVec",
+      "description": "Cumulative NFS client RPC authentication refreshes",
+      "labels": []
+    },
+    {
+      "name": "nfs_requests_total",
+      "group": "nfs",
+      "type": "CounterVec",
+      "description": "Cumulative NFS client requests by protocol version and procedure",
+      "labels": [
+        "proto",
+        "method"
+      ]
+    },
+    {
+      "name": "nfsd_reply_cache_hits_total",
+      "group": "nfsd",
+      "type": "CounterVec",
+      "description": "Cumulative NFSd reply-cache hits",
+      "labels": []
+    },
+    {
+      "name": "nfsd_reply_cache_misses_total",
+      "group": "nfsd",
+      "type": "CounterVec",
+      "description": "Cumulative NFSd reply-cache misses",
+      "labels": []
+    },
+    {
+      "name": "nfsd_reply_cache_nocache_total",
+      "group": "nfsd",
+      "type": "CounterVec",
+      "description": "Cumulative NFSd non-cacheable reply-cache operations",
+      "labels": []
+    },
+    {
+      "name": "nfsd_file_handles_stale_total",
+      "group": "nfsd",
+      "type": "CounterVec",
+      "description": "Cumulative NFSd stale file handles",
+      "labels": []
+    },
+    {
+      "name": "nfsd_disk_bytes_read_total",
+      "group": "nfsd",
+      "type": "CounterVec",
+      "description": "Cumulative bytes read by NFSd",
+      "labels": []
+    },
+    {
+      "name": "nfsd_disk_bytes_written_total",
+      "group": "nfsd",
+      "type": "CounterVec",
+      "description": "Cumulative bytes written by NFSd",
+      "labels": []
+    },
+    {
+      "name": "nfsd_server_threads",
+      "group": "nfsd",
+      "type": "GaugeVec",
+      "description": "Current number of NFSd kernel threads",
+      "labels": []
+    },
+    {
+      "name": "nfsd_read_ahead_cache_size_blocks",
+      "group": "nfsd",
+      "type": "GaugeVec",
+      "description": "Current NFSd read-ahead cache size in blocks",
+      "labels": []
+    },
+    {
+      "name": "nfsd_read_ahead_cache_not_found_total",
+      "group": "nfsd",
+      "type": "CounterVec",
+      "description": "Cumulative NFSd read-ahead cache misses",
+      "labels": []
+    },
+    {
+      "name": "nfsd_packets_total",
+      "group": "nfsd",
+      "type": "CounterVec",
+      "description": "Cumulative NFSd network packets by protocol",
+      "labels": [
+        "proto"
+      ]
+    },
+    {
+      "name": "nfsd_connections_total",
+      "group": "nfsd",
+      "type": "CounterVec",
+      "description": "Cumulative NFSd TCP connections",
+      "labels": []
+    },
+    {
+      "name": "nfsd_rpc_errors_total",
+      "group": "nfsd",
+      "type": "CounterVec",
+      "description": "Cumulative NFSd RPC errors by type",
+      "labels": [
+        "error"
+      ]
+    },
+    {
+      "name": "nfsd_server_rpcs_total",
+      "group": "nfsd",
+      "type": "CounterVec",
+      "description": "Cumulative NFSd RPC operations",
+      "labels": []
+    },
+    {
+      "name": "nfsd_requests_total",
+      "group": "nfsd",
+      "type": "CounterVec",
+      "description": "Cumulative NFSd requests by protocol version and procedure",
+      "labels": [
+        "proto",
+        "method"
+      ]
+    },
+    {
       "name": "systemd_unit_state",
       "group": "systemd",
       "type": "GaugeVec",
@@ -1933,6 +2085,36 @@
         "schedstat_running_seconds_total",
         "schedstat_waiting_seconds_total",
         "schedstat_timeslices_total"
+      ]
+    },
+    {
+      "name": "nfs",
+      "metrics": [
+        "nfs_packets_total",
+        "nfs_connections_total",
+        "nfs_rpcs_total",
+        "nfs_rpc_retransmissions_total",
+        "nfs_rpc_authentication_refreshes_total",
+        "nfs_requests_total"
+      ]
+    },
+    {
+      "name": "nfsd",
+      "metrics": [
+        "nfsd_reply_cache_hits_total",
+        "nfsd_reply_cache_misses_total",
+        "nfsd_reply_cache_nocache_total",
+        "nfsd_file_handles_stale_total",
+        "nfsd_disk_bytes_read_total",
+        "nfsd_disk_bytes_written_total",
+        "nfsd_server_threads",
+        "nfsd_read_ahead_cache_size_blocks",
+        "nfsd_read_ahead_cache_not_found_total",
+        "nfsd_packets_total",
+        "nfsd_connections_total",
+        "nfsd_rpc_errors_total",
+        "nfsd_server_rpcs_total",
+        "nfsd_requests_total"
       ]
     },
     {

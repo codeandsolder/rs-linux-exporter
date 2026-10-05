@@ -27,6 +27,10 @@ and the software reliable.
 | Datasource | Description |
 |------------|-------------|
 | `procfs` | System stats from /proc (CPU, memory, network, disk I/O) |
+| `filefd` | System-wide file descriptor table allocation and limit from `/proc/sys/fs/file-nr` |
+| `schedstat` | Per-CPU scheduler running/waiting/timeslice counters from `/proc/schedstat` |
+| `nfs` | Global NFS client RPC, network, and procedure counters when the kernel interface is present |
+| `nfsd` | Global kernel NFS server RPC, cache, I/O, thread, and procedure counters when active |
 | `cgroup` | Bounded cgroup v2 service CPU, memory, I/O, PID, state, and PSI metrics |
 | `sccache` | Local sccache cache/compiler/distributed-build statistics via its supported JSON CLI |
 | `systemd` | Unit state, restart, timer/socket, system state/version, and optional service runtime metrics over D-Bus |
