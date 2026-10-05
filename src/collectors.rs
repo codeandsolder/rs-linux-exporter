@@ -1,5 +1,6 @@
 use crate::collection::CollectionReport;
 use crate::config::{AppConfig, Datasource};
+use crate::datasource_nfs;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::{
     datasource_cgroup, datasource_conntrack, datasource_cpufreq, datasource_edac,
@@ -140,6 +141,16 @@ pub fn update_metrics(config: &AppConfig) {
     run_if_enabled(config, Datasource::NetdevSysfs, || {
         datasource_netdev_sysfs::update_metrics(config)
     });
+    run_if_enabled(
+        config,
+        Datasource::Nfs,
+        datasource_nfs::update_client_metrics,
+    );
+    run_if_enabled(
+        config,
+        Datasource::Nfsd,
+        datasource_nfs::update_server_metrics,
+    );
     run_if_enabled(config, Datasource::Numa, datasource_numa::update_metrics);
     run_if_enabled(
         config,

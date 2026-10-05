@@ -15,6 +15,7 @@ mod datasource_hwmon;
 mod datasource_ipmi;
 mod datasource_mdraid;
 mod datasource_netdev_sysfs;
+mod datasource_nfs;
 mod datasource_numa;
 mod datasource_nvme;
 mod datasource_power_supply;
