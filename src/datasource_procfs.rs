@@ -32,6 +32,10 @@ struct ProcfsMetrics {
 }
 
 impl ProcfsMetrics {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "flat Prometheus descriptor registration is easier to audit as one table"
+    )]
     fn new() -> Self {
         Self {
             uptime_seconds: prometheus::register_gauge!(
@@ -477,7 +481,7 @@ const TCP_STATE_LABELS: [&str; 12] = [
 /// Every label value `udp_state_label` can return.
 const UDP_STATE_LABELS: [&str; 2] = ["established", "close"];
 
-fn tcp_state_label(state: &TcpState) -> &'static str {
+const fn tcp_state_label(state: &TcpState) -> &'static str {
     match state {
         TcpState::Established => "established",
         TcpState::SynSent => "syn_sent",
@@ -494,7 +498,7 @@ fn tcp_state_label(state: &TcpState) -> &'static str {
     }
 }
 
-fn udp_state_label(state: &UdpState) -> &'static str {
+const fn udp_state_label(state: &UdpState) -> &'static str {
     match state {
         UdpState::Established => "established",
         UdpState::Close => "close",
@@ -671,22 +675,14 @@ fn to_snake_case(input: &str) -> String {
             let is_lower = ch.is_ascii_lowercase();
             let is_digit = ch.is_ascii_digit();
 
-            if !out.is_empty() {
-                if is_upper
-                    && (prev_is_lower
-                        || prev_is_digit
-                        || (prev_is_upper && next.is_some_and(|n| n.is_ascii_lowercase())))
-                {
-                    if !out.ends_with('_') {
-                        out.push('_');
-                    }
-                } else if is_digit && (prev_is_lower || prev_is_upper) {
-                    if !out.ends_with('_') {
-                        out.push('_');
-                    }
-                } else if is_lower && prev_is_digit && !out.ends_with('_') {
-                    out.push('_');
-                }
+            let starts_new_word = (is_upper
+                && (prev_is_lower
+                    || prev_is_digit
+                    || (prev_is_upper && next.is_some_and(|n| n.is_ascii_lowercase()))))
+                || (is_digit && (prev_is_lower || prev_is_upper))
+                || (is_lower && prev_is_digit);
+            if !out.is_empty() && starts_new_word && !out.ends_with('_') {
+                out.push('_');
             }
         }
 
@@ -737,7 +733,7 @@ fn update_netstat(metrics: &ProcfsMetrics) {
             let section_key = to_snake_case(&section);
             for (field, value_str) in fields.iter().zip(rest.iter()) {
                 if let Ok(value) = value_str.parse::<i64>() {
-                    let field_key = format!("{}_{}", section_key, to_snake_case(field));
+                    let field_key = format!("{section_key}_{}", to_snake_case(field));
                     metrics
                         .netstat
                         .with_label_values(&[field_key.as_str()])

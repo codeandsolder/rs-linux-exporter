@@ -25,7 +25,7 @@ pub const fn prometheus_i64(value: i64) -> f64 {
 /// Registration can fail only when the program defines an invalid descriptor
 /// or attempts to register a duplicate descriptor. Continuing would expose an
 /// incomplete or ambiguous metric set, so this is a fatal software error.
-pub(crate) trait RegisterMetricResultExt<T> {
+pub trait RegisterMetricResultExt<T> {
     fn or_exit(self, metric_name: &'static str) -> T;
 }
 

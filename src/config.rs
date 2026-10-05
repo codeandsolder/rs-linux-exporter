@@ -131,6 +131,10 @@ fn check_subsystem_available(check: &SubsystemCheck) -> bool {
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent boolean switches map directly to stable flat TOML keys"
+)]
 pub struct AppConfig {
     pub ignore_loop_devices: bool,
     pub ignore_ramfs_filesystems: bool,

@@ -256,18 +256,15 @@ fn render_text() -> String {
     String::from_utf8(buffer).unwrap_or_default()
 }
 
-fn collection_failed() -> status::Custom<(ContentType, String)> {
-    status::Custom(
-        Status::InternalServerError,
-        (ContentType::Plain, "collection failed".to_string()),
-    )
+const fn collection_failed() -> status::Custom<&'static str> {
+    status::Custom(Status::InternalServerError, "collection failed")
 }
 
 #[get("/metrics")]
 async fn metrics(
     client_ip: Option<IpAddr>,
     token: BearerToken,
-) -> Result<(ContentType, String), status::Custom<(ContentType, String)>> {
+) -> Result<(ContentType, String), status::Custom<&'static str>> {
     metrics_requests_total().inc();
     let config = app_config();
 
@@ -280,10 +277,7 @@ async fn metrics(
             );
         }
         metrics_requests_denied_total().inc();
-        return Err(status::Custom(
-            Status::Unauthorized,
-            (ContentType::Plain, "unauthorized".to_string()),
-        ));
+        return Err(status::Custom(Status::Unauthorized, "unauthorized"));
     }
 
     // Check IP allowlist
@@ -296,10 +290,7 @@ async fn metrics(
             );
         }
         metrics_requests_denied_total().inc();
-        return Err(status::Custom(
-            Status::Forbidden,
-            (ContentType::Plain, "access denied".to_string()),
-        ));
+        return Err(status::Custom(Status::Forbidden, "access denied"));
     }
 
     match spawn_blocking(|| refresh_and_render(render_text)).await {
@@ -315,7 +306,7 @@ async fn metrics(
 async fn metrics_json(
     client_ip: Option<IpAddr>,
     token: BearerToken,
-) -> Result<(ContentType, String), status::Custom<(ContentType, String)>> {
+) -> Result<(ContentType, String), status::Custom<&'static str>> {
     metrics_requests_total().inc();
     let config = app_config();
 
@@ -328,10 +319,7 @@ async fn metrics_json(
             );
         }
         metrics_requests_denied_total().inc();
-        return Err(status::Custom(
-            Status::Unauthorized,
-            (ContentType::Plain, "unauthorized".to_string()),
-        ));
+        return Err(status::Custom(Status::Unauthorized, "unauthorized"));
     }
 
     // Check IP allowlist
@@ -344,10 +332,7 @@ async fn metrics_json(
             );
         }
         metrics_requests_denied_total().inc();
-        return Err(status::Custom(
-            Status::Forbidden,
-            (ContentType::Plain, "access denied".to_string()),
-        ));
+        return Err(status::Custom(Status::Forbidden, "access denied"));
     }
 
     match spawn_blocking(|| refresh_and_render(metrics_json_payload)).await {
@@ -360,7 +345,7 @@ async fn metrics_json(
 }
 
 #[get("/")]
-fn index() -> &'static str {
+const fn index() -> &'static str {
     "rs-linux-exporter: /metrics"
 }
 
@@ -371,12 +356,9 @@ fn not_found(request: &rocket::Request<'_>) -> &'static str {
         let client_ip = request
             .client_ip()
             .map_or_else(|| "<unknown>".to_string(), |ip| ip.to_string());
-        eprintln!(
-            "404 {} {} from {}",
-            request.method(),
-            request.uri(),
-            client_ip
-        );
+        let method = request.method();
+        let uri = request.uri();
+        eprintln!("404 {method} {uri} from {client_ip}");
     }
     "Not Found"
 }
