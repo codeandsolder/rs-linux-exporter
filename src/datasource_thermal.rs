@@ -1,3 +1,4 @@
+use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_i64;
 use prometheus::{Gauge, GaugeVec};
 use std::fs;
@@ -21,40 +22,40 @@ impl ThermalMetrics {
                 "Current temperature of the thermal zone in Celsius",
                 &["zone", "type"]
             )
-            .expect("register thermal_zone_temperature_celsius"),
+            .or_exit("thermal_zone_temperature_celsius"),
 
             zone_trip_point_celsius: prometheus::register_gauge_vec!(
                 "thermal_zone_trip_point_celsius",
                 "Trip point temperature threshold in Celsius",
                 &["zone", "type", "trip_point", "trip_type"]
             )
-            .expect("register thermal_zone_trip_point_celsius"),
+            .or_exit("thermal_zone_trip_point_celsius"),
 
             cooling_device_cur_state: prometheus::register_gauge_vec!(
                 "thermal_cooling_device_cur_state",
                 "Current cooling state of the device",
                 &["device", "type"]
             )
-            .expect("register thermal_cooling_device_cur_state"),
+            .or_exit("thermal_cooling_device_cur_state"),
 
             cooling_device_max_state: prometheus::register_gauge_vec!(
                 "thermal_cooling_device_max_state",
                 "Maximum cooling state of the device",
                 &["device", "type"]
             )
-            .expect("register thermal_cooling_device_max_state"),
+            .or_exit("thermal_cooling_device_max_state"),
 
             zone_count: prometheus::register_gauge!(
                 "thermal_zone_count",
                 "Number of thermal zones"
             )
-            .expect("register thermal_zone_count"),
+            .or_exit("thermal_zone_count"),
 
             cooling_device_count: prometheus::register_gauge!(
                 "thermal_cooling_device_count",
                 "Number of cooling devices"
             )
-            .expect("register thermal_cooling_device_count"),
+            .or_exit("thermal_cooling_device_count"),
         }
     }
 }

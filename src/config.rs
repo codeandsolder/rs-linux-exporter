@@ -182,7 +182,7 @@ impl AppConfig {
     pub fn bind_addr(&self) -> SocketAddr {
         self.bind.parse().unwrap_or_else(|err| {
             eprintln!("Invalid bind address '{}': {err}", self.bind);
-            "127.0.0.1:9100".parse().expect("default bind")
+            std::net::SocketAddr::from(([127, 0, 0, 1], 9100))
         })
     }
 

@@ -1,3 +1,4 @@
+use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::fs;
@@ -15,7 +16,7 @@ impl SoftnetMetrics {
                 "Per-CPU counters from /proc/net/softnet_stat",
                 &["cpu", "field"]
             )
-            .expect("register softnet"),
+            .or_exit("softnet"),
         }
     }
 }

@@ -1,3 +1,4 @@
+use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::fs;
@@ -17,14 +18,14 @@ impl RaplMetrics {
                 "Current energy counter in Joules (wraps at max_energy_joules)",
                 &["zone", "name"]
             )
-            .expect("register rapl_energy_joules"),
+            .or_exit("rapl_energy_joules"),
 
             max_energy_joules: prometheus::register_gauge_vec!(
                 "rapl_max_energy_joules",
                 "Maximum energy counter range in Joules before wrap",
                 &["zone", "name"]
             )
-            .expect("register rapl_max_energy_joules"),
+            .or_exit("rapl_max_energy_joules"),
         }
     }
 }

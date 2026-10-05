@@ -1,4 +1,5 @@
 use crate::config::AppConfig;
+use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::collections::HashSet;
@@ -23,43 +24,43 @@ impl FilesystemMetrics {
                 "Total filesystem size in bytes",
                 &["mountpoint", "device", "fstype"]
             )
-            .expect("register filesystem_size_bytes"),
+            .or_exit("filesystem_size_bytes"),
             filesystem_free_bytes: prometheus::register_gauge_vec!(
                 "filesystem_free_bytes",
                 "Free filesystem space in bytes",
                 &["mountpoint", "device", "fstype"]
             )
-            .expect("register filesystem_free_bytes"),
+            .or_exit("filesystem_free_bytes"),
             filesystem_avail_bytes: prometheus::register_gauge_vec!(
                 "filesystem_avail_bytes",
                 "Available filesystem space in bytes",
                 &["mountpoint", "device", "fstype"]
             )
-            .expect("register filesystem_avail_bytes"),
+            .or_exit("filesystem_avail_bytes"),
             filesystem_used_bytes: prometheus::register_gauge_vec!(
                 "filesystem_used_bytes",
                 "Used filesystem space in bytes",
                 &["mountpoint", "device", "fstype"]
             )
-            .expect("register filesystem_used_bytes"),
+            .or_exit("filesystem_used_bytes"),
             filesystem_files: prometheus::register_gauge_vec!(
                 "filesystem_files",
                 "Total inode count",
                 &["mountpoint", "device", "fstype"]
             )
-            .expect("register filesystem_files"),
+            .or_exit("filesystem_files"),
             filesystem_files_free: prometheus::register_gauge_vec!(
                 "filesystem_files_free",
                 "Free inode count",
                 &["mountpoint", "device", "fstype"]
             )
-            .expect("register filesystem_files_free"),
+            .or_exit("filesystem_files_free"),
             filesystem_files_used: prometheus::register_gauge_vec!(
                 "filesystem_files_used",
                 "Used inode count",
                 &["mountpoint", "device", "fstype"]
             )
-            .expect("register filesystem_files_used"),
+            .or_exit("filesystem_files_used"),
         }
     }
 }

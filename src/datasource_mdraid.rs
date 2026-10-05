@@ -1,3 +1,4 @@
+use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::fs;
@@ -20,25 +21,25 @@ impl MdraidMetrics {
                 "MD RAID array state (1 for current state label)",
                 &["array", "state", "level"]
             )
-            .expect("register mdraid_array_state"),
+            .or_exit("mdraid_array_state"),
             array_disks: prometheus::register_gauge_vec!(
                 "mdraid_array_disks",
                 "MD RAID array disk counts by role",
                 &["array", "role"]
             )
-            .expect("register mdraid_array_disks"),
+            .or_exit("mdraid_array_disks"),
             array_degraded: prometheus::register_gauge_vec!(
                 "mdraid_array_degraded",
                 "MD RAID array degraded state (1 if degraded)",
                 &["array"]
             )
-            .expect("register mdraid_array_degraded"),
+            .or_exit("mdraid_array_degraded"),
             array_sync_progress: prometheus::register_gauge_vec!(
                 "mdraid_array_sync_progress",
                 "MD RAID array sync action progress (0-1)",
                 &["array", "action"]
             )
-            .expect("register mdraid_array_sync_progress"),
+            .or_exit("mdraid_array_sync_progress"),
         }
     }
 }

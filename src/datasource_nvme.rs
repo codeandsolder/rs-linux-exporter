@@ -1,3 +1,4 @@
+use crate::metric_support::RegisterMetricResultExt;
 use prometheus::GaugeVec;
 use std::fs;
 use std::path::Path;
@@ -16,14 +17,14 @@ impl NvmeMetrics {
                 "NVMe device information",
                 &["device", "model", "serial", "firmware_rev"]
             )
-            .expect("register nvme_info"),
+            .or_exit("nvme_info"),
 
             state: prometheus::register_gauge_vec!(
                 "nvme_state",
                 "NVMe device state (1 = active for given state)",
                 &["device", "state"]
             )
-            .expect("register nvme_state"),
+            .or_exit("nvme_state"),
         }
     }
 }

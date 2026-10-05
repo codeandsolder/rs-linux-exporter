@@ -1,3 +1,4 @@
+use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_i64;
 use prometheus::GaugeVec;
 use std::fs;
@@ -25,70 +26,70 @@ impl PowerSupplyMetrics {
                 "Power supply information",
                 &["name", "type"]
             )
-            .expect("register power_supply_info"),
+            .or_exit("power_supply_info"),
 
             online: prometheus::register_gauge_vec!(
                 "power_supply_online",
                 "Power supply online status (1 = online, 0 = offline)",
                 &["name", "type"]
             )
-            .expect("register power_supply_online"),
+            .or_exit("power_supply_online"),
 
             status: prometheus::register_gauge_vec!(
                 "power_supply_status",
                 "Battery status (1 = active for given state)",
                 &["name", "status"]
             )
-            .expect("register power_supply_status"),
+            .or_exit("power_supply_status"),
 
             capacity_percent: prometheus::register_gauge_vec!(
                 "power_supply_capacity_percent",
                 "Battery capacity in percent",
                 &["name"]
             )
-            .expect("register power_supply_capacity_percent"),
+            .or_exit("power_supply_capacity_percent"),
 
             voltage_volts: prometheus::register_gauge_vec!(
                 "power_supply_voltage_volts",
                 "Power supply voltage in Volts",
                 &["name", "measurement"]
             )
-            .expect("register power_supply_voltage_volts"),
+            .or_exit("power_supply_voltage_volts"),
 
             current_amps: prometheus::register_gauge_vec!(
                 "power_supply_current_amps",
                 "Power supply current in Amps",
                 &["name", "measurement"]
             )
-            .expect("register power_supply_current_amps"),
+            .or_exit("power_supply_current_amps"),
 
             power_watts: prometheus::register_gauge_vec!(
                 "power_supply_power_watts",
                 "Power supply power in Watts",
                 &["name"]
             )
-            .expect("register power_supply_power_watts"),
+            .or_exit("power_supply_power_watts"),
 
             energy_wh: prometheus::register_gauge_vec!(
                 "power_supply_energy_wh",
                 "Battery energy in Watt-hours",
                 &["name", "measurement"]
             )
-            .expect("register power_supply_energy_wh"),
+            .or_exit("power_supply_energy_wh"),
 
             charge_ah: prometheus::register_gauge_vec!(
                 "power_supply_charge_ah",
                 "Battery charge in Amp-hours",
                 &["name", "measurement"]
             )
-            .expect("register power_supply_charge_ah"),
+            .or_exit("power_supply_charge_ah"),
 
             temperature_celsius: prometheus::register_gauge_vec!(
                 "power_supply_temperature_celsius",
                 "Power supply temperature in Celsius",
                 &["name"]
             )
-            .expect("register power_supply_temperature_celsius"),
+            .or_exit("power_supply_temperature_celsius"),
         }
     }
 }

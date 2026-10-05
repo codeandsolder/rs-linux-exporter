@@ -1,4 +1,5 @@
 
+use crate::metric_support::RegisterMetricResultExt;
 use crate::runtime::debug_enabled;
 use prometheus::GaugeVec;
 use std::collections::HashMap;
@@ -100,7 +101,7 @@ impl EthtoolMetrics {
                 "Ethernet statistics via ethtool netlink",
                 &["interface", "stat"]
             )
-            .expect("register ethtool_stats"),
+            .or_exit("ethtool_stats"),
         }
     }
 }

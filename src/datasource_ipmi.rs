@@ -1,3 +1,4 @@
+use crate::metric_support::RegisterMetricResultExt;
 use crate::runtime::debug_enabled;
 use ipmi_rs::sensor_event::{GetSensorReading, ThresholdReading};
 use ipmi_rs::storage::sdr::record::{
@@ -23,7 +24,7 @@ impl IpmiMetrics {
                 "IPMI sensor reading (unit label indicates base units)",
                 &["sensor", "type", "unit"]
             )
-            .expect("register ipmi_sensor_reading"),
+            .or_exit("ipmi_sensor_reading"),
         }
     }
 }

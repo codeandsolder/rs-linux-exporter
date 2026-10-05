@@ -1,3 +1,4 @@
+use crate::metric_support::RegisterMetricResultExt;
 #[macro_use]
 extern crate rocket;
 
@@ -65,7 +66,7 @@ fn metrics_requests_total() -> &'static IntCounter {
             "metrics_requests_total",
             "Total number of /metrics requests"
         )
-        .expect("register metrics_requests_total")
+        .or_exit("metrics_requests_total")
     })
 }
 
@@ -75,7 +76,7 @@ fn metrics_requests_denied_total() -> &'static IntCounter {
             "metrics_requests_denied_total",
             "Total number of /metrics requests denied by ACL"
         )
-        .expect("register metrics_requests_denied_total")
+        .or_exit("metrics_requests_denied_total")
     })
 }
 

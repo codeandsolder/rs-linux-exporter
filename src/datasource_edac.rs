@@ -1,3 +1,4 @@
+use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::fs;
@@ -25,70 +26,70 @@ impl EdacMetrics {
                 "Memory controller information",
                 &["controller", "mc_name"]
             )
-            .expect("register edac_mc_info"),
+            .or_exit("edac_mc_info"),
 
             mc_ce_count: prometheus::register_gauge_vec!(
                 "edac_mc_correctable_errors_total",
                 "Total correctable memory errors on this controller",
                 &["controller"]
             )
-            .expect("register edac_mc_correctable_errors_total"),
+            .or_exit("edac_mc_correctable_errors_total"),
 
             mc_ue_count: prometheus::register_gauge_vec!(
                 "edac_mc_uncorrectable_errors_total",
                 "Total uncorrectable memory errors on this controller",
                 &["controller"]
             )
-            .expect("register edac_mc_uncorrectable_errors_total"),
+            .or_exit("edac_mc_uncorrectable_errors_total"),
 
             mc_ce_noinfo_count: prometheus::register_gauge_vec!(
                 "edac_mc_correctable_errors_noinfo_total",
                 "Correctable errors without DIMM slot info",
                 &["controller"]
             )
-            .expect("register edac_mc_correctable_errors_noinfo_total"),
+            .or_exit("edac_mc_correctable_errors_noinfo_total"),
 
             mc_ue_noinfo_count: prometheus::register_gauge_vec!(
                 "edac_mc_uncorrectable_errors_noinfo_total",
                 "Uncorrectable errors without DIMM slot info",
                 &["controller"]
             )
-            .expect("register edac_mc_uncorrectable_errors_noinfo_total"),
+            .or_exit("edac_mc_uncorrectable_errors_noinfo_total"),
 
             mc_size_mb: prometheus::register_gauge_vec!(
                 "edac_mc_size_mb",
                 "Total memory managed by this controller in MB",
                 &["controller"]
             )
-            .expect("register edac_mc_size_mb"),
+            .or_exit("edac_mc_size_mb"),
 
             mc_seconds_since_reset: prometheus::register_gauge_vec!(
                 "edac_mc_seconds_since_reset",
                 "Seconds since error counters were reset",
                 &["controller"]
             )
-            .expect("register edac_mc_seconds_since_reset"),
+            .or_exit("edac_mc_seconds_since_reset"),
 
             dimm_ce_count: prometheus::register_gauge_vec!(
                 "edac_dimm_correctable_errors_total",
                 "Correctable errors on this DIMM",
                 &["controller", "dimm", "dimm_label"]
             )
-            .expect("register edac_dimm_correctable_errors_total"),
+            .or_exit("edac_dimm_correctable_errors_total"),
 
             dimm_ue_count: prometheus::register_gauge_vec!(
                 "edac_dimm_uncorrectable_errors_total",
                 "Uncorrectable errors on this DIMM",
                 &["controller", "dimm", "dimm_label"]
             )
-            .expect("register edac_dimm_uncorrectable_errors_total"),
+            .or_exit("edac_dimm_uncorrectable_errors_total"),
 
             dimm_size_mb: prometheus::register_gauge_vec!(
                 "edac_dimm_size_mb",
                 "DIMM size in MB",
                 &["controller", "dimm", "dimm_label"]
             )
-            .expect("register edac_dimm_size_mb"),
+            .or_exit("edac_dimm_size_mb"),
         }
     }
 }

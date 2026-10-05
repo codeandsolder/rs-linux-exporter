@@ -1,4 +1,5 @@
 use crate::config::AppConfig;
+use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_i64;
 use prometheus::GaugeVec;
 use std::fs;
@@ -36,43 +37,43 @@ impl NetdevSysfsMetrics {
                 "Network interface operational state (1 for current state)",
                 &["interface", "state"]
             )
-            .expect("register netdev_operstate"),
+            .or_exit("netdev_operstate"),
             carrier: prometheus::register_gauge_vec!(
                 "netdev_carrier",
                 "Network interface carrier status (1 = link detected)",
                 &["interface"]
             )
-            .expect("register netdev_carrier"),
+            .or_exit("netdev_carrier"),
             carrier_changes: prometheus::register_gauge_vec!(
                 "netdev_carrier_changes",
                 "Network interface carrier change count",
                 &["interface"]
             )
-            .expect("register netdev_carrier_changes"),
+            .or_exit("netdev_carrier_changes"),
             dormant: prometheus::register_gauge_vec!(
                 "netdev_dormant",
                 "Network interface dormant flag (1 = dormant)",
                 &["interface"]
             )
-            .expect("register netdev_dormant"),
+            .or_exit("netdev_dormant"),
             speed_mbps: prometheus::register_gauge_vec!(
                 "netdev_speed_mbps",
                 "Network interface speed in Mbps",
                 &["interface"]
             )
-            .expect("register netdev_speed_mbps"),
+            .or_exit("netdev_speed_mbps"),
             duplex: prometheus::register_gauge_vec!(
                 "netdev_duplex",
                 "Network interface duplex (1 for current duplex)",
                 &["interface", "duplex"]
             )
-            .expect("register netdev_duplex"),
+            .or_exit("netdev_duplex"),
             autoneg: prometheus::register_gauge_vec!(
                 "netdev_autoneg",
                 "Network interface autonegotiation (1 for current state)",
                 &["interface", "state"]
             )
-            .expect("register netdev_autoneg"),
+            .or_exit("netdev_autoneg"),
         }
     }
 }

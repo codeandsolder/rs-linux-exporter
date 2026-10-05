@@ -1,4 +1,5 @@
 use crate::config::AppConfig;
+use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::{prometheus_i64, prometheus_u64};
 use procfs::net::{TcpState, UdpState};
 use procfs::prelude::{Current, CurrentSI};
@@ -37,109 +38,109 @@ impl ProcfsMetrics {
                 "uptime_seconds",
                 "System uptime in seconds"
             )
-            .expect("register uptime_seconds"),
+            .or_exit("uptime_seconds"),
             uptime_idle_seconds: prometheus::register_gauge!(
                 "uptime_idle_seconds",
                 "Sum of idle time across all CPUs in seconds"
             )
-            .expect("register uptime_idle_seconds"),
+            .or_exit("uptime_idle_seconds"),
             load_average: prometheus::register_gauge_vec!(
                 "load_average",
                 "System load averages",
                 &["interval"]
             )
-            .expect("register load_average"),
+            .or_exit("load_average"),
             load_processes: prometheus::register_gauge_vec!(
                 "load_processes",
                 "Runnable and total scheduling entities from /proc/loadavg",
                 &["kind"]
             )
-            .expect("register load_processes"),
+            .or_exit("load_processes"),
             cpu_seconds_total: prometheus::register_gauge_vec!(
                 "cpu_seconds_total",
                 "CPU time spent in seconds",
                 &["cpu", "mode"]
             )
-            .expect("register cpu_seconds_total"),
+            .or_exit("cpu_seconds_total"),
             cpu_context_switches_total: prometheus::register_gauge!(
                 "cpu_context_switches_total",
                 "Number of context switches since boot"
             )
-            .expect("register cpu_context_switches_total"),
+            .or_exit("cpu_context_switches_total"),
             cpu_boot_time_seconds: prometheus::register_gauge!(
                 "cpu_boot_time_seconds",
                 "Boot time, in seconds since the epoch"
             )
-            .expect("register cpu_boot_time_seconds"),
+            .or_exit("cpu_boot_time_seconds"),
             processes_forked_total: prometheus::register_gauge!(
                 "processes_forked_total",
                 "Number of forks since boot"
             )
-            .expect("register processes_forked_total"),
+            .or_exit("processes_forked_total"),
             processes_running: prometheus::register_gauge!(
                 "processes_running",
                 "Number of processes currently runnable"
             )
-            .expect("register processes_running"),
+            .or_exit("processes_running"),
             processes_blocked: prometheus::register_gauge!(
                 "processes_blocked",
                 "Number of processes blocked waiting for I/O"
             )
-            .expect("register processes_blocked"),
+            .or_exit("processes_blocked"),
             meminfo: prometheus::register_gauge_vec!(
                 "meminfo",
                 "Raw values from /proc/meminfo (bytes unless otherwise noted)",
                 &["field"]
             )
-            .expect("register meminfo"),
+            .or_exit("meminfo"),
             vmstat: prometheus::register_gauge_vec!(
                 "vmstat",
                 "Raw values from /proc/vmstat",
                 &["field"]
             )
-            .expect("register vmstat"),
+            .or_exit("vmstat"),
             diskstats: prometheus::register_gauge_vec!(
                 "diskstats",
                 "Raw disk statistics from /proc/diskstats",
                 &["device", "field"]
             )
-            .expect("register diskstats"),
+            .or_exit("diskstats"),
             netdev: prometheus::register_gauge_vec!(
                 "netdev",
                 "Raw network device stats from /proc/net/dev",
                 &["interface", "field"]
             )
-            .expect("register netdev"),
+            .or_exit("netdev"),
             tcp_sockets: prometheus::register_gauge_vec!(
                 "tcp_sockets",
                 "TCP socket counts by state from /proc/net/tcp",
                 &["state"]
             )
-            .expect("register tcp_sockets"),
+            .or_exit("tcp_sockets"),
             udp_sockets: prometheus::register_gauge_vec!(
                 "udp_sockets",
                 "UDP socket counts by state from /proc/net/udp",
                 &["state"]
             )
-            .expect("register udp_sockets"),
+            .or_exit("udp_sockets"),
             arp_entries: prometheus::register_gauge_vec!(
                 "arp_entries",
                 "ARP table entries by device from /proc/net/arp",
                 &["device"]
             )
-            .expect("register arp_entries"),
+            .or_exit("arp_entries"),
             snmp: prometheus::register_gauge_vec!(
                 "snmp",
                 "SNMP counters from /proc/net/snmp",
                 &["field"]
             )
-            .expect("register snmp"),
+            .or_exit("snmp"),
             netstat: prometheus::register_gauge_vec!(
                 "netstat",
                 "Extended netstat counters from /proc/net/netstat",
                 &["field"]
             )
-            .expect("register netstat"),
+            .or_exit("netstat"),
         }
     }
 }

@@ -18,3 +18,25 @@ pub const fn prometheus_u64(value: u64) -> f64 {
 pub const fn prometheus_i64(value: i64) -> f64 {
     value as f64
 }
+
+/// Convert Prometheus registration failures into an explicit process-level
+/// startup/collection failure instead of a hidden panic.
+///
+/// Registration can fail only when the program defines an invalid descriptor
+/// or attempts to register a duplicate descriptor. Continuing would expose an
+/// incomplete or ambiguous metric set, so this is a fatal software error.
+pub(crate) trait RegisterMetricResultExt<T> {
+    fn or_exit(self, metric_name: &'static str) -> T;
+}
+
+impl<T> RegisterMetricResultExt<T> for Result<T, prometheus::Error> {
+    fn or_exit(self, metric_name: &'static str) -> T {
+        match self {
+            Ok(metric) => metric,
+            Err(error) => {
+                eprintln!("failed to register Prometheus metric {metric_name}: {error}");
+                std::process::exit(70);
+            }
+        }
+    }
+}

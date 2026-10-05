@@ -3,6 +3,7 @@
 //! This module queries per-CPU conntrack statistics using the netfilter netlink
 //! protocol, similar to `conntrack -S`.
 
+use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::collections::HashMap;
@@ -86,7 +87,7 @@ impl ConntrackMetrics {
                 "Per-CPU conntrack counters via netlink",
                 &["cpu", "field"]
             )
-            .expect("register conntrack"),
+            .or_exit("conntrack"),
         }
     }
 }

@@ -1,3 +1,4 @@
+use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_i64;
 use prometheus::GaugeVec;
 use std::fs;
@@ -20,35 +21,35 @@ impl HwmonMetrics {
                 "Hardware monitor temperature sensor reading in Celsius",
                 &["chip", "sensor"]
             )
-            .expect("register hwmon_temperature_celsius"),
+            .or_exit("hwmon_temperature_celsius"),
 
             fan_rpm: prometheus::register_gauge_vec!(
                 "hwmon_fan_rpm",
                 "Hardware monitor fan speed in RPM",
                 &["chip", "sensor"]
             )
-            .expect("register hwmon_fan_rpm"),
+            .or_exit("hwmon_fan_rpm"),
 
             voltage_volts: prometheus::register_gauge_vec!(
                 "hwmon_voltage_volts",
                 "Hardware monitor voltage reading in Volts",
                 &["chip", "sensor"]
             )
-            .expect("register hwmon_voltage_volts"),
+            .or_exit("hwmon_voltage_volts"),
 
             power_watts: prometheus::register_gauge_vec!(
                 "hwmon_power_watts",
                 "Hardware monitor power reading in Watts",
                 &["chip", "sensor"]
             )
-            .expect("register hwmon_power_watts"),
+            .or_exit("hwmon_power_watts"),
 
             current_amps: prometheus::register_gauge_vec!(
                 "hwmon_current_amps",
                 "Hardware monitor current reading in Amps",
                 &["chip", "sensor"]
             )
-            .expect("register hwmon_current_amps"),
+            .or_exit("hwmon_current_amps"),
         }
     }
 }

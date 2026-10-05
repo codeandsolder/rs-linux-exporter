@@ -1,3 +1,4 @@
+use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
 use prometheus::{Gauge, GaugeVec};
 use std::fs;
@@ -14,21 +15,21 @@ impl NumaMetrics {
     fn new() -> Self {
         Self {
             node_count: prometheus::register_gauge!("numa_node_count", "Number of NUMA nodes")
-                .expect("register numa_node_count"),
+                .or_exit("numa_node_count"),
 
             meminfo: prometheus::register_gauge_vec!(
                 "numa_node_memory_bytes",
                 "NUMA node memory information in bytes",
                 &["node", "type"]
             )
-            .expect("register numa_node_memory_bytes"),
+            .or_exit("numa_node_memory_bytes"),
 
             numastat: prometheus::register_gauge_vec!(
                 "numa_node_stat_pages",
                 "NUMA node hit/miss statistics in pages",
                 &["node", "type"]
             )
-            .expect("register numa_node_stat_pages"),
+            .or_exit("numa_node_stat_pages"),
         }
     }
 }

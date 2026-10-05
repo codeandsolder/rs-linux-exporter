@@ -1,3 +1,4 @@
+use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
 use std::fs;
@@ -16,7 +17,7 @@ impl CpuFreqMetrics {
                 "Current CPU frequency per core",
                 &["cpu", "source"]
             )
-            .expect("register cpu_frequency_hz"),
+            .or_exit("cpu_frequency_hz"),
         }
     }
 }
