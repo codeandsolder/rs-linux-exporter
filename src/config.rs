@@ -25,6 +25,7 @@ pub enum Datasource {
     CpuFreq,
     Softnet,
     Conntrack,
+    Filefd,
     Filesystems,
     Hwmon,
     Ipmi,
@@ -39,6 +40,7 @@ pub enum Datasource {
     Numa,
     Zfs,
     Sccache,
+    Schedstat,
     Systemd,
 }
 
@@ -50,6 +52,7 @@ impl Datasource {
             Self::CpuFreq => "cpufreq",
             Self::Softnet => "softnet",
             Self::Conntrack => "conntrack",
+            Self::Filefd => "filefd",
             Self::Filesystems => "filesystems",
             Self::Hwmon => "hwmon",
             Self::Ipmi => "ipmi",
@@ -64,6 +67,7 @@ impl Datasource {
             Self::Numa => "numa",
             Self::Zfs => "zfs",
             Self::Sccache => "sccache",
+            Self::Schedstat => "schedstat",
             Self::Systemd => "systemd",
         }
     }
@@ -137,6 +141,18 @@ struct SubsystemCheck {
 }
 
 const SUBSYSTEM_CHECKS: &[SubsystemCheck] = &[
+    SubsystemCheck {
+        name: Datasource::Schedstat,
+        path: "/proc/schedstat",
+        description: "kernel scheduler statistics",
+        require_entries: false,
+    },
+    SubsystemCheck {
+        name: Datasource::Filefd,
+        path: "/proc/sys/fs/file-nr",
+        description: "file descriptor statistics",
+        require_entries: false,
+    },
     SubsystemCheck {
         name: Datasource::Systemd,
         path: "/run/systemd/system",

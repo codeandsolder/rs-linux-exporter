@@ -164,7 +164,7 @@ systemd_max_units = 512
 systemd_detailed_metrics = false
 
 # Disable specific datasources (will not be polled)
-# Available: procfs, cgroup, sccache, systemd, cpufreq, softnet, conntrack, filesystems, hwmon, ipmi, mdraid,
+# Available: procfs, filefd, schedstat, cgroup, sccache, systemd, cpufreq, softnet, conntrack, filesystems, hwmon, ipmi, mdraid,
 # thermal, rapl, power_supply, pressure, nvme, edac, netdev_sysfs, numa, zfs
 disabled_datasources = ["thermal", "conntrack"]
 

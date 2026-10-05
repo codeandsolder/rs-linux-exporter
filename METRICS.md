@@ -50,6 +50,21 @@ If you add or edit sections for this file, keep these formatting rules or the
 | `cgroup_pressure_seconds_total` | CounterVec | Cumulative per-service PSI stall time |
 | `cgroup_pressure_stall_ratio` | GaugeVec | Per-service PSI stall fraction over 10/60/300 second windows (when `cgroup_detailed_metrics = true`) |
 
+## filefd
+
+| Metric | Type | Description |
+|---|---|---|
+| `filefd_allocated` | Gauge | Number of allocated system-wide file table entries from `/proc/sys/fs/file-nr` |
+| `filefd_maximum` | Gauge | System-wide file table maximum from `/proc/sys/fs/file-nr` |
+
+## schedstat
+
+| Metric | Type | Description |
+|---|---|---|
+| `schedstat_running_seconds_total` | CounterVec | Cumulative seconds each CPU spent running processes |
+| `schedstat_waiting_seconds_total` | CounterVec | Cumulative seconds processes spent waiting for each CPU |
+| `schedstat_timeslices_total` | CounterVec | Cumulative timeslices executed by each CPU |
+
 ## systemd
 
 | Metric | Type | Description |
@@ -381,6 +396,12 @@ python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROM
 - `10`
 - `60`
 - `300`
+
+### schedstat_running_seconds_total labels: `cpu`
+
+### schedstat_waiting_seconds_total labels: `cpu`
+
+### schedstat_timeslices_total labels: `cpu`
 
 ### systemd_unit_state labels: `name`, `state`, `type`
 
