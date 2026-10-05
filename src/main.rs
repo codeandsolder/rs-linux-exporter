@@ -22,6 +22,7 @@ mod datasource_procfs;
 mod datasource_rapl;
 mod datasource_sccache;
 mod datasource_softnet;
+mod datasource_systemd;
 mod datasource_thermal;
 mod datasource_zfs;
 mod exposition;

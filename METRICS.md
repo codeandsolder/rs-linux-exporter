@@ -50,6 +50,24 @@ If you add or edit sections for this file, keep these formatting rules or the
 | `cgroup_pressure_seconds_total` | CounterVec | Cumulative per-service PSI stall time |
 | `cgroup_pressure_stall_ratio` | GaugeVec | Per-service PSI stall fraction over 10/60/300 second windows (when `cgroup_detailed_metrics = true`) |
 
+## systemd
+
+| Metric | Type | Description |
+|---|---|---|
+| `systemd_unit_state` | GaugeVec | One-hot active state for each matched loaded systemd unit; `type` is the service or mount Type when available |
+| `systemd_units` | GaugeVec | Count of matched loaded systemd units by active state |
+| `systemd_system_running` | Gauge | Whether systemd reports the system state as `running` |
+| `systemd_version` | GaugeVec | Detected systemd version; sample value is the parsed numeric version |
+| `systemd_virtualization_info` | GaugeVec | systemd-detected virtualization technology (`none` on bare metal) |
+| `systemd_service_restart_total` | CounterVec | Cumulative service automatic-restart triggers reported by systemd |
+| `systemd_unit_start_time_seconds` | GaugeVec | Service active-enter timestamp since the Unix epoch (when `systemd_detailed_metrics = true`) |
+| `systemd_unit_tasks_current` | GaugeVec | Current service task count when known (when `systemd_detailed_metrics = true`) |
+| `systemd_unit_tasks_max` | GaugeVec | Configured service task limit when finite/known (when `systemd_detailed_metrics = true`) |
+| `systemd_timer_last_trigger_seconds` | GaugeVec | Last timer trigger timestamp since the Unix epoch |
+| `systemd_socket_accepted_connections_total` | CounterVec | Cumulative accepted socket connections |
+| `systemd_socket_current_connections` | GaugeVec | Current socket connections |
+| `systemd_socket_refused_connections_total` | CounterVec | Cumulative refused socket connections |
+
 ## sccache
 
 | Metric | Type | Description |
@@ -363,6 +381,40 @@ python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROM
 - `10`
 - `60`
 - `300`
+
+### systemd_unit_state labels: `name`, `state`, `type`
+
+### systemd_units labels: `state`
+
+### systemd_version labels: `version`
+
+### systemd_virtualization_info labels: `virtualization_type`
+
+### systemd_service_restart_total labels: `name`
+
+### systemd_unit_start_time_seconds labels: `name`
+
+### systemd_unit_tasks_current labels: `name`
+
+### systemd_unit_tasks_max labels: `name`
+
+### systemd_timer_last_trigger_seconds labels: `name`
+
+### systemd_socket_accepted_connections_total labels: `name`
+
+### systemd_socket_current_connections labels: `name`
+
+### systemd_socket_refused_connections_total labels: `name`
+
+`systemd_unit_state` label values (`state`):
+
+- `active`
+- `activating`
+- `deactivating`
+- `inactive`
+- `failed`
+
+The exporter also exposes a future/unknown systemd active state as an additive one-hot state if systemd reports one. `systemd_units` likewise includes such states in its summary.
 
 ### sccache_info labels: `version`
 

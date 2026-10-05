@@ -29,6 +29,7 @@ and the software reliable.
 | `procfs` | System stats from /proc (CPU, memory, network, disk I/O) |
 | `cgroup` | Bounded cgroup v2 service CPU, memory, I/O, PID, state, and PSI metrics |
 | `sccache` | Local sccache cache/compiler/distributed-build statistics via its supported JSON CLI |
+| `systemd` | Unit state, restart, timer/socket, system state/version, and optional service runtime metrics over D-Bus |
 | `cpufreq` | CPU frequency per core |
 | `softnet` | Network soft interrupt statistics |
 | `conntrack` | Connection tracking statistics |
@@ -150,8 +151,20 @@ sccache_timeout_ms = 1000
 # upstream `sccache --dist-status` can start a daemon if it races with a daemon exit.
 sccache_collect_dist_status = false
 
+# systemd collector. Patterns are whole-unit-name regular expressions, matching
+# node_exporter semantics. Only loaded units are exported. The default exclusion
+# drops high-cardinality/noisy automount, device, mount, scope, and slice units.
+systemd_unit_include = ".+"
+systemd_unit_exclude = '.+\.(automount|device|mount|scope|slice)'
+systemd_max_units = 512
+
+# Add service start-time and TasksCurrent/TasksMax metrics. Unit state, service
+# restart counts, timers, sockets, system state/version, and virtualization stay
+# enabled in baseline mode.
+systemd_detailed_metrics = false
+
 # Disable specific datasources (will not be polled)
-# Available: procfs, cgroup, sccache, cpufreq, softnet, conntrack, filesystems, hwmon, ipmi, mdraid,
+# Available: procfs, cgroup, sccache, systemd, cpufreq, softnet, conntrack, filesystems, hwmon, ipmi, mdraid,
 # thermal, rapl, power_supply, pressure, nvme, edac, netdev_sysfs, numa, zfs
 disabled_datasources = ["thermal", "conntrack"]
 

@@ -214,6 +214,132 @@
       }
     },
     {
+      "name": "systemd_unit_state",
+      "group": "systemd",
+      "type": "GaugeVec",
+      "description": "One-hot active state for each matched loaded systemd unit; `type` is the service or mount Type when available",
+      "labels": [
+        "name",
+        "state",
+        "type"
+      ],
+      "label_values": {
+        "state": [
+          "active",
+          "activating",
+          "deactivating",
+          "inactive",
+          "failed"
+        ]
+      }
+    },
+    {
+      "name": "systemd_units",
+      "group": "systemd",
+      "type": "GaugeVec",
+      "description": "Count of matched loaded systemd units by active state",
+      "labels": [
+        "state"
+      ]
+    },
+    {
+      "name": "systemd_system_running",
+      "group": "systemd",
+      "type": "Gauge",
+      "description": "Whether systemd reports the system state as `running`",
+      "labels": []
+    },
+    {
+      "name": "systemd_version",
+      "group": "systemd",
+      "type": "GaugeVec",
+      "description": "Detected systemd version; sample value is the parsed numeric version",
+      "labels": [
+        "version"
+      ]
+    },
+    {
+      "name": "systemd_virtualization_info",
+      "group": "systemd",
+      "type": "GaugeVec",
+      "description": "systemd-detected virtualization technology (`none` on bare metal)",
+      "labels": [
+        "virtualization_type"
+      ]
+    },
+    {
+      "name": "systemd_service_restart_total",
+      "group": "systemd",
+      "type": "CounterVec",
+      "description": "Cumulative service automatic-restart triggers reported by systemd",
+      "labels": [
+        "name"
+      ]
+    },
+    {
+      "name": "systemd_unit_start_time_seconds",
+      "group": "systemd",
+      "type": "GaugeVec",
+      "description": "Service active-enter timestamp since the Unix epoch (when `systemd_detailed_metrics = true`)",
+      "labels": [
+        "name"
+      ]
+    },
+    {
+      "name": "systemd_unit_tasks_current",
+      "group": "systemd",
+      "type": "GaugeVec",
+      "description": "Current service task count when known (when `systemd_detailed_metrics = true`)",
+      "labels": [
+        "name"
+      ]
+    },
+    {
+      "name": "systemd_unit_tasks_max",
+      "group": "systemd",
+      "type": "GaugeVec",
+      "description": "Configured service task limit when finite/known (when `systemd_detailed_metrics = true`)",
+      "labels": [
+        "name"
+      ]
+    },
+    {
+      "name": "systemd_timer_last_trigger_seconds",
+      "group": "systemd",
+      "type": "GaugeVec",
+      "description": "Last timer trigger timestamp since the Unix epoch",
+      "labels": [
+        "name"
+      ]
+    },
+    {
+      "name": "systemd_socket_accepted_connections_total",
+      "group": "systemd",
+      "type": "CounterVec",
+      "description": "Cumulative accepted socket connections",
+      "labels": [
+        "name"
+      ]
+    },
+    {
+      "name": "systemd_socket_current_connections",
+      "group": "systemd",
+      "type": "GaugeVec",
+      "description": "Current socket connections",
+      "labels": [
+        "name"
+      ]
+    },
+    {
+      "name": "systemd_socket_refused_connections_total",
+      "group": "systemd",
+      "type": "CounterVec",
+      "description": "Cumulative refused socket connections",
+      "labels": [
+        "name"
+      ]
+    },
+    {
       "name": "sccache_info",
       "group": "sccache",
       "type": "GaugeVec",
@@ -1751,6 +1877,24 @@
         "cgroup_io_operations_total",
         "cgroup_pressure_seconds_total",
         "cgroup_pressure_stall_ratio"
+      ]
+    },
+    {
+      "name": "systemd",
+      "metrics": [
+        "systemd_unit_state",
+        "systemd_units",
+        "systemd_system_running",
+        "systemd_version",
+        "systemd_virtualization_info",
+        "systemd_service_restart_total",
+        "systemd_unit_start_time_seconds",
+        "systemd_unit_tasks_current",
+        "systemd_unit_tasks_max",
+        "systemd_timer_last_trigger_seconds",
+        "systemd_socket_accepted_connections_total",
+        "systemd_socket_current_connections",
+        "systemd_socket_refused_connections_total"
       ]
     },
     {
