@@ -214,6 +214,47 @@
       }
     },
     {
+      "name": "filefd_allocated",
+      "group": "filefd",
+      "type": "Gauge",
+      "description": "Number of allocated system-wide file table entries from `/proc/sys/fs/file-nr`",
+      "labels": []
+    },
+    {
+      "name": "filefd_maximum",
+      "group": "filefd",
+      "type": "Gauge",
+      "description": "System-wide file table maximum from `/proc/sys/fs/file-nr`",
+      "labels": []
+    },
+    {
+      "name": "schedstat_running_seconds_total",
+      "group": "schedstat",
+      "type": "CounterVec",
+      "description": "Cumulative seconds each CPU spent running processes",
+      "labels": [
+        "cpu"
+      ]
+    },
+    {
+      "name": "schedstat_waiting_seconds_total",
+      "group": "schedstat",
+      "type": "CounterVec",
+      "description": "Cumulative seconds processes spent waiting for each CPU",
+      "labels": [
+        "cpu"
+      ]
+    },
+    {
+      "name": "schedstat_timeslices_total",
+      "group": "schedstat",
+      "type": "CounterVec",
+      "description": "Cumulative timeslices executed by each CPU",
+      "labels": [
+        "cpu"
+      ]
+    },
+    {
       "name": "systemd_unit_state",
       "group": "systemd",
       "type": "GaugeVec",
@@ -1877,6 +1918,21 @@
         "cgroup_io_operations_total",
         "cgroup_pressure_seconds_total",
         "cgroup_pressure_stall_ratio"
+      ]
+    },
+    {
+      "name": "filefd",
+      "metrics": [
+        "filefd_allocated",
+        "filefd_maximum"
+      ]
+    },
+    {
+      "name": "schedstat",
+      "metrics": [
+        "schedstat_running_seconds_total",
+        "schedstat_waiting_seconds_total",
+        "schedstat_timeslices_total"
       ]
     },
     {
