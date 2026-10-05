@@ -6,7 +6,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::net::IpAddr;
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Component, Path};
 use std::str::FromStr;
 use subtle::ConstantTimeEq;
 
@@ -18,6 +18,7 @@ const CONFIG_PATH: &str = "config.toml";
 #[serde(rename_all = "snake_case")]
 pub enum Datasource {
     Procfs,
+    Cgroup,
     #[serde(rename = "cpufreq")]
     CpuFreq,
     Softnet,
@@ -41,6 +42,7 @@ impl Datasource {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Procfs => "procfs",
+            Self::Cgroup => "cgroup",
             Self::CpuFreq => "cpufreq",
             Self::Softnet => "softnet",
             Self::Conntrack => "conntrack",
@@ -66,6 +68,8 @@ pub enum ConfigError {
     InvalidAllowedIp(String),
     InvalidBind(String),
     IncompleteTls,
+    InvalidCgroupRoot(String),
+    InvalidCgroupMaxUnits,
 }
 
 impl fmt::Display for ConfigError {
@@ -86,6 +90,13 @@ impl fmt::Display for ConfigError {
             Self::IncompleteTls => formatter.write_str(
                 "tls_cert and tls_key must either both be configured or both be omitted",
             ),
+            Self::InvalidCgroupRoot(value) => write!(
+                formatter,
+                "invalid cgroup_roots entry {value:?}: expected a relative path below /sys/fs/cgroup without '..'",
+            ),
+            Self::InvalidCgroupMaxUnits => {
+                formatter.write_str("cgroup_max_units must be greater than zero")
+            }
         }
     }
 }
@@ -206,6 +217,10 @@ fn check_subsystem_available(check: &SubsystemCheck) -> bool {
     check_path_available(Path::new(check.path), check.require_entries)
 }
 
+fn cgroup_roots_available_at(base: &Path, roots: &[String]) -> bool {
+    base.join("cgroup.controllers").is_file() && roots.iter().all(|root| base.join(root).is_dir())
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 #[expect(
@@ -217,6 +232,9 @@ pub struct AppConfig {
     pub ignore_ramfs_filesystems: bool,
     pub ignore_ppp_interfaces: bool,
     pub ignore_veth_interfaces: bool,
+    pub cgroup_roots: Vec<String>,
+    pub cgroup_max_units: usize,
+    pub cgroup_detailed_metrics: bool,
     #[serde(default)]
     pub disabled_datasources: Vec<Datasource>,
     pub allowed_ip: Vec<String>,
@@ -239,6 +257,9 @@ impl Default for AppConfig {
             ignore_ramfs_filesystems: true,
             ignore_ppp_interfaces: true,
             ignore_veth_interfaces: true,
+            cgroup_roots: vec!["system.slice".to_string()],
+            cgroup_max_units: 256,
+            cgroup_detailed_metrics: false,
             disabled_datasources: Vec::new(),
             allowed_ip: vec!["127.0.0.0/8".to_string()],
             bind: "127.0.0.1:9100".to_string(),
@@ -297,6 +318,30 @@ impl AppConfig {
         self.disabled_set = self.disabled_datasources.iter().copied().collect();
     }
 
+    fn validate_cgroup_settings(&self) -> Result<(), ConfigError> {
+        if self.cgroup_max_units == 0 {
+            return Err(ConfigError::InvalidCgroupMaxUnits);
+        }
+        if self.cgroup_roots.is_empty() {
+            return Err(ConfigError::InvalidCgroupRoot("<empty list>".to_string()));
+        }
+        for root in &self.cgroup_roots {
+            let path = Path::new(root);
+            if root.is_empty()
+                || path.is_absolute()
+                || path.components().any(|component| {
+                    matches!(
+                        component,
+                        Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                    )
+                })
+            {
+                return Err(ConfigError::InvalidCgroupRoot(root.clone()));
+            }
+        }
+        Ok(())
+    }
+
     fn build_allowed_metrics_nets(&mut self) -> Result<(), ConfigError> {
         let mut nets = Vec::new();
         for entry in &self.allowed_ip {
@@ -317,6 +362,7 @@ impl AppConfig {
     fn validate(&mut self) -> Result<(), ConfigError> {
         self.build_disabled_set();
         self.build_allowed_metrics_nets()?;
+        self.validate_cgroup_settings()?;
         let _ = self.bind_addr()?;
         let _ = self.tls_config()?;
         Ok(())
@@ -358,7 +404,18 @@ impl AppConfig {
         config
     }
 
+    fn cgroup_roots_available(&self) -> bool {
+        cgroup_roots_available_at(Path::new("/sys/fs/cgroup"), &self.cgroup_roots)
+    }
+
     fn check_subsystems(&mut self) {
+        if self.is_datasource_enabled(Datasource::Cgroup) && !self.cgroup_roots_available() {
+            eprintln!(
+                "cgroup v2 service roots not available below /sys/fs/cgroup, disabling cgroup datasource."
+            );
+            self.disable_datasource(Datasource::Cgroup);
+        }
+
         for check in SUBSYSTEM_CHECKS {
             if !self.is_datasource_enabled(check.name) {
                 // Already disabled by config, skip check
@@ -382,6 +439,20 @@ impl AppConfig {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn cgroup_root_availability_requires_v2_and_all_roots() {
+        let dir = TempDir::new().unwrap();
+        let roots = vec!["system.slice".to_string(), "custom.slice".to_string()];
+        assert!(!cgroup_roots_available_at(dir.path(), &roots));
+
+        fs::write(dir.path().join("cgroup.controllers"), "cpu memory io").unwrap();
+        fs::create_dir(dir.path().join("system.slice")).unwrap();
+        assert!(!cgroup_roots_available_at(dir.path(), &roots));
+
+        fs::create_dir(dir.path().join("custom.slice")).unwrap();
+        assert!(cgroup_roots_available_at(dir.path(), &roots));
+    }
 
     #[test]
     fn test_check_path_available_missing_path() {
@@ -415,6 +486,50 @@ mod tests {
         assert!(config.is_datasource_enabled(Datasource::Numa));
         assert!(config.is_datasource_enabled(Datasource::Edac));
         assert!(config.is_datasource_enabled(Datasource::Procfs));
+        assert!(config.is_datasource_enabled(Datasource::Cgroup));
+    }
+
+    #[test]
+    fn invalid_cgroup_roots_are_rejected() {
+        for root in [
+            "",
+            "/system.slice",
+            "../system.slice",
+            "system.slice/../user.slice",
+        ] {
+            let config = AppConfig {
+                cgroup_roots: vec![root.to_string()],
+                ..Default::default()
+            };
+            assert!(matches!(
+                config.validate_cgroup_settings(),
+                Err(ConfigError::InvalidCgroupRoot(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn empty_cgroup_root_list_is_rejected() {
+        let config = AppConfig {
+            cgroup_roots: Vec::new(),
+            ..Default::default()
+        };
+        assert!(matches!(
+            config.validate_cgroup_settings(),
+            Err(ConfigError::InvalidCgroupRoot(_))
+        ));
+    }
+
+    #[test]
+    fn zero_cgroup_unit_cap_is_rejected() {
+        let config = AppConfig {
+            cgroup_max_units: 0,
+            ..Default::default()
+        };
+        assert_eq!(
+            config.validate_cgroup_settings(),
+            Err(ConfigError::InvalidCgroupMaxUnits)
+        );
     }
 
     #[test]

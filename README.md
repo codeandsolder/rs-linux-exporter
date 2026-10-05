@@ -27,6 +27,7 @@ and the software reliable.
 | Datasource | Description |
 |------------|-------------|
 | `procfs` | System stats from /proc (CPU, memory, network, disk I/O) |
+| `cgroup` | Bounded cgroup v2 service CPU, memory, I/O, PID, state, and PSI metrics |
 | `cpufreq` | CPU frequency per core |
 | `softnet` | Network soft interrupt statistics |
 | `conntrack` | Connection tracking statistics |
@@ -125,8 +126,20 @@ ignore_ppp_interfaces = true
 # Ignore veth and br-* interfaces in network metrics
 ignore_veth_interfaces = true
 
+# cgroup v2 roots, relative to /sys/fs/cgroup. Service cgroups (*.service)
+# are discovered recursively under these roots; transient scopes are excluded.
+cgroup_roots = ["system.slice"]
+
+# Hard cardinality guard for discovered service cgroups.
+cgroup_max_units = 256
+
+# Add per-service memory.stat breakdown and PSI 10/60/300 window ratios.
+# Baseline mode still exports CPU, memory current/peak/swap, memory events,
+# PIDs/state, I/O, and cumulative PSI totals.
+cgroup_detailed_metrics = false
+
 # Disable specific datasources (will not be polled)
-# Available: procfs, cpufreq, softnet, conntrack, filesystems, hwmon, ipmi, mdraid,
+# Available: procfs, cgroup, cpufreq, softnet, conntrack, filesystems, hwmon, ipmi, mdraid,
 # thermal, rapl, power_supply, pressure, nvme, edac, netdev_sysfs, numa, zfs
 disabled_datasources = ["thermal", "conntrack"]
 
