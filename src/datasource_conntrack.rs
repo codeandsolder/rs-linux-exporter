@@ -1,83 +1,33 @@
-//! Conntrack statistics collector via netlink protocol.
+//! Conntrack statistics collector via generated netlink bindings.
 //!
-//! This module queries per-CPU conntrack statistics using the netfilter netlink
-//! protocol, similar to `conntrack -S`.
+//! This module queries per-CPU conntrack statistics using the kernel's
+//! netfilter netlink protocol, similar to `conntrack -S`.
 
-use crate::metric_support::RegisterMetricResultExt;
-use crate::metric_support::prometheus_u64;
+use crate::metric_support::{RegisterMetricResultExt, prometheus_u64};
+use netlink_bindings::builtin::Nlmsghdr;
+use netlink_bindings::conntrack::{self, ConntrackStatsAttrs, OpGetStatsDump};
+use netlink_bindings::traits::{NetlinkRequest, Protocol};
 use prometheus::GaugeVec;
-use std::collections::HashMap;
-use std::io::{self, Error};
-use std::mem;
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use rustix::net::netlink::SocketAddrNetlink;
+use rustix::net::sockopt::{Timeout, set_socket_timeout};
+use rustix::net::{
+    AddressFamily, RecvFlags, SendFlags, SocketFlags, SocketType, bind, netlink, recvfrom, sendto,
+    socket_with,
+};
+use std::io;
 use std::path::Path;
 use std::sync::OnceLock;
+use std::time::Duration;
 
-// Netlink protocol constants
-const NETLINK_NETFILTER: i32 = 12;
+const RECV_TIMEOUT: Duration = Duration::from_secs(2);
+const SEQUENCE: u32 = 1;
+const RECV_BUFFER_SIZE: usize = 16 * 1024;
 
-/// Upper bound on how long a single scrape will wait for the kernel.
-const RECV_TIMEOUT_SECS: i64 = 2;
-
-// Netlink message flags
-const NLM_F_REQUEST: u16 = 0x0001;
-const NLM_F_DUMP: u16 = 0x0300;
-
-// Netlink message types
-const NLMSG_DONE: u16 = 3;
-const NLMSG_ERROR: u16 = 2;
-
-// Netfilter netlink constants
-const NFNL_SUBSYS_CTNETLINK: u8 = 1;
-const NFNETLINK_V0: u8 = 0;
-const IPCTNL_MSG_CT_GET_STATS_CPU: u8 = 4;
-
-// CTA_STATS attribute IDs (from linux/netfilter/nfnetlink_conntrack.h)
-const CTA_STATS_FOUND: u16 = 2;
-const CTA_STATS_INVALID: u16 = 4;
-const CTA_STATS_INSERT: u16 = 8;
-const CTA_STATS_INSERT_FAILED: u16 = 9;
-const CTA_STATS_DROP: u16 = 10;
-const CTA_STATS_EARLY_DROP: u16 = 11;
-const CTA_STATS_ERROR: u16 = 12;
-const CTA_STATS_SEARCH_RESTART: u16 = 13;
-const CTA_STATS_CLASH_RESOLVE: u16 = 14;
-const CTA_STATS_CHAIN_TOOLONG: u16 = 15;
-
-/// Netlink message header (16 bytes)
-#[repr(C)]
-#[expect(
-    clippy::struct_field_names,
-    reason = "field names intentionally mirror the Linux nlmsghdr UAPI"
-)]
-struct NlMsgHdr {
-    nlmsg_len: u32,
-    nlmsg_type: u16,
-    nlmsg_flags: u16,
-    nlmsg_seq: u32,
-    nlmsg_pid: u32,
-}
-
-/// Netfilter generic message header (4 bytes)
-#[repr(C)]
-struct NfGenMsg {
-    nfgen_family: u8,
-    version: u8,
-    res_id: u16, // CPU ID in response (big-endian)
-}
-
-/// Netlink attribute header
-#[repr(C)]
-struct NlAttr {
-    nla_len: u16,
-    nla_type: u16,
-}
-
-/// Per-CPU conntrack statistics
-#[derive(Debug, Default)]
-pub struct CpuStats {
-    pub cpu_id: u16,
-    pub counters: HashMap<String, u64>,
+#[derive(Debug, PartialEq, Eq)]
+struct ConntrackStat {
+    cpu_id: u16,
+    name: &'static str,
+    value: u32,
 }
 
 struct ConntrackMetrics {
@@ -103,201 +53,28 @@ fn metrics() -> &'static ConntrackMetrics {
     CONNTRACK_METRICS.get_or_init(ConntrackMetrics::new)
 }
 
-/// Align to 4-byte boundary (`NLMSG_ALIGN`)
-#[inline]
-const fn nlmsg_align(len: usize) -> usize {
+const fn align_netlink_message(len: usize) -> usize {
     (len + 3) & !3
 }
 
-/// Build the netlink request message for conntrack stats
-fn create_stats_request(seq: u32) -> Result<Vec<u8>, String> {
-    let nlmsg_type =
-        (u16::from(NFNL_SUBSYS_CTNETLINK) << 8) | u16::from(IPCTNL_MSG_CT_GET_STATS_CPU);
-    let total_len = mem::size_of::<NlMsgHdr>() + mem::size_of::<NfGenMsg>();
-    let nlmsg_len = u32::try_from(total_len)
-        .map_err(|_| "netlink request length does not fit nlmsg_len".to_string())?;
-    let nfgen_family = u8::try_from(libc::AF_UNSPEC)
-        .map_err(|_| "AF_UNSPEC does not fit nfgen_family".to_string())?;
-
-    let mut buf = vec![0u8; total_len];
-
-    let hdr = NlMsgHdr {
-        nlmsg_len,
-        nlmsg_type,
-        nlmsg_flags: NLM_F_REQUEST | NLM_F_DUMP,
-        nlmsg_seq: seq,
-        nlmsg_pid: 0,
-    };
-
-    // SAFETY: `buf` has `total_len` bytes, which includes a full `NlMsgHdr`;
-    // source and destination are valid, non-overlapping byte ranges.
-    unsafe {
-        std::ptr::copy_nonoverlapping(
-            (&raw const hdr).cast::<u8>(),
-            buf.as_mut_ptr(),
-            mem::size_of::<NlMsgHdr>(),
-        );
+const fn stat_name_value(attr: &ConntrackStatsAttrs) -> Option<(&'static str, u32)> {
+    match attr {
+        ConntrackStatsAttrs::Found(value) => Some(("found", *value)),
+        ConntrackStatsAttrs::Invalid(value) => Some(("invalid", *value)),
+        ConntrackStatsAttrs::Insert(value) => Some(("insert", *value)),
+        ConntrackStatsAttrs::InsertFailed(value) => Some(("insert_failed", *value)),
+        ConntrackStatsAttrs::Drop(value) => Some(("drop", *value)),
+        ConntrackStatsAttrs::EarlyDrop(value) => Some(("early_drop", *value)),
+        ConntrackStatsAttrs::Error(value) => Some(("error", *value)),
+        ConntrackStatsAttrs::SearchRestart(value) => Some(("search_restart", *value)),
+        ConntrackStatsAttrs::ClashResolve(value) => Some(("clash_resolve", *value)),
+        ConntrackStatsAttrs::ChainToolong(value) => Some(("chain_toolong", *value)),
+        ConntrackStatsAttrs::Searched(_)
+        | ConntrackStatsAttrs::New(_)
+        | ConntrackStatsAttrs::Ignore(_)
+        | ConntrackStatsAttrs::Delete(_)
+        | ConntrackStatsAttrs::DeleteList(_) => None,
     }
-
-    let nfmsg = NfGenMsg {
-        nfgen_family,
-        version: NFNETLINK_V0,
-        res_id: 0,
-    };
-
-    // SAFETY: the destination starts immediately after the netlink header and
-    // `total_len` reserves exactly enough space for the complete `NfGenMsg`.
-    unsafe {
-        std::ptr::copy_nonoverlapping(
-            (&raw const nfmsg).cast::<u8>(),
-            buf.as_mut_ptr().add(mem::size_of::<NlMsgHdr>()),
-            mem::size_of::<NfGenMsg>(),
-        );
-    }
-
-    Ok(buf)
-}
-
-/// Map `CTA_STATS` attribute type to metric name
-const fn attr_type_to_name(attr_type: u16) -> Option<&'static str> {
-    match attr_type {
-        CTA_STATS_FOUND => Some("found"),
-        CTA_STATS_INVALID => Some("invalid"),
-        CTA_STATS_INSERT => Some("insert"),
-        CTA_STATS_INSERT_FAILED => Some("insert_failed"),
-        CTA_STATS_DROP => Some("drop"),
-        CTA_STATS_EARLY_DROP => Some("early_drop"),
-        CTA_STATS_ERROR => Some("error"),
-        CTA_STATS_SEARCH_RESTART => Some("search_restart"),
-        CTA_STATS_CLASH_RESOLVE => Some("clash_resolve"),
-        CTA_STATS_CHAIN_TOOLONG => Some("chain_toolong"),
-        _ => None,
-    }
-}
-
-/// Parse a single netlink message containing per-CPU stats
-fn parse_stats_message(data: &[u8]) -> Result<CpuStats, String> {
-    if data.len() < mem::size_of::<NfGenMsg>() {
-        return Err("Message too short for nfgenmsg".to_string());
-    }
-
-    // Parse nfgenmsg to get CPU ID
-    // SAFETY: the length check above guarantees a complete `NfGenMsg`; netlink
-    // payload alignment is not guaranteed, hence `read_unaligned`.
-    let nfmsg: NfGenMsg = unsafe { std::ptr::read_unaligned(data.as_ptr().cast::<NfGenMsg>()) };
-    let cpu_id = u16::from_be(nfmsg.res_id);
-
-    let mut stats = CpuStats {
-        cpu_id,
-        counters: HashMap::new(),
-    };
-
-    // Parse TLV attributes
-    let mut offset = mem::size_of::<NfGenMsg>();
-    while offset + mem::size_of::<NlAttr>() <= data.len() {
-        // SAFETY: the loop condition guarantees a complete `NlAttr` remains;
-        // netlink TLVs are only 4-byte aligned, so use an unaligned read.
-        let attr: NlAttr =
-            unsafe { std::ptr::read_unaligned(data.as_ptr().add(offset).cast::<NlAttr>()) };
-
-        let attr_len = attr.nla_len as usize;
-        if attr_len < mem::size_of::<NlAttr>() || offset + attr_len > data.len() {
-            break;
-        }
-
-        let attr_type = attr.nla_type & 0x7FFF; // Mask off NLA_F_* flags
-        let payload_offset = offset + mem::size_of::<NlAttr>();
-        let payload_len = attr_len - mem::size_of::<NlAttr>();
-
-        // Stats are 32-bit unsigned integers (big-endian from kernel)
-        if payload_len >= 4
-            && let Some(name) = attr_type_to_name(attr_type)
-        {
-            let value_bytes: [u8; 4] = data[payload_offset..payload_offset + 4]
-                .try_into()
-                .unwrap_or([0; 4]);
-            let value = u64::from(u32::from_be_bytes(value_bytes));
-            stats.counters.insert(name.to_string(), value);
-        }
-
-        // Move to next attribute (aligned)
-        offset += nlmsg_align(attr_len);
-    }
-
-    Ok(stats)
-}
-
-/// Create a netlink socket for netfilter
-fn create_netlink_socket() -> io::Result<OwnedFd> {
-    // SAFETY: arguments are Linux netlink socket constants and no pointers are
-    // involved. A nonnegative return value is a newly owned file descriptor.
-    let raw_fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_RAW, NETLINK_NETFILTER) };
-    if raw_fd < 0 {
-        return Err(Error::last_os_error());
-    }
-
-    // SAFETY: `raw_fd` was just returned by `socket`, is valid, and ownership
-    // has not been transferred anywhere else. `OwnedFd` closes it on all exits.
-    let fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
-
-    let timeout = libc::timeval {
-        tv_sec: RECV_TIMEOUT_SECS,
-        tv_usec: 0,
-    };
-    let timeout_len = libc::socklen_t::try_from(mem::size_of::<libc::timeval>()).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "timeval size exceeds socklen_t",
-        )
-    })?;
-    // SAFETY: `fd` is open; `timeout` lives for the duration of the call and
-    // `timeout_len` is exactly the size of the pointed-to `timeval` object.
-    let ret = unsafe {
-        libc::setsockopt(
-            fd.as_raw_fd(),
-            libc::SOL_SOCKET,
-            libc::SO_RCVTIMEO,
-            (&raw const timeout).cast::<libc::c_void>(),
-            timeout_len,
-        )
-    };
-    if ret < 0 {
-        return Err(Error::last_os_error());
-    }
-
-    // SAFETY: all-zero bytes are a valid baseline for Linux `sockaddr_nl`;
-    // every field used by bind is populated immediately below.
-    let mut addr: libc::sockaddr_nl = unsafe { mem::zeroed() };
-    addr.nl_family = libc::sa_family_t::try_from(libc::AF_NETLINK).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "AF_NETLINK exceeds sa_family_t",
-        )
-    })?;
-    addr.nl_pid = 0;
-    addr.nl_groups = 0;
-    let addr_len =
-        libc::socklen_t::try_from(mem::size_of::<libc::sockaddr_nl>()).map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "sockaddr_nl size exceeds socklen_t",
-            )
-        })?;
-
-    // SAFETY: `addr` is a fully initialized `sockaddr_nl`, its pointer remains
-    // valid for the call, and `addr_len` describes exactly that object.
-    let ret = unsafe {
-        libc::bind(
-            fd.as_raw_fd(),
-            (&raw const addr).cast::<libc::sockaddr>(),
-            addr_len,
-        )
-    };
-    if ret < 0 {
-        return Err(Error::last_os_error());
-    }
-
-    Ok(fd)
 }
 
 fn conntrack_module_loaded() -> bool {
@@ -305,145 +82,227 @@ fn conntrack_module_loaded() -> bool {
         return true;
     }
 
-    if let Ok(modules) = procfs::modules() {
-        return modules.contains_key("nf_conntrack")
-            || modules.contains_key("nf_conntrack_netlink");
-    }
-
-    false
+    procfs::modules().is_ok_and(|modules| {
+        modules.contains_key("nf_conntrack") || modules.contains_key("nf_conntrack_netlink")
+    })
 }
 
-/// Check if conntrack stats collection is available.
-/// Returns true if we can create a netlink socket (requires `CAP_NET_ADMIN` or root).
-/// Collect conntrack statistics via netlink.
-/// Returns per-CPU statistics or an error.
-pub fn collect_stats() -> Result<Vec<CpuStats>, String> {
-    let socket =
-        create_netlink_socket().map_err(|e| format!("Failed to create netlink socket: {e}"))?;
-    let fd = socket.as_raw_fd();
+fn decode_error_code(payload: &[u8]) -> Result<i32, String> {
+    let bytes: [u8; 4] = payload
+        .get(..4)
+        .ok_or_else(|| "netlink completion/error message is missing its error code".to_string())?
+        .try_into()
+        .map_err(|_| "netlink error code has an invalid width".to_string())?;
+    Ok(i32::from_ne_bytes(bytes))
+}
 
-    let request = create_stats_request(1)?;
-    // SAFETY: `fd` remains owned by `socket`; `request` is a live contiguous
-    // buffer and the pointer/length pair describes its complete contents.
-    let sent = unsafe {
-        libc::send(
-            fd,
-            request.as_ptr().cast::<libc::c_void>(),
-            request.len(),
-            0,
-        )
+struct EncodedRequest {
+    wire: Vec<u8>,
+    response_type: u16,
+}
+
+enum PacketDisposition {
+    Continue,
+    Done,
+}
+
+fn encode_request() -> Result<EncodedRequest, String> {
+    let mut nf_header = conntrack::Nfgenmsg::new();
+    nf_header.nfgen_family = u8::try_from(libc::AF_UNSPEC)
+        .map_err(|_| "AF_UNSPEC does not fit nfgen_family".to_string())?;
+    nf_header.version = 0;
+    nf_header.set_res_id(0);
+
+    let request = conntrack::Request::new().op_get_stats_dump(&nf_header);
+    let Protocol::Raw {
+        protonum,
+        request_type,
+    } = request.protocol()
+    else {
+        return Err("conntrack stats unexpectedly used generic netlink".to_string());
     };
+    let expected_protocol = u16::try_from(libc::NETLINK_NETFILTER)
+        .map_err(|_| "NETLINK_NETFILTER does not fit u16".to_string())?;
+    if protonum != expected_protocol {
+        return Err(format!("unexpected conntrack netlink protocol {protonum}"));
+    }
 
-    if sent < 0 {
+    let payload = request.payload();
+    let message_len = Nlmsghdr::len()
+        .checked_add(payload.len())
+        .ok_or_else(|| "conntrack request length overflow".to_string())?;
+    let message_len = u32::try_from(message_len)
+        .map_err(|_| "conntrack request length does not fit nlmsghdr".to_string())?;
+    let request_flag = u16::try_from(libc::NLM_F_REQUEST)
+        .map_err(|_| "NLM_F_REQUEST does not fit u16".to_string())?;
+    let header = Nlmsghdr {
+        len: message_len,
+        r#type: request_type,
+        flags: request.flags() | request_flag,
+        seq: SEQUENCE,
+        pid: 0,
+    };
+    let mut wire = Vec::with_capacity(message_len as usize);
+    wire.extend_from_slice(header.as_slice());
+    wire.extend_from_slice(payload);
+    Ok(EncodedRequest {
+        wire,
+        response_type: request_type,
+    })
+}
+
+fn open_netlink_socket() -> Result<std::os::fd::OwnedFd, String> {
+    let socket = socket_with(
+        AddressFamily::NETLINK,
+        SocketType::RAW,
+        SocketFlags::CLOEXEC,
+        Some(netlink::NETFILTER),
+    )
+    .map_err(|err| format!("failed to create conntrack netlink socket: {err}"))?;
+    set_socket_timeout(&socket, Timeout::Recv, Some(RECV_TIMEOUT))
+        .map_err(|err| format!("failed to set conntrack receive timeout: {err}"))?;
+    bind(&socket, &SocketAddrNetlink::new(0, 0))
+        .map_err(|err| format!("failed to bind conntrack netlink socket: {err}"))?;
+    Ok(socket)
+}
+
+fn decode_stats_payload(payload: &[u8], result: &mut Vec<ConntrackStat>) -> Result<(), String> {
+    let (header, attrs) = OpGetStatsDump::decode_reply(payload);
+    for attr in attrs {
+        let attr =
+            attr.map_err(|err| format!("failed to decode conntrack stats attribute: {err}"))?;
+        if let Some((name, value)) = stat_name_value(&attr) {
+            result.push(ConntrackStat {
+                cpu_id: header.res_id(),
+                name,
+                value,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn decode_packet(
+    packet: &[u8],
+    response_type: u16,
+    result: &mut Vec<ConntrackStat>,
+) -> Result<PacketDisposition, String> {
+    let mut offset: usize = 0;
+    while offset < packet.len() {
+        let header_end = offset
+            .checked_add(Nlmsghdr::len())
+            .ok_or_else(|| "netlink header offset overflow".to_string())?;
+        let header_bytes = packet
+            .get(offset..header_end)
+            .ok_or_else(|| "truncated conntrack netlink header".to_string())?;
+        let header = Nlmsghdr::new_from_slice(header_bytes)
+            .ok_or_else(|| "invalid conntrack netlink header width".to_string())?;
+        let message_len = usize::try_from(header.len)
+            .map_err(|_| "netlink message length does not fit usize".to_string())?;
+        if message_len < Nlmsghdr::len() {
+            return Err(format!("invalid conntrack netlink length {message_len}"));
+        }
+        let message_end = offset
+            .checked_add(message_len)
+            .ok_or_else(|| "netlink message offset overflow".to_string())?;
+        let payload = packet
+            .get(header_end..message_end)
+            .ok_or_else(|| "truncated conntrack netlink message".to_string())?;
+
+        if header.seq == SEQUENCE {
+            match decode_message(header.r#type, payload, response_type, result)? {
+                PacketDisposition::Done => return Ok(PacketDisposition::Done),
+                PacketDisposition::Continue => {}
+            }
+        }
+
+        offset = offset
+            .checked_add(align_netlink_message(message_len))
+            .ok_or_else(|| "netlink alignment overflow".to_string())?;
+        if offset > packet.len() {
+            return Err("conntrack netlink message alignment exceeds datagram".to_string());
+        }
+    }
+    Ok(PacketDisposition::Continue)
+}
+
+fn decode_message(
+    message_type: u16,
+    payload: &[u8],
+    response_type: u16,
+    result: &mut Vec<ConntrackStat>,
+) -> Result<PacketDisposition, String> {
+    match i32::from(message_type) {
+        libc::NLMSG_DONE => {
+            if !payload.is_empty() {
+                let code = decode_error_code(payload)?;
+                if code != 0 {
+                    return Err(format!(
+                        "conntrack dump failed: {}",
+                        io::Error::from_raw_os_error(-code)
+                    ));
+                }
+            }
+            Ok(PacketDisposition::Done)
+        }
+        libc::NLMSG_ERROR => {
+            let code = decode_error_code(payload)?;
+            if code != 0 {
+                return Err(format!(
+                    "conntrack request failed: {}",
+                    io::Error::from_raw_os_error(-code)
+                ));
+            }
+            Ok(PacketDisposition::Continue)
+        }
+        libc::NLMSG_NOOP => Ok(PacketDisposition::Continue),
+        libc::NLMSG_OVERRUN => Err("conntrack netlink receive overrun".to_string()),
+        kind if kind == i32::from(response_type) => {
+            decode_stats_payload(payload, result)?;
+            Ok(PacketDisposition::Continue)
+        }
+        kind => Err(format!("unexpected conntrack netlink message type {kind}")),
+    }
+}
+
+fn collect_stats() -> Result<Vec<ConntrackStat>, String> {
+    let request = encode_request()?;
+    let socket = open_netlink_socket()?;
+    let kernel = SocketAddrNetlink::new(0, 0);
+    let sent = sendto(&socket, &request.wire, SendFlags::empty(), &kernel)
+        .map_err(|err| format!("failed to send conntrack request: {err}"))?;
+    if sent != request.wire.len() {
         return Err(format!(
-            "Failed to send netlink request: {}",
-            Error::last_os_error()
+            "short conntrack netlink send: sent {sent} of {} bytes",
+            request.wire.len()
         ));
     }
 
-    // Receive responses
-    let mut all_stats = Vec::new();
-    let mut buffer = vec![0u8; 16384];
-
+    let mut result = Vec::new();
+    let mut buffer = [0_u8; RECV_BUFFER_SIZE];
     loop {
-        // Read the sender address so replies that did not come from the kernel
-        // can be discarded rather than parsed as statistics.
-        // SAFETY: zero initialization is a valid storage state for the kernel
-        // to fill as `sockaddr_nl` through `recvfrom`.
-        let mut addr: libc::sockaddr_nl = unsafe { mem::zeroed() };
-        let mut addr_len = libc::socklen_t::try_from(mem::size_of::<libc::sockaddr_nl>())
-            .map_err(|_| "sockaddr_nl size exceeds socklen_t".to_string())?;
-        // SAFETY: `fd` is open; `buffer` provides writable storage for its full
-        // length; `addr` and `addr_len` are valid output pointers for recvfrom.
-        let len = unsafe {
-            libc::recvfrom(
-                fd,
-                buffer.as_mut_ptr().cast::<libc::c_void>(),
-                buffer.len(),
-                0,
-                (&raw mut addr).cast::<libc::sockaddr>(),
-                &raw mut addr_len,
-            )
-        };
-
-        if len < 0 {
-            let err = Error::last_os_error();
-            if err.kind() == io::ErrorKind::WouldBlock || err.kind() == io::ErrorKind::TimedOut {
-                // Timed out waiting for NLMSG_DONE; return what we have.
-                return Ok(all_stats);
-            }
-            return Err(format!("Failed to receive netlink response: {err}"));
+        let (read_len, packet_len, sender) = recvfrom(&socket, &mut buffer, RecvFlags::empty())
+            .map_err(|err| format!("failed to receive conntrack response: {err}"))?;
+        if packet_len > buffer.len() {
+            return Err(format!(
+                "conntrack netlink datagram was truncated: {packet_len} > {}",
+                buffer.len()
+            ));
         }
-
-        if len == 0 {
-            break;
-        }
-
-        // The kernel always sends from port id 0.
-        if addr.nl_pid != 0 {
-            continue;
-        }
-
-        let len = usize::try_from(len)
-            .map_err(|_| "positive recvfrom length does not fit usize".to_string())?;
-
-        // Parse netlink messages in buffer
-        let mut offset = 0;
-        while offset + mem::size_of::<NlMsgHdr>() <= len {
-            // SAFETY: the loop condition guarantees a complete `NlMsgHdr` is
-            // inside the received prefix; the kernel buffer need not be aligned.
-            let hdr: NlMsgHdr =
-                unsafe { std::ptr::read_unaligned(buffer.as_ptr().add(offset).cast::<NlMsgHdr>()) };
-
-            let msg_len = hdr.nlmsg_len as usize;
-            if msg_len < mem::size_of::<NlMsgHdr>() || offset + msg_len > len {
-                break;
-            }
-
-            // Check message type
-            if hdr.nlmsg_type == NLMSG_DONE {
-                return Ok(all_stats);
-            }
-
-            if hdr.nlmsg_type == NLMSG_ERROR {
-                // Parse error code
-                if msg_len >= mem::size_of::<NlMsgHdr>() + 4 {
-                    let error_offset = offset + mem::size_of::<NlMsgHdr>();
-                    // SAFETY: `msg_len` proved that at least four payload bytes
-                    // follow the header; an unaligned i32 read is therefore in-bounds.
-                    let error_code: i32 = unsafe {
-                        std::ptr::read_unaligned(buffer.as_ptr().add(error_offset).cast::<i32>())
-                    };
-                    if error_code != 0 {
-                        return Err(format!(
-                            "Netlink error: {}",
-                            Error::from_raw_os_error(-error_code)
-                        ));
-                    }
-                }
-                offset += nlmsg_align(msg_len);
+        if let Some(sender) = sender {
+            let sender = SocketAddrNetlink::try_from(sender)
+                .map_err(|err| format!("unexpected conntrack sender address: {err}"))?;
+            if sender.pid() != 0 {
                 continue;
             }
-
-            // Parse stats message
-            let payload_offset = offset + mem::size_of::<NlMsgHdr>();
-            let payload_len = msg_len - mem::size_of::<NlMsgHdr>();
-
-            if payload_len > 0 {
-                let payload = &buffer[payload_offset..payload_offset + payload_len];
-                match parse_stats_message(payload) {
-                    Ok(stats) => all_stats.push(stats),
-                    Err(err) => {
-                        eprintln!("Failed to parse conntrack stats message: {err}");
-                    }
-                }
-            }
-
-            offset += nlmsg_align(msg_len);
+        }
+        if matches!(
+            decode_packet(&buffer[..read_len], request.response_type, &mut result)?,
+            PacketDisposition::Done
+        ) {
+            return Ok(result);
         }
     }
-
-    Ok(all_stats)
 }
 
 pub fn update_metrics() {
@@ -455,47 +314,51 @@ pub fn update_metrics() {
     }
 
     match collect_stats() {
-        Ok(all_stats) => {
-            // The kernel reports one message per online CPU.
-            for cpu_stats in all_stats {
-                let cpu_label = cpu_stats.cpu_id.to_string();
-                for (name, value) in cpu_stats.counters {
-                    metrics
-                        .conntrack
-                        .with_label_values(&[cpu_label.as_str(), name.as_str()])
-                        .set(prometheus_u64(value));
-                }
+        Ok(stats) => {
+            for stat in stats {
+                let cpu = stat.cpu_id.to_string();
+                metrics
+                    .conntrack
+                    .with_label_values(&[cpu.as_str(), stat.name])
+                    .set(prometheus_u64(u64::from(stat.value)));
             }
         }
-        Err(err) => {
-            eprintln!("Failed to collect conntrack stats: {err}");
-        }
+        Err(err) => eprintln!("Failed to collect conntrack stats: {err}"),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{align_netlink_message, decode_error_code, stat_name_value};
+    use netlink_bindings::conntrack::ConntrackStatsAttrs;
 
     #[test]
-    fn test_create_stats_request() {
-        let request = create_stats_request(1).expect("fixed-size netlink request is representable");
-        assert_eq!(request.len(), 20); // 16 (nlmsghdr) + 4 (nfgenmsg)
-
-        // Verify nlmsg_type
-        let hdr: NlMsgHdr =
-            unsafe { std::ptr::read_unaligned(request.as_ptr() as *const NlMsgHdr) };
-        let expected_type =
-            ((NFNL_SUBSYS_CTNETLINK as u16) << 8) | (IPCTNL_MSG_CT_GET_STATS_CPU as u16);
-        assert_eq!(hdr.nlmsg_type, expected_type);
-        assert_eq!(hdr.nlmsg_flags, NLM_F_REQUEST | NLM_F_DUMP);
+    fn stat_mapping_preserves_exported_metric_names() {
+        assert_eq!(
+            stat_name_value(&ConntrackStatsAttrs::Found(3)),
+            Some(("found", 3))
+        );
+        assert_eq!(
+            stat_name_value(&ConntrackStatsAttrs::Invalid(4)),
+            Some(("invalid", 4))
+        );
+        assert_eq!(stat_name_value(&ConntrackStatsAttrs::Searched(5)), None);
     }
 
     #[test]
-    fn test_attr_type_to_name() {
-        assert_eq!(attr_type_to_name(CTA_STATS_FOUND), Some("found"));
-        assert_eq!(attr_type_to_name(CTA_STATS_DROP), Some("drop"));
-        assert_eq!(attr_type_to_name(0), None);
-        assert_eq!(attr_type_to_name(100), None);
+    fn netlink_alignment_is_four_bytes() {
+        assert_eq!(align_netlink_message(16), 16);
+        assert_eq!(align_netlink_message(17), 20);
+        assert_eq!(align_netlink_message(20), 20);
+    }
+
+    #[test]
+    fn completion_error_codes_use_native_endian() {
+        assert_eq!(decode_error_code(&0_i32.to_ne_bytes()), Ok(0));
+        assert_eq!(
+            decode_error_code(&(-libc::EPERM).to_ne_bytes()),
+            Ok(-libc::EPERM)
+        );
+        assert!(decode_error_code(&[0, 1, 2]).is_err());
     }
 }
