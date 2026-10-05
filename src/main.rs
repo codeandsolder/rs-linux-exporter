@@ -35,6 +35,7 @@ use rocket::response::status;
 use rocket::tokio::task::spawn_blocking;
 use std::net::IpAddr;
 use std::sync::Mutex;
+use std::time::Instant;
 
 /// Extracts Bearer token from Authorization header
 struct BearerToken<'r>(Option<&'r str>);
@@ -57,10 +58,23 @@ static METRICS_REQUESTS_TOTAL: OnceLock<IntCounter> = OnceLock::new();
 static METRICS_REQUESTS_DENIED_TOTAL: OnceLock<IntCounter> = OnceLock::new();
 static APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
 
-/// Serialises scrapes. Collectors reset their vecs and repopulate them, so two
-/// concurrent scrapes would let one observe the other's half-rebuilt state. It
-/// also stops N simultaneous requests from doing N times the hardware polling.
-static SCRAPE_LOCK: Mutex<()> = Mutex::new(());
+/// Serialises collection and exposition. Collectors reset their vecs and repopulate
+/// them, so rendering must not overlap a refresh. Overlapping requests are
+/// coalesced: waiters reuse the snapshot completed after their request started.
+struct ScrapeState {
+    last_completed: Option<Instant>,
+}
+
+impl ScrapeState {
+    fn needs_refresh(&self, requested_at: Instant) -> bool {
+        self.last_completed
+            .is_none_or(|completed| completed < requested_at)
+    }
+}
+
+static SCRAPE_STATE: Mutex<ScrapeState> = Mutex::new(ScrapeState {
+    last_completed: None,
+});
 
 fn metrics_requests_total() -> &'static IntCounter {
     METRICS_REQUESTS_TOTAL.get_or_init(|| {
@@ -92,11 +106,20 @@ fn app_config() -> &'static AppConfig {
 /// I/O, and `statvfs` on an unresponsive network mount or an IPMI controller
 /// that is slow to answer can block for seconds. Doing that directly in the
 /// handler would tie up a Rocket worker thread for the duration.
+#[expect(
+    clippy::significant_drop_tightening,
+    reason = "the scrape mutex must cover rendering so another refresh cannot reset metric vectors mid-encoding"
+)]
 fn refresh_and_render(render: fn() -> Result<String, RenderError>) -> Result<String, RenderError> {
-    let _guard = SCRAPE_LOCK
+    let requested_at = Instant::now();
+    let mut state = SCRAPE_STATE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    collectors::update_metrics(app_config());
+    let needs_refresh = state.needs_refresh(requested_at);
+    if needs_refresh {
+        collectors::update_metrics(app_config());
+        state.last_completed = Some(Instant::now());
+    }
     render()
 }
 
@@ -230,10 +253,11 @@ fn rocket() -> _ {
 
 #[cfg(test)]
 mod tests {
-    use super::rocket;
+    use super::{ScrapeState, rocket};
     use rocket::http::Status;
     use rocket::local::blocking::Client;
     use std::net::SocketAddr;
+    use std::time::Instant;
 
     #[test]
     fn index_returns_hint() {
@@ -245,6 +269,22 @@ mod tests {
             response.into_string().unwrap_or_default(),
             "rs-linux-exporter: /metrics"
         );
+    }
+
+    #[test]
+    fn overlapping_scrapes_reuse_the_completed_snapshot() {
+        let start = Instant::now();
+        let mut state = ScrapeState {
+            last_completed: None,
+        };
+        assert!(state.needs_refresh(start));
+
+        let overlapping_request = start + std::time::Duration::from_millis(1);
+        state.last_completed = Some(start + std::time::Duration::from_millis(2));
+        assert!(!state.needs_refresh(overlapping_request));
+
+        let later_request = start + std::time::Duration::from_millis(3);
+        assert!(state.needs_refresh(later_request));
     }
 
     #[test]
