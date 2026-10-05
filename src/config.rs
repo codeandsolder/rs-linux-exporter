@@ -18,6 +18,7 @@ const CONFIG_PATH: &str = "config.toml";
 #[serde(rename_all = "snake_case")]
 pub enum Datasource {
     Procfs,
+    #[serde(rename = "cpufreq")]
     CpuFreq,
     Softnet,
     Conntrack,
@@ -460,6 +461,14 @@ mod tests {
 
         assert!(config.is_metrics_ip_allowed("fd00::1".parse().unwrap()));
         assert!(!config.is_metrics_ip_allowed("2001:db8::1".parse().unwrap()));
+    }
+
+    #[test]
+    fn legacy_cpufreq_datasource_name_remains_accepted() {
+        let mut config = toml::from_str::<AppConfig>(r#"disabled_datasources = ["cpufreq"]"#)
+            .expect("existing cpufreq spelling must remain valid");
+        config.build_disabled_set();
+        assert!(!config.is_datasource_enabled(Datasource::CpuFreq));
     }
 
     #[test]
