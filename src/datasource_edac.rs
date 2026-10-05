@@ -1,3 +1,4 @@
+use crate::collection::CollectionReport;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
 use crate::sysfs::{read_trimmed, read_u64};
@@ -200,11 +201,11 @@ fn update_memory_controller(mc_path: &Path, mc_name: &str) {
     }
 }
 
-pub fn update_metrics() {
-    update_metrics_from_path(Path::new("/sys/devices/system/edac/mc"));
+pub fn update_metrics() -> CollectionReport {
+    update_metrics_from_path(Path::new("/sys/devices/system/edac/mc"))
 }
 
-fn update_metrics_from_path(base: &Path) {
+fn update_metrics_from_path(base: &Path) -> CollectionReport {
     // Controllers/DIMMs can disappear, and mc_name/dimm_label are labels.
     // Clear every family before read_dir so disappearance or read failure does
     // not leave stale controller counters behind.
@@ -221,7 +222,7 @@ fn update_metrics_from_path(base: &Path) {
     metrics.dimm_size_mb.reset();
 
     let Ok(entries) = fs::read_dir(base) else {
-        return;
+        return CollectionReport::error();
     };
 
     for entry in entries.flatten() {
@@ -237,6 +238,8 @@ fn update_metrics_from_path(base: &Path) {
             update_memory_controller(&path, &name);
         }
     }
+
+    CollectionReport::success()
 }
 
 #[cfg(test)]
@@ -254,10 +257,10 @@ mod tests {
     ) -> std::path::PathBuf {
         let mc_dir = dir.join(name);
         fs::create_dir_all(&mc_dir).unwrap();
-        fs::write(mc_dir.join("mc_name"), format!("{}\n", mc_name)).unwrap();
-        fs::write(mc_dir.join("ce_count"), format!("{}\n", ce)).unwrap();
-        fs::write(mc_dir.join("ue_count"), format!("{}\n", ue)).unwrap();
-        fs::write(mc_dir.join("size_mb"), format!("{}\n", size)).unwrap();
+        fs::write(mc_dir.join("mc_name"), format!("{mc_name}\n")).unwrap();
+        fs::write(mc_dir.join("ce_count"), format!("{ce}\n")).unwrap();
+        fs::write(mc_dir.join("ue_count"), format!("{ue}\n")).unwrap();
+        fs::write(mc_dir.join("size_mb"), format!("{size}\n")).unwrap();
         fs::write(mc_dir.join("seconds_since_reset"), "3600\n").unwrap();
         mc_dir
     }
@@ -265,10 +268,10 @@ mod tests {
     fn create_mock_dimm(mc_dir: &Path, name: &str, label: &str, ce: u64, ue: u64, size: u64) {
         let dimm_dir = mc_dir.join(name);
         fs::create_dir_all(&dimm_dir).unwrap();
-        fs::write(dimm_dir.join("dimm_label"), format!("{}\n", label)).unwrap();
-        fs::write(dimm_dir.join("dimm_ce_count"), format!("{}\n", ce)).unwrap();
-        fs::write(dimm_dir.join("dimm_ue_count"), format!("{}\n", ue)).unwrap();
-        fs::write(dimm_dir.join("size"), format!("{}\n", size)).unwrap();
+        fs::write(dimm_dir.join("dimm_label"), format!("{label}\n")).unwrap();
+        fs::write(dimm_dir.join("dimm_ce_count"), format!("{ce}\n")).unwrap();
+        fs::write(dimm_dir.join("dimm_ue_count"), format!("{ue}\n")).unwrap();
+        fs::write(dimm_dir.join("size"), format!("{size}\n")).unwrap();
     }
 
     #[test]
@@ -347,8 +350,8 @@ mod tests {
     }
     #[test]
     fn vanished_edac_tree_drops_previous_controller_series() {
-        let dir = TempDir::new().unwrap();
         const STALE_LABEL: &str = "__stale_edac_regression__";
+        let dir = TempDir::new().unwrap();
         metrics()
             .mc_ce_count
             .with_label_values(&[STALE_LABEL])

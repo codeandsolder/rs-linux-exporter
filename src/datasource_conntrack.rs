@@ -3,6 +3,7 @@
 //! This module queries per-CPU conntrack statistics using the kernel's
 //! netfilter netlink protocol, similar to `conntrack -S`.
 
+use crate::collection::CollectionReport;
 use crate::metric_support::{RegisterMetricResultExt, prometheus_u64};
 use netlink_bindings::builtin::Nlmsghdr;
 use netlink_bindings::conntrack::{self, ConntrackStatsAttrs, OpGetStatsDump};
@@ -311,12 +312,12 @@ fn collect_stats() -> Result<Vec<ConntrackStat>, String> {
     }
 }
 
-pub fn update_metrics() {
+pub fn update_metrics() -> CollectionReport {
     let metrics = metrics();
     metrics.conntrack.reset();
 
     if !conntrack_module_loaded() {
-        return;
+        return CollectionReport::success();
     }
 
     match collect_stats() {
@@ -328,8 +329,12 @@ pub fn update_metrics() {
                     .with_label_values(&[cpu.as_str(), stat.name])
                     .set(prometheus_u64(u64::from(stat.value)));
             }
+            CollectionReport::success()
         }
-        Err(err) => eprintln!("Failed to collect conntrack stats: {err}"),
+        Err(err) => {
+            eprintln!("Failed to collect conntrack stats: {err}");
+            CollectionReport::error()
+        }
     }
 }
 

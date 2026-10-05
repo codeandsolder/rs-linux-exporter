@@ -1,3 +1,4 @@
+use crate::collection::CollectionReport;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
 use crate::sysfs::read_u64;
@@ -49,13 +50,13 @@ fn update_cpu(cpu_name: &str, cpufreq_dir: &Path) {
     }
 }
 
-pub fn update_metrics() {
+pub fn update_metrics() -> CollectionReport {
     // CPUs can be taken offline, which removes their cpufreq directory.
     metrics().cpu_frequency_hz.reset();
 
     let base = Path::new("/sys/devices/system/cpu");
     let Ok(entries) = fs::read_dir(base) else {
-        return;
+        return CollectionReport::error();
     };
 
     for entry in entries.flatten() {
@@ -73,4 +74,6 @@ pub fn update_metrics() {
             update_cpu(name, &cpufreq_dir);
         }
     }
+
+    CollectionReport::success()
 }

@@ -1,3 +1,4 @@
+use crate::collection::CollectionReport;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
 use prometheus::GaugeVec;
@@ -35,13 +36,13 @@ fn parse_column(columns: &[&str], index: usize) -> Option<u64> {
     columns.get(index).and_then(|value| parse_hex_u64(value))
 }
 
-pub fn update_metrics() {
+pub fn update_metrics() -> CollectionReport {
     // The number of rows follows CPU hotplug. Clear first so an unreadable
     // procfs file cannot preserve per-CPU values from an earlier scrape.
     metrics().softnet.reset();
 
     let Ok(contents) = fs::read_to_string("/proc/net/softnet_stat") else {
-        return;
+        return CollectionReport::error();
     };
 
     for (cpu, line) in contents.lines().enumerate() {
@@ -84,4 +85,6 @@ pub fn update_metrics() {
             set_metric("softnet_process_qlen", value);
         }
     }
+
+    CollectionReport::success()
 }

@@ -1,3 +1,4 @@
+use crate::collection::CollectionReport;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::sysfs::read_trimmed;
 use prometheus::GaugeVec;
@@ -60,11 +61,11 @@ fn update_nvme_device(device_path: &Path, device_name: &str) {
     }
 }
 
-pub fn update_metrics() {
-    update_metrics_from_path(Path::new("/sys/class/nvme"));
+pub fn update_metrics() -> CollectionReport {
+    update_metrics_from_path(Path::new("/sys/class/nvme"))
 }
 
-fn update_metrics_from_path(base: &Path) {
+fn update_metrics_from_path(base: &Path) -> CollectionReport {
     // Drop controllers that are gone, and stale nvme_info series left behind by
     // a firmware upgrade (the revision is a label), even if sysfs vanished.
     let metrics = metrics();
@@ -72,7 +73,7 @@ fn update_metrics_from_path(base: &Path) {
     metrics.state.reset();
 
     let Ok(entries) = fs::read_dir(base) else {
-        return;
+        return CollectionReport::error();
     };
 
     for entry in entries.flatten() {
@@ -93,6 +94,8 @@ fn update_metrics_from_path(base: &Path) {
             update_nvme_device(&path, &name);
         }
     }
+
+    CollectionReport::success()
 }
 
 #[cfg(test)]
@@ -104,10 +107,10 @@ mod tests {
     fn create_mock_nvme(dir: &Path, name: &str, model: &str, serial: &str, fw: &str, state: &str) {
         let nvme_dir = dir.join(name);
         fs::create_dir_all(&nvme_dir).unwrap();
-        fs::write(nvme_dir.join("model"), format!("{}\n", model)).unwrap();
-        fs::write(nvme_dir.join("serial"), format!("{}\n", serial)).unwrap();
-        fs::write(nvme_dir.join("firmware_rev"), format!("{}\n", fw)).unwrap();
-        fs::write(nvme_dir.join("state"), format!("{}\n", state)).unwrap();
+        fs::write(nvme_dir.join("model"), format!("{model}\n")).unwrap();
+        fs::write(nvme_dir.join("serial"), format!("{serial}\n")).unwrap();
+        fs::write(nvme_dir.join("firmware_rev"), format!("{fw}\n")).unwrap();
+        fs::write(nvme_dir.join("state"), format!("{state}\n")).unwrap();
     }
 
     #[test]

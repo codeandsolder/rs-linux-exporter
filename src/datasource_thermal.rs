@@ -1,3 +1,4 @@
+use crate::collection::CollectionReport;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_i64;
 use crate::sysfs::{read_i64, read_trimmed};
@@ -143,7 +144,7 @@ fn update_cooling_device(device_path: &Path, device_name: &str) {
     }
 }
 
-pub fn update_metrics() {
+pub fn update_metrics() -> CollectionReport {
     let metrics = metrics();
 
     // Zones and trip points appear and disappear with driver state.
@@ -156,7 +157,7 @@ pub fn update_metrics() {
 
     let base = Path::new("/sys/class/thermal");
     let Ok(entries) = fs::read_dir(base) else {
-        return;
+        return CollectionReport::error();
     };
 
     let mut zone_count = 0;
@@ -182,6 +183,8 @@ pub fn update_metrics() {
 
     metrics.zone_count.set(f64::from(zone_count));
     metrics.cooling_device_count.set(f64::from(cooling_count));
+
+    CollectionReport::success()
 }
 
 #[cfg(test)]
@@ -197,8 +200,8 @@ mod tests {
     ) -> std::path::PathBuf {
         let zone_dir = dir.join(name);
         fs::create_dir_all(&zone_dir).unwrap();
-        fs::write(zone_dir.join("type"), format!("{}\n", zone_type)).unwrap();
-        fs::write(zone_dir.join("temp"), format!("{}\n", temp)).unwrap();
+        fs::write(zone_dir.join("type"), format!("{zone_type}\n")).unwrap();
+        fs::write(zone_dir.join("temp"), format!("{temp}\n")).unwrap();
         zone_dir
     }
 
@@ -211,9 +214,9 @@ mod tests {
     ) -> std::path::PathBuf {
         let dev_dir = dir.join(name);
         fs::create_dir_all(&dev_dir).unwrap();
-        fs::write(dev_dir.join("type"), format!("{}\n", dev_type)).unwrap();
-        fs::write(dev_dir.join("cur_state"), format!("{}\n", cur)).unwrap();
-        fs::write(dev_dir.join("max_state"), format!("{}\n", max)).unwrap();
+        fs::write(dev_dir.join("type"), format!("{dev_type}\n")).unwrap();
+        fs::write(dev_dir.join("cur_state"), format!("{cur}\n")).unwrap();
+        fs::write(dev_dir.join("max_state"), format!("{max}\n")).unwrap();
         dev_dir
     }
 

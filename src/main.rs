@@ -2,6 +2,7 @@ use crate::metric_support::RegisterMetricResultExt;
 #[macro_use]
 extern crate rocket;
 
+mod collection;
 mod collectors;
 mod config;
 mod datasource_conntrack;
@@ -350,9 +351,7 @@ mod tests {
         // Counter should have incremented
         assert!(
             count2 > count1,
-            "Counter should increment: {} -> {}",
-            count1,
-            count2
+            "Counter should increment: {count1} -> {count2}"
         );
     }
 

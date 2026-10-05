@@ -1,3 +1,4 @@
+use crate::collection::CollectionReport;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_i64;
 use crate::sysfs::{read_i64, read_trimmed};
@@ -142,11 +143,11 @@ fn update_hwmon_device(hwmon_dir: &Path) {
     }
 }
 
-pub fn update_metrics() {
-    update_metrics_from_path(Path::new("/sys/class/hwmon"));
+pub fn update_metrics() -> CollectionReport {
+    update_metrics_from_path(Path::new("/sys/class/hwmon"))
 }
 
-fn update_metrics_from_path(base: &Path) {
+fn update_metrics_from_path(base: &Path) -> CollectionReport {
     // Chips and sensors disappear when a module is unloaded or a device is
     // unplugged; clear first so an unreadable directory cannot freeze them.
     let metrics = metrics();
@@ -157,7 +158,7 @@ fn update_metrics_from_path(base: &Path) {
     metrics.current_amps.reset();
 
     let Ok(entries) = fs::read_dir(base) else {
-        return;
+        return CollectionReport::error();
     };
 
     for entry in entries.flatten() {
@@ -170,6 +171,8 @@ fn update_metrics_from_path(base: &Path) {
             update_hwmon_device(&resolved);
         }
     }
+
+    CollectionReport::success()
 }
 
 #[cfg(test)]
@@ -180,7 +183,7 @@ mod tests {
     fn create_mock_hwmon(dir: &Path, name: &str, chip_name: &str) -> std::path::PathBuf {
         let hwmon_dir = dir.join(name);
         fs::create_dir_all(&hwmon_dir).unwrap();
-        fs::write(hwmon_dir.join("name"), format!("{}\n", chip_name)).unwrap();
+        fs::write(hwmon_dir.join("name"), format!("{chip_name}\n")).unwrap();
         hwmon_dir
     }
 

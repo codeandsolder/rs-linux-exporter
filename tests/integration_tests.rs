@@ -5,6 +5,7 @@
 //! an operator actually depends on: who is allowed to scrape, and that a scrape
 //! produces a well-formed exposition.
 
+use std::fmt::Write as _;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
@@ -97,7 +98,7 @@ fn get(port: u16, path: &str, headers: &[(&str, &str)]) -> (u16, String) {
 
     let mut request = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n");
     for (name, value) in headers {
-        request.push_str(&format!("{name}: {value}\r\n"));
+        write!(request, "{name}: {value}\r\n").expect("writing to String cannot fail");
     }
     request.push_str("\r\n");
 
@@ -128,8 +129,7 @@ fn get(port: u16, path: &str, headers: &[(&str, &str)]) -> (u16, String) {
 
     let body = response
         .split_once("\r\n\r\n")
-        .map(|(_, body)| body.to_string())
-        .unwrap_or_default();
+        .map_or_default(|(_, body)| body.to_string());
 
     (status, body)
 }
@@ -144,6 +144,8 @@ fn allowlisted_client_gets_prometheus_exposition() {
     assert!(body.contains("# TYPE"), "missing TYPE lines");
     assert!(body.contains("metrics_requests_total"));
     assert!(body.contains("uptime_seconds"));
+    assert!(body.contains("node_scrape_collector_duration_seconds"));
+    assert!(body.contains("node_scrape_collector_success"));
 }
 
 #[test]

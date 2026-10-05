@@ -1,3 +1,4 @@
+use crate::collection::CollectionReport;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_i64;
 use crate::sysfs::{read_i64, read_trimmed};
@@ -219,7 +220,7 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
     }
 }
 
-pub fn update_metrics() {
+pub fn update_metrics() -> CollectionReport {
     // Batteries and USB supplies are hot-pluggable. Clear first so a sysfs
     // failure cannot keep a removed supply alive in the registry.
     let metrics = metrics();
@@ -236,7 +237,7 @@ pub fn update_metrics() {
 
     let base = Path::new("/sys/class/power_supply");
     let Ok(entries) = fs::read_dir(base) else {
-        return;
+        return CollectionReport::error();
     };
 
     for entry in entries.flatten() {
@@ -250,6 +251,8 @@ pub fn update_metrics() {
 
         update_power_supply(&path, &name);
     }
+
+    CollectionReport::success()
 }
 
 #[cfg(test)]
@@ -261,8 +264,8 @@ mod tests {
         let supply_dir = dir.join(name);
         fs::create_dir_all(&supply_dir).unwrap();
         fs::write(supply_dir.join("type"), "Battery\n").unwrap();
-        fs::write(supply_dir.join("capacity"), format!("{}\n", capacity)).unwrap();
-        fs::write(supply_dir.join("status"), format!("{}\n", status)).unwrap();
+        fs::write(supply_dir.join("capacity"), format!("{capacity}\n")).unwrap();
+        fs::write(supply_dir.join("status"), format!("{status}\n")).unwrap();
         supply_dir
     }
 
@@ -270,7 +273,7 @@ mod tests {
         let supply_dir = dir.join(name);
         fs::create_dir_all(&supply_dir).unwrap();
         fs::write(supply_dir.join("type"), "Mains\n").unwrap();
-        fs::write(supply_dir.join("online"), format!("{}\n", online)).unwrap();
+        fs::write(supply_dir.join("online"), format!("{online}\n")).unwrap();
         supply_dir
     }
 
@@ -295,7 +298,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("current_now");
         fs::write(&file, "-500000\n").unwrap();
-        assert_eq!(read_i64(&file), Some(-500000));
+        assert_eq!(read_i64(&file), Some(-500_000));
     }
 
     #[test]

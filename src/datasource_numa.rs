@@ -1,3 +1,4 @@
+use crate::collection::CollectionReport;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
 use crate::sysfs::read_trimmed;
@@ -100,18 +101,18 @@ fn update_numa_node(node_path: &Path, node_name: &str) {
     }
 }
 
-pub fn update_metrics() {
-    update_metrics_from_path(Path::new("/sys/devices/system/node"));
+pub fn update_metrics() -> CollectionReport {
+    update_metrics_from_path(Path::new("/sys/devices/system/node"))
 }
 
-fn update_metrics_from_path(base: &Path) {
+fn update_metrics_from_path(base: &Path) -> CollectionReport {
     let metrics = metrics();
     metrics.meminfo.reset();
     metrics.numastat.reset();
     metrics.node_count.set(0.0);
 
     let Ok(entries) = fs::read_dir(base) else {
-        return;
+        return CollectionReport::error();
     };
 
     let mut node_count = 0;
@@ -132,6 +133,8 @@ fn update_metrics_from_path(base: &Path) {
     }
 
     metrics.node_count.set(f64::from(node_count));
+
+    CollectionReport::success()
 }
 
 #[cfg(test)]
@@ -139,7 +142,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    const MOCK_MEMINFO: &str = r#"Node 0 MemTotal:       16384000 kB
+    const MOCK_MEMINFO: &str = r"Node 0 MemTotal:       16384000 kB
 Node 0 MemFree:         8192000 kB
 Node 0 MemUsed:         8192000 kB
 Node 0 Active:          4096000 kB
@@ -159,15 +162,15 @@ Node 0 Shmem:            128000 kB
 Node 0 KernelStack:       16384 kB
 Node 0 SReclaimable:     512000 kB
 Node 0 SUnreclaim:       128000 kB
-"#;
+";
 
-    const MOCK_NUMASTAT: &str = r#"numa_hit 123456789
+    const MOCK_NUMASTAT: &str = r"numa_hit 123456789
 numa_miss 1234
 numa_foreign 5678
 interleave_hit 9012
 local_node 123456000
 other_node 789
-"#;
+";
 
     fn create_mock_node(dir: &Path, name: &str) -> std::path::PathBuf {
         let node_dir = dir.join(name);
@@ -263,8 +266,8 @@ other_node 789
     }
     #[test]
     fn vanished_numa_tree_drops_previous_node_series() {
-        let dir = TempDir::new().unwrap();
         const STALE_NODE: &str = "__stale_numa_regression__";
+        let dir = TempDir::new().unwrap();
         metrics()
             .meminfo
             .with_label_values(&[STALE_NODE, "MemTotal"])

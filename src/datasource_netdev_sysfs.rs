@@ -1,3 +1,4 @@
+use crate::collection::CollectionReport;
 use crate::config::AppConfig;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_i64;
@@ -185,7 +186,7 @@ fn update_interface(metrics: &NetdevSysfsMetrics, iface_path: &Path, iface: &str
     }
 }
 
-pub fn update_metrics(config: &AppConfig) {
+pub fn update_metrics(config: &AppConfig) -> CollectionReport {
     let metrics = metrics();
     // Interfaces are created and destroyed constantly on container hosts.
     metrics.operstate.reset();
@@ -197,7 +198,7 @@ pub fn update_metrics(config: &AppConfig) {
     metrics.autoneg.reset();
 
     let Ok(entries) = fs::read_dir(SYS_CLASS_NET) else {
-        return;
+        return CollectionReport::error();
     };
 
     for entry in entries.flatten() {
@@ -207,6 +208,8 @@ pub fn update_metrics(config: &AppConfig) {
         }
         update_interface(metrics, &entry.path(), &name);
     }
+
+    CollectionReport::success()
 }
 
 #[cfg(test)]

@@ -1,3 +1,4 @@
+use crate::collection::CollectionReport;
 use crate::config::AppConfig;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
@@ -119,13 +120,17 @@ fn reset_metrics(metrics: &FilesystemMetrics) {
     metrics.files_used.reset();
 }
 
-pub fn update_metrics(config: &AppConfig) {
+pub fn update_metrics(config: &AppConfig) -> CollectionReport {
     let metrics = metrics();
     // Rebuild from scratch before reading mount state: a failed mount-table
     // read must not preserve a filesystem that may already be gone.
     reset_metrics(metrics);
 
-    let Ok(mounts) = procfs::mounts() else { return };
+    let Ok(mounts) = procfs::mounts() else {
+        return CollectionReport::error();
+    };
+
+    let mut report = CollectionReport::success();
 
     for mount in mounts {
         let labels = [
@@ -145,6 +150,7 @@ pub fn update_metrics(config: &AppConfig) {
         }
 
         let Ok(stat) = statvfs(mount.fs_file.as_str()) else {
+            report.record_error();
             continue;
         };
 
@@ -192,4 +198,6 @@ pub fn update_metrics(config: &AppConfig) {
             .with_label_values(&labels)
             .set(prometheus_u64(files_used));
     }
+
+    report
 }

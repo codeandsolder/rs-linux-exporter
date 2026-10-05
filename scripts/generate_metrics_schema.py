@@ -85,6 +85,59 @@ def _parse_table_row(line: str) -> tuple[str, str, str] | None:
     return metric, metric_type, description
 
 
+def _to_snake_case(value: str) -> str:
+    out: list[str] = []
+    previous: str | None = None
+
+    for index, char in enumerate(value):
+        if not char.isascii() or not char.isalnum():
+            if out and out[-1] != "_":
+                out.append("_")
+            previous = char
+            continue
+
+        next_char = value[index + 1] if index + 1 < len(value) else None
+        if previous is not None:
+            previous_is_lower = previous.isascii() and previous.islower()
+            previous_is_upper = previous.isascii() and previous.isupper()
+            previous_is_digit = previous.isascii() and previous.isdigit()
+            is_upper = char.isupper()
+            is_lower = char.islower()
+            is_digit = char.isdigit()
+            starts_new_word = (
+                is_upper
+                and (
+                    previous_is_lower
+                    or previous_is_digit
+                    or (
+                        previous_is_upper
+                        and next_char is not None
+                        and next_char.isascii()
+                        and next_char.islower()
+                    )
+                )
+            ) or (is_digit and (previous_is_lower or previous_is_upper)) or (
+                is_lower and previous_is_digit
+            )
+            if out and starts_new_word and out[-1] != "_":
+                out.append("_")
+
+        out.append(char.lower())
+        previous = char
+
+    result = "".join(out).strip("_")
+    return result or "unknown"
+
+
+def _kernel_counter_field_name(section: str, field: str) -> str:
+    legacy = {
+        ("Ip", "ReasmOKs"): "reasm_oks",
+        ("Ip", "FragOKs"): "frag_oks",
+    }
+    field_key = legacy.get((section, field), _to_snake_case(field))
+    return f"{_to_snake_case(section)}_{field_key}"
+
+
 def _resolve_metric_name(metric: str, known_names: set[str]) -> str:
     if metric in known_names:
         return metric
@@ -168,6 +221,19 @@ def _parse_markdown(path: Path) -> tuple[OrderedDict[str, list[dict]], dict[str,
 
         heading3 = re.match(r"^###\s+(.*)$", line)
         if heading3:
+            heading = heading3.group(1).strip()
+            heading_labels = re.match(
+                r"^`?(?P<metric>[^`\s]+)`?\s+labels:\s*(?P<body>.+)$", heading
+            )
+            if heading_labels:
+                metric = _resolve_metric_name(
+                    heading_labels.group("metric"), set(metadata)
+                )
+                labels = re.findall(r"`([^`]+)`", heading_labels.group("body"))
+                if labels:
+                    metadata.setdefault(
+                        metric, {"labels": [], "label_values": {}, "fields": []}
+                    )["labels"] = labels
             capture = None
             continue
 
@@ -253,40 +319,50 @@ def _fields_from_key_value_file(path: str, prefix: str = "") -> list[str]:
         name = line.split(":", 1)[0].strip()
         if not name:
             continue
-        key = f"{prefix}_{name.lower()}" if prefix else name.lower()
+        normalized = _to_snake_case(name)
+        key = f"{prefix}_{normalized}" if prefix else normalized
         fields.append(key)
     return fields
 
 
-def _fields_from_proc_net_pair_file(path: str, prefix_mode: str) -> list[str]:
+def _fields_from_proc_net_pair_file(path: str) -> list[str]:
     try:
         lines = Path(path).read_text(encoding="utf-8", errors="ignore").splitlines()
     except FileNotFoundError:
         return []
 
     fields: list[str] = []
-    for i in range(0, len(lines) - 1, 2):
-        line_a = lines[i].strip()
-        line_b = lines[i + 1].strip()
-        if ":" not in line_a or ":" not in line_b:
+    pending: dict[str, list[str]] = {}
+    for line in lines:
+        line = line.strip()
+        if not line or ":" not in line:
             continue
-        section_a, rest_a = line_a.split(":", 1)
-        section_b, _ = line_b.split(":", 1)
-        if section_a != section_b:
+        section, rest = line.split(":", 1)
+        columns = rest.split()
+        if not section or not columns:
             continue
-        labels = rest_a.split()
-        if not labels:
-            continue
-        if prefix_mode == "netstat":
-            section = section_a.lower()
-            if section.endswith("ext"):
-                section = section[:-3] + "_ext"
-            elif section.startswith("mptcp"):
-                section = "mptcp_ext"
+        if section in pending:
+            labels = pending.pop(section)
+            if len(labels) != len(columns):
+                continue
+            fields.extend(
+                _kernel_counter_field_name(section, label) for label in labels
+            )
         else:
-            section = section_a.lower()
-        fields.extend([f"{section}_{name.lower()}" for name in labels])
+            # Header rows contain symbolic field names; numeric rows without a
+            # matching header are malformed and must not become field names.
+            if all(_is_integer(column) for column in columns):
+                continue
+            pending[section] = columns
     return fields
+
+
+def _is_integer(value: str) -> bool:
+    try:
+        int(value)
+    except ValueError:
+        return False
+    return True
 
 
 def _append_runtime_fields(schema: dict, args: argparse.Namespace) -> None:
@@ -298,8 +374,8 @@ def _append_runtime_fields(schema: dict, args: argparse.Namespace) -> None:
         "vmstat": _fields_from_key_value_file("/proc/vmstat", prefix=""),
         "diskstats": DISKSTATS_FIELDS,
         "netdev": NETDEV_FIELDS,
-        "snmp": _fields_from_proc_net_pair_file("/proc/net/snmp", "snmp"),
-        "netstat": _fields_from_proc_net_pair_file("/proc/net/netstat", "netstat"),
+        "snmp": _fields_from_proc_net_pair_file("/proc/net/snmp"),
+        "netstat": _fields_from_proc_net_pair_file("/proc/net/netstat"),
         "softnet": SOFTNET_FIELDS,
     }
 
@@ -355,9 +431,14 @@ def generate_schema(markdown_path: Path, args: argparse.Namespace) -> dict:
                 }
             )
 
+    try:
+        source_file = str(markdown_path.resolve().relative_to(PROJECT_ROOT.resolve()))
+    except ValueError:
+        source_file = str(markdown_path)
+
     schema = {
         "version": "1.0.0",
-        "source_file": str(markdown_path),
+        "source_file": source_file,
         "metrics": metrics,
         "groups": [
             {

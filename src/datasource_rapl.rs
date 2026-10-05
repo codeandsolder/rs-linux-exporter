@@ -1,3 +1,4 @@
+use crate::collection::CollectionReport;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
 use crate::sysfs::{read_trimmed, read_u64};
@@ -91,14 +92,14 @@ fn update_rapl_zone(zone_path: &Path, zone_id: &str) {
     }
 }
 
-pub fn update_metrics() {
+pub fn update_metrics() -> CollectionReport {
     let metrics = metrics();
     metrics.energy_joules.reset();
     metrics.max_energy_joules.reset();
 
     let base = Path::new("/sys/class/powercap");
     let Ok(entries) = fs::read_dir(base) else {
-        return;
+        return CollectionReport::error();
     };
 
     for entry in entries.flatten() {
@@ -116,6 +117,8 @@ pub fn update_metrics() {
             update_rapl_zone(&path, &name);
         }
     }
+
+    CollectionReport::success()
 }
 
 #[cfg(test)]
@@ -132,11 +135,11 @@ mod tests {
     ) -> std::path::PathBuf {
         let zone_dir = dir.join(name);
         fs::create_dir_all(&zone_dir).unwrap();
-        fs::write(zone_dir.join("name"), format!("{}\n", zone_name)).unwrap();
-        fs::write(zone_dir.join("energy_uj"), format!("{}\n", energy)).unwrap();
+        fs::write(zone_dir.join("name"), format!("{zone_name}\n")).unwrap();
+        fs::write(zone_dir.join("energy_uj"), format!("{energy}\n")).unwrap();
         fs::write(
             zone_dir.join("max_energy_range_uj"),
-            format!("{}\n", max_energy),
+            format!("{max_energy}\n"),
         )
         .unwrap();
         zone_dir
@@ -155,7 +158,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let file = dir.path().join("energy_uj");
         fs::write(&file, "123456789\n").unwrap();
-        assert_eq!(read_u64(&file), Some(123456789));
+        assert_eq!(read_u64(&file), Some(123_456_789));
     }
 
     #[test]
@@ -173,8 +176,8 @@ mod tests {
             dir.path(),
             "intel-rapl:0",
             "package-0",
-            1000000, // 1 Joule in microjoules
-            262143328850,
+            1_000_000, // 1 Joule in microjoules
+            262_143_328_850,
         );
         update_rapl_zone(&zone, "intel-rapl:0");
     }
@@ -186,11 +189,11 @@ mod tests {
             dir.path(),
             "intel-rapl:0",
             "package-0",
-            1000000,
-            262143328850,
+            1_000_000,
+            262_143_328_850,
         );
         // Create subzone
-        create_rapl_zone(&zone, "intel-rapl:0:0", "core", 500000, 262143328850);
+        create_rapl_zone(&zone, "intel-rapl:0:0", "core", 500_000, 262_143_328_850);
 
         update_rapl_zone(&zone, "intel-rapl:0");
     }
@@ -200,7 +203,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let zone_dir = dir.path().join("intel-rapl:0");
         fs::create_dir_all(&zone_dir).unwrap();
-        fs::write(zone_dir.join("energy_uj"), "1000000\n").unwrap();
+        fs::write(zone_dir.join("energy_uj"), "1_000_000\n").unwrap();
         // No name file - should use "unknown"
 
         update_rapl_zone(&zone_dir, "intel-rapl:0");
