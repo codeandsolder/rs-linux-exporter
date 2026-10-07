@@ -156,6 +156,10 @@ pub(crate) fn collect_fresh_text() -> Result<String, RenderError> {
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     collectors::update_metrics(app_config());
     state.last_completed = Some(Instant::now());
+    render_text_with_push_health()
+}
+
+fn render_text_with_push_health() -> Result<String, RenderError> {
     let mut text = exposition::render_text()?;
     push::append_health(&mut text);
     Ok(text)
@@ -219,7 +223,7 @@ async fn metrics(
 ) -> Result<(ContentType, String), status::Custom<&'static str>> {
     metrics_requests_total().inc();
     authorize_metrics_request("/metrics", client_ip, token.0)?;
-    collect_and_render(exposition::render_text, ContentType::Plain).await
+    collect_and_render(render_text_with_push_health, ContentType::Plain).await
 }
 
 #[get("/metrics.json")]
