@@ -156,7 +156,9 @@ pub(crate) fn collect_fresh_text() -> Result<String, RenderError> {
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     collectors::update_metrics(app_config());
     state.last_completed = Some(Instant::now());
-    exposition::render_text()
+    let mut text = exposition::render_text()?;
+    push::append_health(&mut text);
+    Ok(text)
 }
 
 const fn collection_failed() -> status::Custom<&'static str> {

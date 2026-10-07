@@ -879,6 +879,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lurkmoar"
+version = "0.1.0"
+source = "git+https://github.com/codeandsolder/lurkmoar-rs?rev=53dd2a5e9d78293c5d3b8e36ceede35ef556315b#53dd2a5e9d78293c5d3b8e36ceede35ef556315b"
+dependencies = [
+ "flate2",
+ "ureq",
+]
+
+[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1418,12 +1427,12 @@ dependencies = [
 
 [[package]]
 name = "rs-linux-exporter"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "etc-os-release",
- "flate2",
  "ipmi-rs",
  "ipnet",
+ "lurkmoar",
  "netlink-bindings",
  "procfs",
  "prometheus",
@@ -1437,7 +1446,6 @@ dependencies = [
  "systemd-zbus",
  "tempfile",
  "toml 0.9.12+spec-1.1.0",
- "ureq",
  "wait-timeout",
  "zbus",
 ]

@@ -251,6 +251,8 @@ log_404_requests = false
 
 ### Active push and bounded outage spill
 
+Delivery/retry/spooling is provided by [`lurkmoar`](https://github.com/codeandsolder/lurkmoar-rs); this exporter only owns the collection schedule.
+
 When `push_url` is set, the exporter actively collects and timestamps one complete
 metric snapshot every `push_interval_ms`. Successful batches remain RAM-only and
 are sent directly to the configured HTTP endpoint. Prometheus metadata comments
