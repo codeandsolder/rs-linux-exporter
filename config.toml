@@ -3,3 +3,19 @@ allowed_ip = ["127.0.0.0/8"]
 bind = "127.0.0.1:9100"
 log_denied_requests = true
 log_404_requests = false
+
+# Active push is disabled unless push_url is set.
+# push_url = "http://127.0.0.1:8428/api/v1/import/prometheus?extra_label=instance=myhost&extra_label=resolution=raw"
+# push_interval_ms = 1000
+# push_timeout_ms = 1000
+# push_spill_after_seconds = 10
+# push_spool_dir = "/var/lib/rs-linux-exporter/spool"
+# push_spool_max_bytes = 10485760
+
+# Active push is disabled unless push_url is set.
+# push_url = "http://127.0.0.1:8428/api/v1/import/prometheus?extra_label=instance=myhost&extra_label=resolution=raw"
+# push_interval_ms = 1000
+# push_timeout_ms = 1000
+# push_spill_after_seconds = 10
+# push_spool_dir = "/var/lib/rs-linux-exporter/spool"
+# push_spool_max_bytes = 10485760

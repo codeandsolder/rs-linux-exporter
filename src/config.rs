@@ -119,6 +119,12 @@ pub enum ConfigError {
     InvalidTailscaleInterval,
     InvalidTailscaleTimeout,
     InvalidTailscalePingTimeout,
+    InvalidPushInterval,
+    InvalidPushTimeout,
+    InvalidPushSpillInterval,
+    InvalidPushSpoolDir(String),
+    InvalidPushSpoolMaxBytes,
+    InvalidPushUrl(String),
 }
 
 impl fmt::Display for ConfigError {
@@ -192,6 +198,26 @@ impl fmt::Display for ConfigError {
             Self::InvalidTailscalePingTimeout => {
                 formatter.write_str("tailscale_ping_timeout_ms must be between 10 and 60000")
             }
+            Self::InvalidPushInterval => {
+                formatter.write_str("push_interval_ms must be between 100 and 60000")
+            }
+            Self::InvalidPushTimeout => {
+                formatter.write_str("push_timeout_ms must be between 100 and 60000")
+            }
+            Self::InvalidPushSpillInterval => {
+                formatter.write_str("push_spill_after_seconds must be between 1 and 3600")
+            }
+            Self::InvalidPushSpoolDir(value) => write!(
+                formatter,
+                "invalid push_spool_dir {value:?}: expected an absolute path"
+            ),
+            Self::InvalidPushSpoolMaxBytes => {
+                formatter.write_str("push_spool_max_bytes must be greater than zero")
+            }
+            Self::InvalidPushUrl(value) => write!(
+                formatter,
+                "invalid push_url {value:?}: expected an http:// or https:// URL"
+            ),
         }
     }
 }
@@ -407,6 +433,12 @@ pub struct AppConfig {
     pub tls_cert: Option<String>,
     pub tls_key: Option<String>,
     pub auth_token: Option<String>,
+    pub push_url: Option<String>,
+    pub push_interval_ms: u64,
+    pub push_timeout_ms: u64,
+    pub push_spill_after_seconds: u64,
+    pub push_spool_dir: String,
+    pub push_spool_max_bytes: u64,
     #[serde(skip)]
     disabled_set: HashSet<Datasource>,
     #[serde(skip)]
@@ -456,6 +488,12 @@ impl Default for AppConfig {
             tls_cert: None,
             tls_key: None,
             auth_token: None,
+            push_url: None,
+            push_interval_ms: 1_000,
+            push_timeout_ms: 1_000,
+            push_spill_after_seconds: 10,
+            push_spool_dir: "/var/lib/rs-linux-exporter/spool".to_string(),
+            push_spool_max_bytes: 10 * 1024 * 1024,
             disabled_set: HashSet::new(),
             allowed_metrics_nets: Vec::new(),
         }
@@ -609,6 +647,34 @@ impl AppConfig {
         Ok(())
     }
 
+    fn validate_push_settings(&self) -> Result<(), ConfigError> {
+        let Some(url) = self.push_url.as_deref() else {
+            return Ok(());
+        };
+        if !(url.starts_with("http://") || url.starts_with("https://")) {
+            return Err(ConfigError::InvalidPushUrl(url.to_string()));
+        }
+        if !(100..=60_000).contains(&self.push_interval_ms) {
+            return Err(ConfigError::InvalidPushInterval);
+        }
+        if !(100..=60_000).contains(&self.push_timeout_ms) {
+            return Err(ConfigError::InvalidPushTimeout);
+        }
+        if !(1..=3_600).contains(&self.push_spill_after_seconds) {
+            return Err(ConfigError::InvalidPushSpillInterval);
+        }
+        let spool_dir = Path::new(&self.push_spool_dir);
+        if !spool_dir.is_absolute() || spool_dir.as_os_str().is_empty() {
+            return Err(ConfigError::InvalidPushSpoolDir(
+                self.push_spool_dir.clone(),
+            ));
+        }
+        if self.push_spool_max_bytes == 0 {
+            return Err(ConfigError::InvalidPushSpoolMaxBytes);
+        }
+        Ok(())
+    }
+
     fn build_allowed_metrics_nets(&mut self) -> Result<(), ConfigError> {
         let mut nets = Vec::new();
         for entry in &self.allowed_ip {
@@ -635,6 +701,7 @@ impl AppConfig {
         self.validate_probe_settings()?;
         self.validate_systemd_settings()?;
         self.validate_tailscale_settings()?;
+        self.validate_push_settings()?;
         if let Some(path) = self.plugin_socket.as_deref() {
             let path = Path::new(path);
             if !path.is_absolute() || path.as_os_str().is_empty() {

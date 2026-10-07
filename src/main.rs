@@ -42,6 +42,7 @@ mod exposition;
 mod metric_support;
 mod plugin;
 mod probe;
+mod push;
 mod runtime;
 mod subprocess;
 mod sysfs;
@@ -145,6 +146,19 @@ fn refresh_and_render(render: fn() -> Result<String, RenderError>) -> Result<Str
     render()
 }
 
+#[expect(
+    clippy::significant_drop_tightening,
+    reason = "the scrape mutex must cover rendering so another refresh cannot reset metric vectors mid-encoding"
+)]
+pub(crate) fn collect_fresh_text() -> Result<String, RenderError> {
+    let mut state = SCRAPE_STATE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    collectors::update_metrics(app_config());
+    state.last_completed = Some(Instant::now());
+    exposition::render_text()
+}
+
 const fn collection_failed() -> status::Custom<&'static str> {
     status::Custom(Status::InternalServerError, "collection failed")
 }
@@ -245,6 +259,10 @@ fn rocket() -> _ {
         && let Err(error) = plugin::start_server(std::path::Path::new(path))
     {
         eprintln!("Failed to start plugin socket: {error}");
+        std::process::exit(78);
+    }
+    if let Err(error) = push::start(config) {
+        eprintln!("Failed to start active metrics push worker: {error}");
         std::process::exit(78);
     }
     if runtime::debug_enabled() {

@@ -208,6 +208,16 @@ tailscale_probe_tsmp = true
 tailscale_probe_icmp = true
 tailscale_external_traceroute = true
 
+# Optional active push. Samples are timestamped when collected and sent as
+# gzip-compressed Prometheus text. The HTTP /metrics endpoint remains available
+# for compatibility/debugging but is not involved in the push path.
+# push_url = "http://127.0.0.1:8428/api/v1/import/prometheus?extra_label=instance=myhost&extra_label=resolution=raw"
+# push_interval_ms = 1000
+# push_timeout_ms = 1000
+# push_spill_after_seconds = 10
+# push_spool_dir = "/var/lib/rs-linux-exporter/spool"
+# push_spool_max_bytes = 10485760
+
 # Optional push-plugin endpoint. Plugins send bounded TTL snapshots over a Unix
 # stream socket; scrapes only read the last accepted snapshot and never call the
 # plugin synchronously. The socket is created mode 0660.
@@ -238,6 +248,32 @@ log_404_requests = false
 # auth_token = "your-secret-token-here"
 ```
 
+
+### Active push and bounded outage spill
+
+When `push_url` is set, the exporter actively collects and timestamps one complete
+metric snapshot every `push_interval_ms`. Successful batches remain RAM-only and
+are sent directly to the configured HTTP endpoint. Prometheus metadata comments
+are omitted from pushed batches; `/metrics` still exposes the normal full text
+format.
+
+A send failure starts an outage timer. Pending timestamped batches stay in RAM
+until `push_spill_after_seconds` elapses, then the entire pending group is written
+as one spool file. Additional outage data is flushed at the same cadence. On
+recovery, spool files are replayed oldest-first before current RAM batches. Files
+are removed only after all of their batches receive successful HTTP responses.
+
+The spool is deliberately bounded rather than a database/WAL. If writing the next
+chunk would exceed `push_spool_max_bytes`, that pending chunk is dropped and
+`metrics_push_dropped_batches_total` is incremented. Normal operation therefore
+causes no metric-spool disk writes. `metrics_push_spool_bytes`,
+`metrics_push_pending_batches`, `metrics_push_failures_total`, and
+`metrics_push_last_success_unixtime` expose sender health.
+
+For VictoriaMetrics/Liberta, use `/api/v1/import/prometheus`; query parameters such
+as repeated `extra_label=` values can identify the host and retention tier. A
+small server-side dedup interval makes replay after an ambiguous HTTP acknowledgement
+idempotent enough without sender-side transactional state.
 
 ### Unix-socket plugin snapshots
 
@@ -507,3 +543,13 @@ Recommended checks:
 
 ## Status
 This project is a work in progress.
+
+### Active push and bounded outage spill
+
+When `push_url` is set, the exporter actively collects and timestamps one complete metric snapshot every `push_interval_ms`. Successful batches remain RAM-only and are sent directly to the configured HTTP endpoint. The `/metrics` endpoint remains available for compatibility and debugging but is not involved in the push path.
+
+A send failure starts an outage timer. Pending timestamped batches stay in RAM until `push_spill_after_seconds` elapses, then the entire pending group is written as one spool file. Additional outage data is flushed at the same cadence. On recovery, spool files are replayed oldest-first before current RAM batches and are removed only after successful delivery.
+
+The spool is deliberately bounded rather than a database or WAL. If writing the next chunk would exceed `push_spool_max_bytes`, that pending chunk is dropped and `metrics_push_dropped_batches_total` is incremented. Normal operation therefore causes no metric-spool disk writes. Sender health is exposed through `metrics_push_spool_bytes`, `metrics_push_pending_batches`, `metrics_push_failures_total`, and `metrics_push_last_success_unixtime`.
+
+For VictoriaMetrics/Liberta, point `push_url` at `/api/v1/import/prometheus`; repeated `extra_label=` query parameters can identify the host and retention tier. A small server-side dedup interval handles the narrow replay window after an ambiguous HTTP acknowledgement without sender-side transactional state.
