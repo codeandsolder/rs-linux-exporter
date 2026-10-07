@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodically check GitHub Releases for rs-linux-exporter updates
+
+[Timer]
+OnBootSec=5m
+OnUnitActiveSec=1h
+RandomizedDelaySec=20m
+Persistent=true
+Unit=rs-linux-exporter-update.service
+
+[Install]
+WantedBy=timers.target

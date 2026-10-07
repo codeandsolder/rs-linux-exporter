@@ -553,3 +553,9 @@ A send failure starts an outage timer. Pending timestamped batches stay in RAM u
 The spool is deliberately bounded rather than a database or WAL. If writing the next chunk would exceed `push_spool_max_bytes`, that pending chunk is dropped and `metrics_push_dropped_batches_total` is incremented. Normal operation therefore causes no metric-spool disk writes. Sender health is exposed through `metrics_push_spool_bytes`, `metrics_push_pending_batches`, `metrics_push_failures_total`, and `metrics_push_last_success_unixtime`.
 
 For VictoriaMetrics/Liberta, point `push_url` at `/api/v1/import/prometheus`; repeated `extra_label=` query parameters can identify the host and retention tier. A small server-side dedup interval handles the narrow replay window after an ambiguous HTTP acknowledgement without sender-side transactional state.
+
+### Release-based self-updates
+
+The repository publishes a generic `x86_64` GNU/Linux binary and SHA-256 file on GitHub Releases. `packaging/rs-linux-exporter-update`, together with the matching systemd service and timer, provides an optional unattended updater. It checks the latest non-prerelease release, verifies the published checksum, atomically replaces `/usr/local/bin/rs-linux-exporter`, restarts the service, probes the loopback `/metrics` endpoint, and rolls back if the new process fails validation.
+
+The timer checks roughly hourly with randomized delay. The updater stores only the installed release tag under `/var/lib/rs-linux-exporter`; it does not require a Git checkout or GitHub credentials.

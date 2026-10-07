@@ -1,0 +1,27 @@
+[Unit]
+Description=Update rs-linux-exporter from the latest GitHub release
+After=network-online.target
+Wants=network-online.target
+ConditionArchitecture=x86-64
+
+[Service]
+Type=oneshot
+StateDirectory=rs-linux-exporter
+StateDirectoryMode=0750
+ExecStart=/usr/local/sbin/rs-linux-exporter-update
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/usr/local/bin /var/lib/rs-linux-exporter /var/tmp
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes

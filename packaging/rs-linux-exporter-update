@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repo='codeandsolder/rs-linux-exporter'
+asset='rs-linux-exporter-x86_64-linux-gnu'
+api="https://api.github.com/repos/${repo}/releases/latest"
+binary='/usr/local/bin/rs-linux-exporter'
+state_dir='/var/lib/rs-linux-exporter'
+state_file="${state_dir}/release-version"
+install -d -m 0750 "$state_dir"
+tmp="$(mktemp -d /var/tmp/rs-linux-exporter-update.XXXXXX)"
+trap 'rm -rf "$tmp"' EXIT
+release_json="$(curl -fsSL --retry 3 --retry-delay 2 "$api")"
+tag="$(jq -er '.tag_name' <<<"$release_json")"
+asset_url="$(jq -er --arg name "$asset" '.assets[] | select(.name == $name) | .browser_download_url' <<<"$release_json" 2>/dev/null || true)"
+checksum_url="$(jq -er --arg name "${asset}.sha256" '.assets[] | select(.name == $name) | .browser_download_url' <<<"$release_json" 2>/dev/null || true)"
+if [[ -z "$asset_url" || -z "$checksum_url" ]]; then
+  echo "latest release ${tag} does not yet contain ${asset} and checksum; leaving installed binary unchanged"
+  exit 0
+fi
+if [[ -x "$binary" && -r "$state_file" && "$(cat "$state_file")" == "$tag" ]]; then
+  echo "rs-linux-exporter already at ${tag}"
+  exit 0
+fi
+curl -fsSL --retry 3 --retry-delay 2 -o "$tmp/$asset" "$asset_url"
+curl -fsSL --retry 3 --retry-delay 2 -o "$tmp/${asset}.sha256" "$checksum_url"
+(cd "$tmp" && sha256sum -c "${asset}.sha256")
+chmod 0755 "$tmp/$asset"
+if [[ -x "$binary" ]] && cmp -s "$tmp/$asset" "$binary"; then
+  printf '%s\n' "$tag" >"$state_file"
+  echo "installed binary already matches ${tag}"
+  exit 0
+fi
+had_old=0
+if [[ -x "$binary" ]]; then
+  cp --preserve=mode,ownership,timestamps "$binary" "$tmp/previous"
+  had_old=1
+fi
+install -o root -g root -m 0755 "$tmp/$asset" "${binary}.new"
+mv -f "${binary}.new" "$binary"
+healthy=0
+if systemctl restart rs-linux-exporter.service && systemctl is-active --quiet rs-linux-exporter.service; then
+  for _ in $(seq 1 10); do
+    if curl -fsS --max-time 2 http://127.0.0.1:23319/metrics >/dev/null; then
+      healthy=1
+      break
+    fi
+    sleep 0.5
+  done
+fi
+if [[ "$healthy" == 1 ]]; then
+  printf '%s\n' "$tag" >"$state_file"
+  echo "updated rs-linux-exporter to ${tag}"
+  exit 0
+fi
+echo "new rs-linux-exporter failed health validation; rolling back" >&2
+if [[ "$had_old" == 1 ]]; then
+  install -o root -g root -m 0755 "$tmp/previous" "${binary}.rollback"
+  mv -f "${binary}.rollback" "$binary"
+  systemctl restart rs-linux-exporter.service || true
+else
+  rm -f "$binary"
+  systemctl stop rs-linux-exporter.service || true
+fi
+exit 1
