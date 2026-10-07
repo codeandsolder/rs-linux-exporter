@@ -1,0 +1,42 @@
+name: release-binary
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  linux-x86_64-gnu:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust 1.99
+        uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release binary
+        run: cargo build --release --locked
+      - name: Package binary and checksum
+        run: |
+          install -d dist
+          install -m 0755 target/release/rs-linux-exporter dist/rs-linux-exporter-x86_64-linux-gnu
+          strip dist/rs-linux-exporter-x86_64-linux-gnu
+          cd dist
+          sha256sum rs-linux-exporter-x86_64-linux-gnu > rs-linux-exporter-x86_64-linux-gnu.sha256
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rs-linux-exporter-x86_64-linux-gnu
+          path: |
+            dist/rs-linux-exporter-x86_64-linux-gnu
+            dist/rs-linux-exporter-x86_64-linux-gnu.sha256
+          if-no-files-found: error
+      - name: Upload release assets
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/rs-linux-exporter-x86_64-linux-gnu
+            dist/rs-linux-exporter-x86_64-linux-gnu.sha256
