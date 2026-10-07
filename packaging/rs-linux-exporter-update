@@ -2,27 +2,37 @@
 set -euo pipefail
 repo='codeandsolder/rs-linux-exporter'
 asset='rs-linux-exporter-x86_64-linux-gnu'
-api="https://api.github.com/repos/${repo}/releases/latest"
+latest_url="https://github.com/${repo}/releases/latest"
 binary='/usr/local/bin/rs-linux-exporter'
 state_dir='/var/lib/rs-linux-exporter'
 state_file="${state_dir}/release-version"
 install -d -m 0750 "$state_dir"
-tmp="$(mktemp -d /var/tmp/rs-linux-exporter-update.XXXXXX)"
-trap 'rm -rf "$tmp"' EXIT
-release_json="$(curl -fsSL --retry 3 --retry-delay 2 "$api")"
-tag="$(jq -er '.tag_name' <<<"$release_json")"
-asset_url="$(jq -er --arg name "$asset" '.assets[] | select(.name == $name) | .browser_download_url' <<<"$release_json" 2>/dev/null || true)"
-checksum_url="$(jq -er --arg name "${asset}.sha256" '.assets[] | select(.name == $name) | .browser_download_url' <<<"$release_json" 2>/dev/null || true)"
-if [[ -z "$asset_url" || -z "$checksum_url" ]]; then
-  echo "latest release ${tag} does not yet contain ${asset} and checksum; leaving installed binary unchanged"
-  exit 0
+
+# Resolve the ordinary GitHub /releases/latest redirect instead of using the
+# rate-limited REST API. This works from VPS egress addresses that receive 403
+# from unauthenticated api.github.com requests and removes the jq dependency.
+effective_url="$(curl -fsSIL --retry 3 --retry-delay 2 -o /dev/null -w '%{url_effective}' "$latest_url")"
+tag="${effective_url##*/}"
+if [[ -z "$tag" || "$tag" == 'latest' ]]; then
+  echo "could not resolve latest release tag from ${effective_url}" >&2
+  exit 1
 fi
 if [[ -x "$binary" && -r "$state_file" && "$(cat "$state_file")" == "$tag" ]]; then
   echo "rs-linux-exporter already at ${tag}"
   exit 0
 fi
-curl -fsSL --retry 3 --retry-delay 2 -o "$tmp/$asset" "$asset_url"
-curl -fsSL --retry 3 --retry-delay 2 -o "$tmp/${asset}.sha256" "$checksum_url"
+
+base="https://github.com/${repo}/releases/download/${tag}"
+tmp="$(mktemp -d /var/tmp/rs-linux-exporter-update.XXXXXX)"
+trap 'rm -rf "$tmp"' EXIT
+if ! curl -fsSL --retry 3 --retry-delay 2 -o "$tmp/$asset" "$base/$asset"; then
+  echo "latest release ${tag} does not contain ${asset}; leaving installed binary unchanged"
+  exit 0
+fi
+if ! curl -fsSL --retry 3 --retry-delay 2 -o "$tmp/${asset}.sha256" "$base/${asset}.sha256"; then
+  echo "latest release ${tag} does not contain checksum; leaving installed binary unchanged"
+  exit 0
+fi
 (cd "$tmp" && sha256sum -c "${asset}.sha256")
 chmod 0755 "$tmp/$asset"
 if [[ -x "$binary" ]] && cmp -s "$tmp/$asset" "$binary"; then
