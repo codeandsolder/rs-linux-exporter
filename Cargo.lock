@@ -881,7 +881,7 @@ dependencies = [
 [[package]]
 name = "lurkmoar"
 version = "0.1.0"
-source = "git+https://github.com/codeandsolder/lurkmoar-rs?rev=53dd2a5e9d78293c5d3b8e36ceede35ef556315b#53dd2a5e9d78293c5d3b8e36ceede35ef556315b"
+source = "git+https://github.com/codeandsolder/lurkmoar-rs?rev=d5dda98adf056159ce2d1180ff06bb443ea6f060#d5dda98adf056159ce2d1180ff06bb443ea6f060"
 dependencies = [
  "flate2",
  "ureq",
@@ -1427,7 +1427,7 @@ dependencies = [
 
 [[package]]
 name = "rs-linux-exporter"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "etc-os-release",
  "ipmi-rs",
