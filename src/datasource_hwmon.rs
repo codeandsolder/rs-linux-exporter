@@ -13,6 +13,9 @@ struct HwmonMetrics {
     voltage_volts: GaugeVec,
     power_watts: GaugeVec,
     current_amps: GaugeVec,
+    frequency_hertz: GaugeVec,
+    temperature_threshold_celsius: GaugeVec,
+    alarm: GaugeVec,
 }
 
 impl HwmonMetrics {
@@ -52,6 +55,27 @@ impl HwmonMetrics {
                 &["chip", "sensor"]
             )
             .or_exit("hwmon_current_amps"),
+
+            frequency_hertz: prometheus::register_gauge_vec!(
+                "hwmon_frequency_hertz",
+                "Hardware monitor frequency sensor reading in Hertz",
+                &["chip", "sensor"]
+            )
+            .or_exit("hwmon_frequency_hertz"),
+
+            temperature_threshold_celsius: prometheus::register_gauge_vec!(
+                "hwmon_temperature_threshold_celsius",
+                "Hardware monitor temperature threshold in Celsius",
+                &["chip", "sensor", "threshold"]
+            )
+            .or_exit("hwmon_temperature_threshold_celsius"),
+
+            alarm: prometheus::register_gauge_vec!(
+                "hwmon_alarm",
+                "Hardware monitor alarm state (1 = asserted)",
+                &["chip", "sensor", "kind"]
+            )
+            .or_exit("hwmon_alarm"),
         }
     }
 }
@@ -65,6 +89,35 @@ fn metrics() -> &'static HwmonMetrics {
 fn get_sensor_label(hwmon_dir: &Path, sensor_type: &str, index: &str) -> String {
     let label_path = hwmon_dir.join(format!("{sensor_type}_{index}_label"));
     read_trimmed(&label_path).unwrap_or_else(|| format!("{sensor_type}_{index}"))
+}
+
+fn sensor_index<'a>(file_name: &'a str, prefix: &str, suffix: &str) -> Option<&'a str> {
+    file_name
+        .strip_prefix(prefix)
+        .and_then(|value| value.strip_suffix(suffix))
+        .filter(|index| !index.is_empty() && index.chars().all(|ch| ch.is_ascii_digit()))
+}
+
+fn temperature_threshold_kind(file_name: &str) -> Option<(&str, &str)> {
+    const KINDS: &[&str] = &["min", "max", "crit", "lcrit", "emergency"];
+    let rest = file_name.strip_prefix("temp")?;
+    let split = rest.find('_')?;
+    let (index, suffix) = rest.split_at(split);
+    let kind = suffix.strip_prefix('_')?;
+    (index.chars().all(|ch| ch.is_ascii_digit()) && KINDS.contains(&kind)).then_some((index, kind))
+}
+
+fn alarm_parts(file_name: &str) -> Option<(&str, &str)> {
+    let stem = file_name.strip_suffix("_alarm")?;
+    for prefix in ["temp", "fan", "in", "power", "curr", "freq"] {
+        if let Some(index) = stem.strip_prefix(prefix)
+            && !index.is_empty()
+            && index.chars().all(|ch| ch.is_ascii_digit())
+        {
+            return Some((prefix, index));
+        }
+    }
+    None
 }
 
 fn update_hwmon_device(hwmon_dir: &Path) {
@@ -140,6 +193,36 @@ fn update_hwmon_device(hwmon_dir: &Path) {
                     .set(prometheus_i64(milliamps) / 1000.0);
             }
         }
+        // Frequency sensors: freq[1-*]_input (Hz)
+        else if let Some(index) = sensor_index(&file_name, "freq", "_input") {
+            if let Some(hertz) = read_i64(&entry.path()) {
+                let label = get_sensor_label(hwmon_dir, "freq", index);
+                metrics
+                    .frequency_hertz
+                    .with_label_values(&[&chip_name, &label])
+                    .set(prometheus_i64(hertz));
+            }
+        }
+        // Temperature threshold files such as temp1_max/temp1_crit (millidegrees Celsius)
+        else if let Some((index, kind)) = temperature_threshold_kind(&file_name) {
+            if let Some(millidegrees) = read_i64(&entry.path()) {
+                let label = get_sensor_label(hwmon_dir, "temp", index);
+                metrics
+                    .temperature_threshold_celsius
+                    .with_label_values(&[&chip_name, &label, kind])
+                    .set(prometheus_i64(millidegrees) / 1000.0);
+            }
+        }
+        // Common hwmon *_alarm attributes are boolean integer values.
+        else if let Some((sensor_type, index)) = alarm_parts(&file_name)
+            && let Some(value) = read_i64(&entry.path())
+        {
+            let label = get_sensor_label(hwmon_dir, sensor_type, index);
+            metrics
+                .alarm
+                .with_label_values(&[&chip_name, &label, sensor_type])
+                .set(if value == 0 { 0.0 } else { 1.0 });
+        }
     }
 }
 
@@ -156,6 +239,9 @@ fn update_metrics_from_path(base: &Path) -> CollectionReport {
     metrics.voltage_volts.reset();
     metrics.power_watts.reset();
     metrics.current_amps.reset();
+    metrics.frequency_hertz.reset();
+    metrics.temperature_threshold_celsius.reset();
+    metrics.alarm.reset();
 
     let Ok(entries) = fs::read_dir(base) else {
         return CollectionReport::error();
@@ -270,5 +356,29 @@ mod tests {
         let dir = TempDir::new().unwrap();
         // Empty directory - should not panic
         update_metrics_from_path(dir.path());
+    }
+
+    #[test]
+    fn test_update_hwmon_device_with_frequency_threshold_and_alarm() {
+        let dir = TempDir::new().unwrap();
+        let hwmon = create_mock_hwmon(dir.path(), "hwmon0", "amdgpu");
+        fs::write(hwmon.join("freq1_input"), "1230000000\n").unwrap();
+        fs::write(hwmon.join("freq1_label"), "sclk\n").unwrap();
+        fs::write(hwmon.join("temp1_max"), "95000\n").unwrap();
+        fs::write(hwmon.join("temp1_alarm"), "1\n").unwrap();
+        update_hwmon_device(&hwmon);
+    }
+
+    #[test]
+    fn helper_parsers_reject_lookalikes() {
+        assert_eq!(sensor_index("freq1_input", "freq", "_input"), Some("1"));
+        assert_eq!(sensor_index("frequency_input", "freq", "_input"), None);
+        assert_eq!(
+            temperature_threshold_kind("temp2_crit"),
+            Some(("2", "crit"))
+        );
+        assert_eq!(temperature_threshold_kind("temp2_offset"), None);
+        assert_eq!(alarm_parts("fan3_alarm"), Some(("fan", "3")));
+        assert_eq!(alarm_parts("intrusion0_alarm"), None);
     }
 }
