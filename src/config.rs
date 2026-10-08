@@ -30,6 +30,7 @@ pub enum Datasource {
     Watchdog,
     Uname,
     Os,
+    Lifecycle,
     Dmi,
     Timex,
     Time,
@@ -42,6 +43,7 @@ pub enum Datasource {
     PowerSupply,
     Pressure,
     Nvme,
+    Smart,
     Edac,
     NetdevSysfs,
     Nfs,
@@ -54,6 +56,7 @@ pub enum Datasource {
     Schedstat,
     Systemd,
     Tailscale,
+    Journal,
 }
 
 impl Datasource {
@@ -69,6 +72,7 @@ impl Datasource {
             Self::Watchdog => "watchdog",
             Self::Uname => "uname",
             Self::Os => "os",
+            Self::Lifecycle => "lifecycle",
             Self::Dmi => "dmi",
             Self::Timex => "timex",
             Self::Time => "time",
@@ -81,6 +85,7 @@ impl Datasource {
             Self::PowerSupply => "power_supply",
             Self::Pressure => "pressure",
             Self::Nvme => "nvme",
+            Self::Smart => "smart",
             Self::Edac => "edac",
             Self::NetdevSysfs => "netdev_sysfs",
             Self::Nfs => "nfs",
@@ -93,6 +98,7 @@ impl Datasource {
             Self::Schedstat => "schedstat",
             Self::Systemd => "systemd",
             Self::Tailscale => "tailscale",
+            Self::Journal => "journal",
         }
     }
 }
@@ -125,6 +131,10 @@ pub enum ConfigError {
     InvalidPushSpoolDir(String),
     InvalidPushSpoolMaxBytes,
     InvalidPushUrl(String),
+    InvalidSmartInterval,
+    InvalidSmartTimeout,
+    InvalidJournalInterval,
+    InvalidJournalTimeout,
 }
 
 impl fmt::Display for ConfigError {
@@ -218,6 +228,18 @@ impl fmt::Display for ConfigError {
                 formatter,
                 "invalid push_url {value:?}: expected an http:// or https:// URL"
             ),
+            Self::InvalidSmartInterval => {
+                formatter.write_str("smart_interval_seconds must be between 5 and 86400")
+            }
+            Self::InvalidSmartTimeout => {
+                formatter.write_str("smartctl_timeout_ms must be between 100 and 120000")
+            }
+            Self::InvalidJournalInterval => {
+                formatter.write_str("journal_interval_seconds must be between 1 and 3600")
+            }
+            Self::InvalidJournalTimeout => {
+                formatter.write_str("journal_timeout_ms must be between 100 and 120000")
+            }
         }
     }
 }
@@ -400,6 +422,12 @@ pub struct AppConfig {
     pub cgroup_max_units: usize,
     pub cgroup_detailed_metrics: bool,
     pub sccache_binary: String,
+    pub smartctl_binary: String,
+    pub smart_interval_seconds: u64,
+    pub smartctl_timeout_ms: u64,
+    pub journalctl_binary: String,
+    pub journal_interval_seconds: u64,
+    pub journal_timeout_ms: u64,
     pub ntp_binary: String,
     pub ntp_timeout_ms: u64,
     pub probe_targets: Vec<ProbeTarget>,
@@ -456,6 +484,12 @@ impl Default for AppConfig {
             cgroup_max_units: 256,
             cgroup_detailed_metrics: false,
             sccache_binary: "sccache".to_string(),
+            smartctl_binary: "smartctl".to_string(),
+            smart_interval_seconds: 60,
+            smartctl_timeout_ms: 5_000,
+            journalctl_binary: "journalctl".to_string(),
+            journal_interval_seconds: 10,
+            journal_timeout_ms: 5_000,
             ntp_binary: "chronyc".to_string(),
             ntp_timeout_ms: 1_000,
             probe_targets: Vec::new(),
@@ -621,6 +655,26 @@ impl AppConfig {
         Ok(())
     }
 
+    fn validate_smart_settings(&self) -> Result<(), ConfigError> {
+        if !(5..=86_400).contains(&self.smart_interval_seconds) {
+            return Err(ConfigError::InvalidSmartInterval);
+        }
+        if !(100..=120_000).contains(&self.smartctl_timeout_ms) {
+            return Err(ConfigError::InvalidSmartTimeout);
+        }
+        Ok(())
+    }
+
+    fn validate_journal_settings(&self) -> Result<(), ConfigError> {
+        if !(1..=3_600).contains(&self.journal_interval_seconds) {
+            return Err(ConfigError::InvalidJournalInterval);
+        }
+        if !(100..=120_000).contains(&self.journal_timeout_ms) {
+            return Err(ConfigError::InvalidJournalTimeout);
+        }
+        Ok(())
+    }
+
     fn validate_tailscale_settings(&self) -> Result<(), ConfigError> {
         if !(1..=3_600).contains(&self.tailscale_interval_seconds) {
             return Err(ConfigError::InvalidTailscaleInterval);
@@ -701,6 +755,8 @@ impl AppConfig {
         self.validate_probe_settings()?;
         self.validate_systemd_settings()?;
         self.validate_tailscale_settings()?;
+        self.validate_smart_settings()?;
+        self.validate_journal_settings()?;
         self.validate_push_settings()?;
         if let Some(path) = self.plugin_socket.as_deref() {
             let path = Path::new(path);
@@ -813,6 +869,25 @@ impl AppConfig {
                 self.ntp_binary
             );
             self.disable_datasource(Datasource::Ntp);
+        }
+
+        if self.is_datasource_enabled(Datasource::Smart)
+            && !Self::command_available(&self.smartctl_binary)
+        {
+            eprintln!(
+                "smartctl binary {:?} not available, disabling smart datasource.",
+                self.smartctl_binary
+            );
+            self.disable_datasource(Datasource::Smart);
+        }
+        if self.is_datasource_enabled(Datasource::Journal)
+            && !Self::command_available(&self.journalctl_binary)
+        {
+            eprintln!(
+                "journalctl binary {:?} not available, disabling journal datasource.",
+                self.journalctl_binary
+            );
+            self.disable_datasource(Datasource::Journal);
         }
 
         if self.is_datasource_enabled(Datasource::Sccache)

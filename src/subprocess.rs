@@ -44,11 +44,12 @@ fn join_output_reader(
         .map_err(|_| format!("{description} output reader thread panicked"))?
 }
 
-pub fn run_bounded(
+fn run_bounded_impl(
     mut command: Command,
     timeout: Duration,
     max_output_bytes: u64,
     description: &str,
+    require_success: bool,
 ) -> Result<String, String> {
     let mut child = command
         .stdout(Stdio::piped())
@@ -88,7 +89,7 @@ pub fn run_bounded(
             timeout.as_millis()
         ));
     }
-    if !status.success() {
+    if require_success && !status.success() {
         return Err(format!(
             "{description} exited with {status}: {}",
             String::from_utf8_lossy(&stderr).trim()
@@ -98,9 +99,37 @@ pub fn run_bounded(
         .map_err(|error| format!("{description} output was not UTF-8: {error}"))
 }
 
+pub fn run_bounded(
+    command: Command,
+    timeout: Duration,
+    max_output_bytes: u64,
+    description: &str,
+) -> Result<String, String> {
+    run_bounded_impl(command, timeout, max_output_bytes, description, true)
+}
+
+pub fn run_bounded_allow_failure(
+    command: Command,
+    timeout: Duration,
+    max_output_bytes: u64,
+    description: &str,
+) -> Result<String, String> {
+    run_bounded_impl(command, timeout, max_output_bytes, description, false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn permissive_mode_returns_stdout_from_nonzero_exit() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "printf useful; exit 2"]);
+        let output =
+            run_bounded_allow_failure(command, Duration::from_secs(1), 1024, "nonzero command")
+                .expect("nonzero status should be permitted");
+        assert_eq!(output, "useful");
+    }
 
     #[test]
     fn returns_stdout() {

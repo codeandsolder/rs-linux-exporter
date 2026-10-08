@@ -881,7 +881,7 @@ dependencies = [
 [[package]]
 name = "lurkmoar"
 version = "0.1.0"
-source = "git+https://github.com/codeandsolder/lurkmoar-rs?rev=d5dda98adf056159ce2d1180ff06bb443ea6f060#d5dda98adf056159ce2d1180ff06bb443ea6f060"
+source = "git+https://github.com/codeandsolder/lurkmoar-rs?rev=2b7249c52cbcc5c06dc6cbdfa3f73c80032eaa3d#2b7249c52cbcc5c06dc6cbdfa3f73c80032eaa3d"
 dependencies = [
  "flate2",
  "ureq",

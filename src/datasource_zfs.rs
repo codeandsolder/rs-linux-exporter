@@ -1,10 +1,13 @@
 use crate::collection::CollectionReport;
+use crate::config::AppConfig;
 use crate::metric_support::{RegisterMetricResultExt, prometheus_i64, prometheus_u64};
 use crate::runtime::debug_enabled;
 use prometheus::{CounterVec, Gauge, GaugeVec};
 use std::collections::BTreeMap;
 use std::fs;
+use std::process::Command;
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 const ARCSTATS_PATH: &str = "/proc/spl/kstat/zfs/arcstats";
 
@@ -186,7 +189,7 @@ fn update_access_counters(
     CollectionReport::success()
 }
 
-pub fn update_metrics() -> CollectionReport {
+fn update_arc_metrics() -> CollectionReport {
     let content = match fs::read_to_string(ARCSTATS_PATH) {
         Ok(content) => content,
         Err(error) => {
@@ -243,6 +246,321 @@ pub fn update_metrics() -> CollectionReport {
     );
 
     update_access_counters(metrics, &values)
+}
+
+struct ZpoolMetrics {
+    info: GaugeVec,
+    size_bytes: GaugeVec,
+    fragmentation_ratio: GaugeVec,
+    capacity_ratio: GaugeVec,
+    iops: GaugeVec,
+    bandwidth_bytes_per_second: GaugeVec,
+    errors: GaugeVec,
+    vdev_errors: GaugeVec,
+}
+
+impl ZpoolMetrics {
+    fn new() -> Self {
+        Self {
+            info: prometheus::register_gauge_vec!(
+                "zfs_pool_info",
+                "ZFS pool identity and health state.",
+                &["pool", "health"]
+            )
+            .or_exit("zfs_pool_info"),
+            size_bytes: prometheus::register_gauge_vec!(
+                "zfs_pool_size_bytes",
+                "ZFS pool size values in bytes.",
+                &["pool", "kind"]
+            )
+            .or_exit("zfs_pool_size_bytes"),
+            fragmentation_ratio: prometheus::register_gauge_vec!(
+                "zfs_pool_fragmentation_ratio",
+                "ZFS pool fragmentation ratio from 0 to 1.",
+                &["pool"]
+            )
+            .or_exit("zfs_pool_fragmentation_ratio"),
+            capacity_ratio: prometheus::register_gauge_vec!(
+                "zfs_pool_capacity_ratio",
+                "ZFS pool allocated capacity ratio from 0 to 1.",
+                &["pool"]
+            )
+            .or_exit("zfs_pool_capacity_ratio"),
+            iops: prometheus::register_gauge_vec!(
+                "zfs_pool_iops",
+                "ZFS pool average operations per second reported by zpool iostat.",
+                &["pool", "direction"]
+            )
+            .or_exit("zfs_pool_iops"),
+            bandwidth_bytes_per_second: prometheus::register_gauge_vec!(
+                "zfs_pool_bandwidth_bytes_per_second",
+                "ZFS pool average bandwidth reported by zpool iostat.",
+                &["pool", "direction"]
+            )
+            .or_exit("zfs_pool_bandwidth_bytes_per_second"),
+            errors: prometheus::register_gauge_vec!(
+                "zfs_pool_errors",
+                "Current ZFS pool read/write/checksum error counters.",
+                &["pool", "kind"]
+            )
+            .or_exit("zfs_pool_errors"),
+            vdev_errors: prometheus::register_gauge_vec!(
+                "zfs_vdev_errors",
+                "Current ZFS vdev read/write/checksum error counters.",
+                &["pool", "vdev", "kind"]
+            )
+            .or_exit("zfs_vdev_errors"),
+        }
+    }
+
+    fn reset(&self) {
+        self.info.reset();
+        self.size_bytes.reset();
+        self.fragmentation_ratio.reset();
+        self.capacity_ratio.reset();
+        self.iops.reset();
+        self.bandwidth_bytes_per_second.reset();
+        self.errors.reset();
+        self.vdev_errors.reset();
+    }
+}
+
+static ZPOOL_METRICS: OnceLock<ZpoolMetrics> = OnceLock::new();
+static ZPOOL_LAST_REFRESH: Mutex<Option<Instant>> = Mutex::new(None);
+
+fn zpool_metrics() -> &'static ZpoolMetrics {
+    ZPOOL_METRICS.get_or_init(ZpoolMetrics::new)
+}
+
+fn zpool_due() -> bool {
+    let Ok(mut last) = ZPOOL_LAST_REFRESH.lock() else {
+        return true;
+    };
+    if last.is_some_and(|instant| instant.elapsed() < Duration::from_secs(30)) {
+        return false;
+    }
+    *last = Some(Instant::now());
+    true
+}
+
+fn run_zpool(args: &[&str], description: &str) -> Result<String, String> {
+    let mut command = Command::new("zpool");
+    command.args(args);
+    crate::subprocess::run_bounded(
+        command,
+        Duration::from_secs(5),
+        2 * 1024 * 1024,
+        description,
+    )
+}
+
+fn parse_pool_list(metrics: &ZpoolMetrics, output: &str) -> Result<(), String> {
+    for line in output.lines().filter(|line| !line.trim().is_empty()) {
+        let fields = line.split('\t').collect::<Vec<_>>();
+        if fields.len() != 7 {
+            return Err(format!("unexpected zpool list row: {line:?}"));
+        }
+        let pool = fields[0];
+        let size = fields[1]
+            .parse::<u64>()
+            .map_err(|error| format!("invalid pool size: {error}"))?;
+        let alloc = fields[2]
+            .parse::<u64>()
+            .map_err(|error| format!("invalid allocated size: {error}"))?;
+        let free = fields[3]
+            .parse::<u64>()
+            .map_err(|error| format!("invalid free size: {error}"))?;
+        let fragmentation = fields[4]
+            .parse::<f64>()
+            .map_err(|error| format!("invalid fragmentation: {error}"))?;
+        let capacity = fields[5]
+            .parse::<f64>()
+            .map_err(|error| format!("invalid capacity: {error}"))?;
+        let health = fields[6];
+        metrics.info.with_label_values(&[pool, health]).set(1.0);
+        for (kind, value) in [("total", size), ("allocated", alloc), ("free", free)] {
+            metrics
+                .size_bytes
+                .with_label_values(&[pool, kind])
+                .set(prometheus_u64(value));
+        }
+        metrics
+            .fragmentation_ratio
+            .with_label_values(&[pool])
+            .set(fragmentation / 100.0);
+        metrics
+            .capacity_ratio
+            .with_label_values(&[pool])
+            .set(capacity / 100.0);
+    }
+    Ok(())
+}
+
+fn parse_pool_iostat(metrics: &ZpoolMetrics, output: &str) -> Result<(), String> {
+    for line in output.lines().filter(|line| !line.trim().is_empty()) {
+        let fields = line.split('\t').collect::<Vec<_>>();
+        if fields.len() < 7 {
+            return Err(format!("unexpected zpool iostat row: {line:?}"));
+        }
+        let pool = fields[0];
+        let read_iops = fields[3]
+            .parse::<f64>()
+            .map_err(|error| format!("invalid read iops: {error}"))?;
+        let write_iops = fields[4]
+            .parse::<f64>()
+            .map_err(|error| format!("invalid write iops: {error}"))?;
+        let read_bw = fields[5]
+            .parse::<f64>()
+            .map_err(|error| format!("invalid read bandwidth: {error}"))?;
+        let write_bw = fields[6]
+            .parse::<f64>()
+            .map_err(|error| format!("invalid write bandwidth: {error}"))?;
+        metrics
+            .iops
+            .with_label_values(&[pool, "read"])
+            .set(read_iops);
+        metrics
+            .iops
+            .with_label_values(&[pool, "write"])
+            .set(write_iops);
+        metrics
+            .bandwidth_bytes_per_second
+            .with_label_values(&[pool, "read"])
+            .set(read_bw);
+        metrics
+            .bandwidth_bytes_per_second
+            .with_label_values(&[pool, "write"])
+            .set(write_bw);
+    }
+    Ok(())
+}
+
+fn parse_status_row(line: &str) -> Option<(&str, &str, f64, f64, f64)> {
+    let fields = line.split_whitespace().collect::<Vec<_>>();
+    if fields.len() < 5 {
+        return None;
+    }
+    let len = fields.len();
+    let read = fields[len - 3].parse::<f64>().ok()?;
+    let write = fields[len - 2].parse::<f64>().ok()?;
+    let cksum = fields[len - 1].parse::<f64>().ok()?;
+    Some((fields[0], fields[1], read, write, cksum))
+}
+
+fn parse_pool_status(metrics: &ZpoolMetrics, output: &str) {
+    let mut pool = None::<String>;
+    let mut in_config = false;
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if let Some(name) = trimmed.strip_prefix("pool:") {
+            pool = Some(name.trim().to_string());
+            in_config = false;
+            continue;
+        }
+        if trimmed == "config:" {
+            in_config = true;
+            continue;
+        }
+        if !in_config || trimmed.is_empty() || trimmed.starts_with("NAME ") {
+            continue;
+        }
+        if trimmed.starts_with("errors:") || trimmed.starts_with("scan:") {
+            in_config = false;
+            continue;
+        }
+        let Some((name, _state, read, write, cksum)) = parse_status_row(line) else {
+            continue;
+        };
+        let Some(pool_name) = pool.as_deref() else {
+            continue;
+        };
+        let target = if name == pool_name {
+            &metrics.errors
+        } else {
+            &metrics.vdev_errors
+        };
+        if name == pool_name {
+            for (kind, value) in [("read", read), ("write", write), ("checksum", cksum)] {
+                target.with_label_values(&[pool_name, kind]).set(value);
+            }
+        } else {
+            for (kind, value) in [("read", read), ("write", write), ("checksum", cksum)] {
+                metrics
+                    .vdev_errors
+                    .with_label_values(&[pool_name, name, kind])
+                    .set(value);
+            }
+        }
+    }
+}
+
+fn update_pool_metrics() -> CollectionReport {
+    if !zpool_due() {
+        return CollectionReport::success();
+    }
+    let list = match run_zpool(
+        &[
+            "list",
+            "-Hp",
+            "-o",
+            "name,size,alloc,free,fragmentation,capacity,health",
+        ],
+        "zpool list",
+    ) {
+        Ok(output) => output,
+        Err(error) if error.contains("No such file") || error.contains("not found") => {
+            return CollectionReport::success();
+        }
+        Err(error) => {
+            if debug_enabled() {
+                eprintln!("zfs: {error}");
+            }
+            return CollectionReport::error();
+        }
+    };
+    let iostat = run_zpool(&["iostat", "-Hp"], "zpool iostat");
+    let status = run_zpool(&["status", "-p"], "zpool status");
+    let metrics = zpool_metrics();
+    metrics.reset();
+    let mut report = CollectionReport::success();
+    if let Err(error) = parse_pool_list(metrics, &list) {
+        if debug_enabled() {
+            eprintln!("zfs: {error}");
+        }
+        report.merge(CollectionReport::error());
+    }
+    match iostat {
+        Ok(output) => {
+            if let Err(error) = parse_pool_iostat(metrics, &output) {
+                if debug_enabled() {
+                    eprintln!("zfs: {error}");
+                }
+                report.merge(CollectionReport::error());
+            }
+        }
+        Err(error) => {
+            if debug_enabled() {
+                eprintln!("zfs: {error}");
+            }
+            report.merge(CollectionReport::error());
+        }
+    }
+    match status {
+        Ok(output) => parse_pool_status(metrics, &output),
+        Err(error) => {
+            if debug_enabled() {
+                eprintln!("zfs: {error}");
+            }
+            report.merge(CollectionReport::error());
+        }
+    }
+    report
+}
+
+pub fn update_metrics(_config: &AppConfig) -> CollectionReport {
+    let mut report = update_arc_metrics();
+    report.merge(update_pool_metrics());
+    report
 }
 
 #[cfg(test)]

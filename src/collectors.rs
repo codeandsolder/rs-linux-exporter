@@ -7,9 +7,10 @@ use crate::metric_support::RegisterMetricResultExt;
 use crate::{
     datasource_cgroup, datasource_conntrack, datasource_cpufreq, datasource_dmi, datasource_edac,
     datasource_filefd, datasource_filesystems, datasource_hwmon, datasource_ipmi,
-    datasource_kernel_hung, datasource_mdraid, datasource_netdev_sysfs, datasource_numa,
-    datasource_nvme, datasource_os, datasource_power_supply, datasource_pressure, datasource_probe,
-    datasource_procfs, datasource_rapl, datasource_sccache, datasource_schedstat,
+    datasource_journal, datasource_kernel_hung, datasource_lifecycle, datasource_mdraid,
+    datasource_netdev_sysfs, datasource_numa, datasource_nvme, datasource_os,
+    datasource_power_supply, datasource_pressure, datasource_probe, datasource_procfs,
+    datasource_rapl, datasource_sccache, datasource_schedstat, datasource_smart,
     datasource_softnet, datasource_systemd, datasource_tailscale, datasource_thermal,
     datasource_timex, datasource_uname, datasource_watchdog, datasource_zfs,
 };
@@ -129,6 +130,11 @@ pub fn update_metrics(config: &AppConfig) {
     );
     run_if_enabled(config, Datasource::Uname, datasource_uname::update_metrics);
     run_if_enabled(config, Datasource::Os, datasource_os::update_metrics);
+    run_if_enabled(
+        config,
+        Datasource::Lifecycle,
+        datasource_lifecycle::update_metrics,
+    );
     run_if_enabled(config, Datasource::Dmi, datasource_dmi::update_metrics);
     update_time_and_network(config);
     run_if_enabled(
@@ -168,6 +174,9 @@ pub fn update_metrics(config: &AppConfig) {
         datasource_power_supply::update_metrics,
     );
     run_if_enabled(config, Datasource::Nvme, datasource_nvme::update_metrics);
+    run_if_enabled(config, Datasource::Smart, || {
+        datasource_smart::update_metrics(config)
+    });
     run_if_enabled(config, Datasource::Edac, datasource_edac::update_metrics);
     run_if_enabled(config, Datasource::NetdevSysfs, || {
         datasource_netdev_sysfs::update_metrics(config)
@@ -188,5 +197,10 @@ pub fn update_metrics(config: &AppConfig) {
         Datasource::Pressure,
         datasource_pressure::update_metrics,
     );
-    run_if_enabled(config, Datasource::Zfs, datasource_zfs::update_metrics);
+    run_if_enabled(config, Datasource::Zfs, || {
+        datasource_zfs::update_metrics(config)
+    });
+    run_if_enabled(config, Datasource::Journal, || {
+        datasource_journal::update_metrics(config)
+    });
 }

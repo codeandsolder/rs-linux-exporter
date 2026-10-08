@@ -28,7 +28,7 @@ zbus = { version = "5.19.0", default-features = false, features = ["tokio", "blo
 regex = "1"
 rtime-clock = "0.15.1"
 etc-os-release = { version = "0.1.1", features = ["date"] }
-lurkmoar = { git = "https://github.com/codeandsolder/lurkmoar-rs", rev = "d5dda98adf056159ce2d1180ff06bb443ea6f060" }
+lurkmoar = { git = "https://github.com/codeandsolder/lurkmoar-rs", rev = "2b7249c52cbcc5c06dc6cbdfa3f73c80032eaa3d" }
 
 [dev-dependencies]
 tempfile = "3"
