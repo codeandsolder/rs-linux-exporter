@@ -272,6 +272,7 @@ Plugin-provided metric names are dynamic and therefore are not enumerated in thi
 | `sccache_info` | GaugeVec | sccache version information |
 | `sccache_requests_total` | CounterVec | Cumulative sccache request counters by result |
 | `sccache_cache_requests_total` | CounterVec | Cumulative cache hit/miss/error counters by language |
+| `sccache_cache_requests_advanced_total` | CounterVec | Cumulative cache hit/miss/error counters by compiler/language key |
 | `sccache_cache_events_total` | CounterVec | Cumulative cache timeout/read/write/non-cacheable/recache events |
 | `sccache_compilations_total` | CounterVec | Cumulative performed and failed compilation counters |
 | `sccache_duration_seconds_total` | CounterVec | Cumulative cache read/write and compiler execution time |
@@ -748,6 +749,8 @@ The exporter also exposes a future/unknown systemd active state as an additive o
 
 ### sccache_duration_seconds_total labels: `operation`
 
+### sccache_cache_requests_advanced_total labels: `result`, `compiler_language`
+
 ### sccache_not_cached_total labels: `reason`
 
 ### sccache_not_cached_crate_types_total labels: `crate_type`
@@ -773,6 +776,12 @@ The exporter also exposes a future/unknown systemd active state as an additive o
 - `executed`
 
 `sccache_cache_requests_total` label values (`result`):
+
+- `error`
+- `hit`
+- `miss`
+
+`sccache_cache_requests_advanced_total` label values (`result`):
 
 - `error`
 - `hit`
