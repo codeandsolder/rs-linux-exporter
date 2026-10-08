@@ -14,7 +14,7 @@ jobs:
       matrix:
         distro: [ubuntu2204, ubuntu2404, ubuntu2604, debian12, debian13]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build deb
         run: |
           chmod +x ./make_deb.sh
