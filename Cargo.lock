@@ -1428,7 +1428,7 @@ dependencies = [
 
 [[package]]
 name = "rs-linux-exporter"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "etc-os-release",
  "ipmi-rs",
