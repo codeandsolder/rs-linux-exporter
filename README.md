@@ -51,6 +51,8 @@ and the software reliable.
 | `conntrack` | Connection tracking statistics |
 | `filesystems` | Filesystem usage statistics |
 | `hwmon` | Hardware sensors from Linux hwmon (temperature, fan, voltage, power, current, frequency, alarms and thresholds) |
+| `wireless` | Wireless link quality, RSSI/noise, discard counters and missed beacons from `/proc/net/wireless` |
+| `amdgpu` | AMDGPU engine busy ratio, VRAM/GTT usage, performance level and active DPM clocks from DRM sysfs |
 | `thermal` | Thermal zones and cooling devices |
 | `rapl` | Intel/AMD RAPL energy consumption (CPU, DRAM) |
 | `power_supply` | Battery and AC adapter status |
@@ -241,7 +243,7 @@ tailscale_external_traceroute = true
 
 # Disable specific datasources (will not be polled)
 # Available: procfs, filefd, schedstat, kernel_hung, watchdog, uname, os, lifecycle, dmi, timex, time, cgroup, sccache, systemd, journal, ntp, probe, tailscale, cpufreq, softnet, conntrack, filesystems, hwmon, ipmi, mdraid,
-# thermal, rapl, power_supply, pressure, nvme, smart, edac, netdev_sysfs, nfs, nfsd, numa, zfs
+# thermal, rapl, power_supply, pressure, nvme, smart, edac, netdev_sysfs, wireless, amdgpu, nfs, nfsd, numa, zfs
 disabled_datasources = ["thermal", "conntrack"]
 
 # Restrict /metrics access to these IPs/CIDRs (supports single IPs and CIDR notation)

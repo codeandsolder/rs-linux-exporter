@@ -18,6 +18,7 @@ struct PowerSupplyMetrics {
     energy_wh: GaugeVec,
     charge_ah: GaugeVec,
     temperature_celsius: GaugeVec,
+    cycle_count: GaugeVec,
 }
 
 impl PowerSupplyMetrics {
@@ -92,6 +93,13 @@ impl PowerSupplyMetrics {
                 &["name"]
             )
             .or_exit("power_supply_temperature_celsius"),
+
+            cycle_count: prometheus::register_gauge_vec!(
+                "power_supply_cycle_count",
+                "Battery charge/discharge cycle count when reported by the kernel",
+                &["name"]
+            )
+            .or_exit("power_supply_cycle_count"),
         }
     }
 }
@@ -211,6 +219,13 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
             .set(prometheus_i64(charge) / 1_000_000.0);
     }
 
+    if let Some(cycles) = read_i64(&supply_path.join("cycle_count")) {
+        metrics
+            .cycle_count
+            .with_label_values(&[supply_name])
+            .set(prometheus_i64(cycles));
+    }
+
     // Temperature (tenths of degree Celsius -> Celsius)
     if let Some(temp) = read_i64(&supply_path.join("temp")) {
         metrics
@@ -234,6 +249,7 @@ pub fn update_metrics() -> CollectionReport {
     metrics.energy_wh.reset();
     metrics.charge_ah.reset();
     metrics.temperature_celsius.reset();
+    metrics.cycle_count.reset();
 
     let base = Path::new("/sys/class/power_supply");
     let Ok(entries) = fs::read_dir(base) else {
