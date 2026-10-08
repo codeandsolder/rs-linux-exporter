@@ -32,7 +32,8 @@ and the software reliable.
 | `kernel_hung` | Kernel hung-task detections from `/proc/sys/kernel/hung_task_detect_count` |
 | `watchdog` | Linux watchdog device state, timeout, firmware and identity from sysfs |
 | `uname` | Kernel/system identity from the `uname(2)` system call |
-| `os` | Operating-system identity and lifecycle data from `os-release` |
+| `os` | Operating-system identity from `os-release` |
+| `lifecycle` | Exporter build version, Linux boot ID, and package-database freshness |
 | `dmi` | BIOS, board, chassis and system DMI identity from sysfs |
 | `timex` | Kernel NTP discipline, synchronization, error and PPS statistics via read-only `adjtimex(2)` |
 | `ntp` | Chrony daemon tracking, source state/reachability, offsets, frequency/skew, and activity via stable CSV output |
@@ -44,22 +45,24 @@ and the software reliable.
 | `cgroup` | Bounded cgroup v2 service CPU, memory, I/O, PID, state, and PSI metrics |
 | `sccache` | Local sccache cache/compiler/distributed-build statistics via its supported JSON CLI |
 | `systemd` | Unit state, restart, timer/socket, system state/version, and optional service runtime metrics over D-Bus |
+| `journal` | Incremental critical-kernel/service event classification plus remote-syslog arrival/count telemetry from `udp514-journal` |
 | `cpufreq` | CPU frequency per core |
 | `softnet` | Network soft interrupt statistics |
 | `conntrack` | Connection tracking statistics |
 | `filesystems` | Filesystem usage statistics |
-| `hwmon` | Hardware sensors (temperature, fan, voltage, power) |
+| `hwmon` | Hardware sensors from Linux hwmon (temperature, fan, voltage, power, current, frequency, alarms and thresholds) |
 | `thermal` | Thermal zones and cooling devices |
 | `rapl` | Intel/AMD RAPL energy consumption (CPU, DRAM) |
 | `power_supply` | Battery and AC adapter status |
 | `pressure` | Linux pressure stall information (PSI) for CPU, memory, and I/O |
 | `nvme` | NVMe device information (model, serial, state) |
+| `smart` | ATA/NVMe SMART health, temperature, lifetime counters, endurance/spare state, and ATA attributes via bounded `smartctl -j` |
 | `edac` | Memory error detection (correctable/uncorrectable) |
 | `numa` | NUMA node memory and hit/miss statistics |
 | `ipmi` | IPMI sensor readings via /dev/ipmi0 |
 | `mdraid` | Linux software RAID (md) array status |
 | `netdev_sysfs` | Network interface link state, speed, and duplex from sysfs |
-| `zfs` | OpenZFS ARC size, hit/miss, and memory-pressure statistics |
+| `zfs` | OpenZFS ARC statistics plus pool/vdev health, capacity, error, I/O and bandwidth state |
 
 ## Kernel Modules for Hardware Monitoring
 
@@ -177,6 +180,19 @@ systemd_max_units = 512
 # enabled in baseline mode.
 systemd_detailed_metrics = false
 
+# SMART is intentionally slower than the one-second host collection loop and
+# auto-disables when smartctl is absent. Direct ATA access may require
+# CAP_SYS_RAWIO under a hardened systemd service.
+smartctl_binary = "smartctl"
+smart_interval_seconds = 60
+smartctl_timeout_ms = 5000
+
+# Incremental journal classification. The remote-syslog metrics are populated
+# when udp514-journal is present and forwarding network syslog into journald.
+journalctl_binary = "journalctl"
+journal_interval_seconds = 10
+journal_timeout_ms = 5000
+
 # Chrony/NTP daemon telemetry. The datasource auto-disables if chronyc is absent.
 ntp_binary = "chronyc"
 ntp_timeout_ms = 1000
@@ -224,8 +240,8 @@ tailscale_external_traceroute = true
 # plugin_socket = "/run/rs-linux-exporter/plugins.sock"
 
 # Disable specific datasources (will not be polled)
-# Available: procfs, filefd, schedstat, cgroup, sccache, systemd, ntp, probe, tailscale, cpufreq, softnet, conntrack, filesystems, hwmon, ipmi, mdraid,
-# thermal, rapl, power_supply, pressure, nvme, edac, netdev_sysfs, numa, zfs
+# Available: procfs, filefd, schedstat, kernel_hung, watchdog, uname, os, lifecycle, dmi, timex, time, cgroup, sccache, systemd, journal, ntp, probe, tailscale, cpufreq, softnet, conntrack, filesystems, hwmon, ipmi, mdraid,
+# thermal, rapl, power_supply, pressure, nvme, smart, edac, netdev_sysfs, nfs, nfsd, numa, zfs
 disabled_datasources = ["thermal", "conntrack"]
 
 # Restrict /metrics access to these IPs/CIDRs (supports single IPs and CIDR notation)
