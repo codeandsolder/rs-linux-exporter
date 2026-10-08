@@ -12,6 +12,8 @@ struct JournalMetrics {
     events_total: CounterVec,
     critical_total: CounterVec,
     last_critical_timestamp: GaugeVec,
+    remote_events_total: CounterVec,
+    remote_last_event_timestamp: GaugeVec,
 }
 
 impl JournalMetrics {
@@ -35,6 +37,18 @@ impl JournalMetrics {
                 &["kind"]
             )
             .or_exit("journal_last_critical_event_timestamp_seconds"),
+            remote_events_total: prometheus::register_counter_vec!(
+                "journal_remote_syslog_events_total",
+                "Remote syslog events ingested by udp514-journal.",
+                &["sender", "priority"]
+            )
+            .or_exit("journal_remote_syslog_events_total"),
+            remote_last_event_timestamp: prometheus::register_gauge_vec!(
+                "journal_remote_syslog_last_event_timestamp_seconds",
+                "Unix timestamp of the most recent remote syslog event by sender.",
+                &["sender"]
+            )
+            .or_exit("journal_remote_syslog_last_event_timestamp_seconds"),
         }
     }
 }
@@ -42,12 +56,14 @@ impl JournalMetrics {
 #[derive(Default)]
 struct JournalState {
     cursor: Option<String>,
+    remote_cursor: Option<String>,
     last_refresh: Option<Instant>,
 }
 
 static METRICS: OnceLock<JournalMetrics> = OnceLock::new();
 static STATE: Mutex<JournalState> = Mutex::new(JournalState {
     cursor: None,
+    remote_cursor: None,
     last_refresh: None,
 });
 
@@ -130,6 +146,35 @@ fn classify(message: &str) -> Option<&'static str> {
     })
 }
 
+fn event_timestamp_seconds(value: &Value) -> Option<f64> {
+    value
+        .get("__REALTIME_TIMESTAMP")
+        .and_then(Value::as_str)
+        .and_then(|raw| raw.parse::<i64>().ok())
+        .map(|micros| prometheus_i64(micros) / 1_000_000.0)
+}
+
+fn apply_remote_event(value: &Value) {
+    let sender = value
+        .get("SYSLOG_IDENTIFIER")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let priority = value
+        .get("PRIORITY")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    metrics()
+        .remote_events_total
+        .with_label_values(&[sender, priority])
+        .inc();
+    if let Some(timestamp) = event_timestamp_seconds(value) {
+        metrics()
+            .remote_last_event_timestamp
+            .with_label_values(&[sender])
+            .set(timestamp);
+    }
+}
+
 fn apply_event(value: &Value) {
     let priority = value
         .get("PRIORITY")
@@ -151,13 +196,11 @@ fn apply_event(value: &Value) {
         return;
     };
     metrics().critical_total.with_label_values(&[kind]).inc();
-    if let Some(raw) = value.get("__REALTIME_TIMESTAMP").and_then(Value::as_str)
-        && let Ok(micros) = raw.parse::<i64>()
-    {
+    if let Some(timestamp) = event_timestamp_seconds(value) {
         metrics()
             .last_critical_timestamp
             .with_label_values(&[kind])
-            .set(prometheus_i64(micros) / 1_000_000.0);
+            .set(timestamp);
     }
 }
 
@@ -179,10 +222,11 @@ pub fn update_metrics(config: &AppConfig) -> CollectionReport {
     }
     state.last_refresh = Some(Instant::now());
 
-    if state.cursor.is_none() {
+    if state.cursor.is_none() || state.remote_cursor.is_none() {
         match initialize_cursor(config) {
             Ok(cursor) => {
-                state.cursor = Some(cursor);
+                state.cursor = Some(cursor.clone());
+                state.remote_cursor = Some(cursor);
                 return CollectionReport::success();
             }
             Err(error) => {
@@ -231,12 +275,51 @@ pub fn update_metrics(config: &AppConfig) -> CollectionReport {
     if let Some(cursor) = extract_cursor(&output) {
         state.cursor = Some(cursor);
     }
+
+    let remote_cursor = state.remote_cursor.as_deref().unwrap_or_default();
+    let remote_cursor_arg = format!("--after-cursor={remote_cursor}");
+    match run_journalctl(
+        config,
+        &[
+            &remote_cursor_arg,
+            "-o",
+            "json",
+            "--show-cursor",
+            "--no-pager",
+            "_COMM=udp514-journal",
+        ],
+    ) {
+        Ok(remote_output) => {
+            for line in remote_output
+                .lines()
+                .filter(|line| line.trim_start().starts_with('{'))
+            {
+                match serde_json::from_str::<Value>(line) {
+                    Ok(value) => apply_remote_event(&value),
+                    Err(error) if debug_enabled() => {
+                        eprintln!("journal: invalid remote syslog JSON event: {error}");
+                    }
+                    Err(_) => {}
+                }
+            }
+            if let Some(cursor) = extract_cursor(&remote_output) {
+                state.remote_cursor = Some(cursor);
+            }
+        }
+        Err(error) => {
+            if debug_enabled() {
+                eprintln!("journal: remote syslog read failed: {error}");
+            }
+            state.remote_cursor = initialize_cursor(config).ok();
+            return CollectionReport::error();
+        }
+    }
     CollectionReport::success()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{classify, extract_cursor};
+    use super::{classify, event_timestamp_seconds, extract_cursor};
 
     #[test]
     fn classifies_high_value_failure_messages() {
@@ -258,5 +341,11 @@ mod tests {
             extract_cursor("{}\n-- cursor: s=abc\n"),
             Some("s=abc".to_string())
         );
+    }
+
+    #[test]
+    fn converts_journal_realtime_timestamp() {
+        let value = serde_json::json!({"__REALTIME_TIMESTAMP": "1234567"});
+        assert_eq!(event_timestamp_seconds(&value), Some(1.234567));
     }
 }
