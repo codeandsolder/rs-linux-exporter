@@ -20,7 +20,7 @@ jobs:
           chmod +x ./make_deb.sh
           ./make_deb.sh "${{ matrix.distro }}"
       - name: Upload deb
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: rs-linux-exporter-${{ matrix.distro }}-deb
           path: dist/*.deb
