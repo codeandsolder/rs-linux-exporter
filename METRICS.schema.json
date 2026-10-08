@@ -1358,6 +1358,23 @@
       }
     },
     {
+      "name": "sccache_cache_requests_advanced_total",
+      "group": "sccache",
+      "type": "CounterVec",
+      "description": "Cumulative cache hit/miss/error counters by compiler/language key",
+      "labels": [
+        "result",
+        "compiler_language"
+      ],
+      "label_values": {
+        "result": [
+          "error",
+          "hit",
+          "miss"
+        ]
+      }
+    },
+    {
       "name": "sccache_cache_events_total",
       "group": "sccache",
       "type": "CounterVec",
@@ -3075,6 +3092,7 @@
         "sccache_info",
         "sccache_requests_total",
         "sccache_cache_requests_total",
+        "sccache_cache_requests_advanced_total",
         "sccache_cache_events_total",
         "sccache_compilations_total",
         "sccache_duration_seconds_total",

@@ -14,6 +14,7 @@ use std::time::Duration;
 enum CounterFamily {
     Requests,
     CacheRequests,
+    CacheRequestsAdvanced,
     CacheEvents,
     Compilations,
     Durations,
@@ -66,6 +67,7 @@ struct ServerInfo {
 #[serde(default)]
 struct PerLanguageCount {
     counts: BTreeMap<String, u64>,
+    adv_counts: BTreeMap<String, u64>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize)]
@@ -152,6 +154,7 @@ struct DistSnapshot {
 struct SccacheMetrics {
     requests: CounterVec,
     cache_requests: CounterVec,
+    cache_requests_advanced: CounterVec,
     cache_events: CounterVec,
     compilations: CounterVec,
     durations: CounterVec,
@@ -182,6 +185,7 @@ fn register_counter_vecs() -> (
     CounterVec,
     CounterVec,
     CounterVec,
+    CounterVec,
 ) {
     let requests = prometheus::register_counter_vec!(
         "sccache_requests_total",
@@ -195,6 +199,12 @@ fn register_counter_vecs() -> (
         &["result", "language"]
     )
     .or_exit("sccache_cache_requests_total");
+    let cache_requests_advanced = prometheus::register_counter_vec!(
+        "sccache_cache_requests_advanced_total",
+        "Cumulative sccache cache hit/miss/error counters by compiler/language key",
+        &["result", "compiler_language"]
+    )
+    .or_exit("sccache_cache_requests_advanced_total");
     let cache_events = prometheus::register_counter_vec!(
         "sccache_cache_events_total",
         "Cumulative sccache cache events",
@@ -252,6 +262,7 @@ fn register_counter_vecs() -> (
     (
         requests,
         cache_requests,
+        cache_requests_advanced,
         cache_events,
         compilations,
         durations,
@@ -311,6 +322,7 @@ impl SccacheMetrics {
         let (
             requests,
             cache_requests,
+            cache_requests_advanced,
             cache_events,
             compilations,
             durations,
@@ -326,6 +338,7 @@ impl SccacheMetrics {
         Self {
             requests,
             cache_requests,
+            cache_requests_advanced,
             cache_events,
             compilations,
             durations,
@@ -349,6 +362,7 @@ impl SccacheMetrics {
         match family {
             CounterFamily::Requests => &self.requests,
             CounterFamily::CacheRequests => &self.cache_requests,
+            CounterFamily::CacheRequestsAdvanced => &self.cache_requests_advanced,
             CounterFamily::CacheEvents => &self.cache_events,
             CounterFamily::Compilations => &self.compilations,
             CounterFamily::Durations => &self.durations,
@@ -536,6 +550,21 @@ fn push_cache_stats(snapshot: &mut Snapshot, stats: &ServerStats) {
                 snapshot,
                 CounterFamily::CacheRequests,
                 &[result, language],
+                *value,
+                1.0,
+            );
+        }
+    }
+    for (result, counts) in [
+        ("error", &stats.cache_errors.adv_counts),
+        ("hit", &stats.cache_hits.adv_counts),
+        ("miss", &stats.cache_misses.adv_counts),
+    ] {
+        for (compiler_language, value) in counts {
+            push_counter(
+                snapshot,
+                CounterFamily::CacheRequestsAdvanced,
+                &[result, compiler_language],
                 *value,
                 1.0,
             );
@@ -775,9 +804,9 @@ mod tests {
         "requests_not_compile": 2,
         "requests_not_cacheable": 3,
         "requests_executed": 94,
-        "cache_errors": {"counts":{"Rust":4},"adv_counts":{}},
-        "cache_hits": {"counts":{"Rust":40,"C/C++":5},"adv_counts":{}},
-        "cache_misses": {"counts":{"Rust":30},"adv_counts":{}},
+        "cache_errors": {"counts":{"Rust":4},"adv_counts":{"rust":4}},
+        "cache_hits": {"counts":{"Rust":40,"C/C++":5},"adv_counts":{"rust":40,"c/c++ [clang]":5}},
+        "cache_misses": {"counts":{"Rust":30},"adv_counts":{"rust":30}},
         "cache_timeouts": 6,
         "cache_read_errors": 7,
         "non_cacheable_compilations": 8,
@@ -823,6 +852,11 @@ mod tests {
             sample.key.family == CounterFamily::CacheRequests
                 && sample.key.labels == ["hit", "Rust"]
                 && sample.value == 40
+        }));
+        assert!(snapshot.counters.iter().any(|sample| {
+            sample.key.family == CounterFamily::CacheRequestsAdvanced
+                && sample.key.labels == ["hit", "c/c++ [clang]"]
+                && sample.value == 5
         }));
         assert!(snapshot.counters.iter().all(|sample| {
             !sample
