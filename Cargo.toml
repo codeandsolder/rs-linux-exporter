@@ -20,7 +20,7 @@ toml = "0.9.10"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 ipnet = "2"
-ipmi-rs = "0.5.0"
+ipmi-rs = "0.6.0"
 subtle = "2.6"
 wait-timeout = "0.2.1"
 systemd-zbus = { version = "5.3.2", default-features = false, features = ["blocking-api"] }
