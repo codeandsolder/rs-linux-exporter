@@ -159,7 +159,7 @@ fn register_status_metrics() -> (GaugeVec, GaugeVec, GaugeVec, GaugeVec, GaugeVe
         prometheus::register_gauge_vec!(
             "tailscale_self_info",
             "Local Tailscale node identity",
-            &["hostname", "dns_name", "relay"]
+            &["hostname", "dns_name", "relay", "tailscale_ip"]
         )
         .or_exit("tailscale_self_info"),
         prometheus::register_gauge_vec!(
@@ -203,7 +203,14 @@ fn register_peer_metrics() -> (
         prometheus::register_gauge_vec!(
             "tailscale_peer_info",
             "Tailscale peer identity",
-            &["peer", "hostname", "dns_name", "os", "relay"]
+            &[
+                "peer",
+                "hostname",
+                "dns_name",
+                "os",
+                "relay",
+                "tailscale_ip"
+            ]
         )
         .or_exit("tailscale_peer_info"),
         prometheus::register_gauge_vec!(
@@ -615,6 +622,7 @@ fn apply(snapshot: &TailscaleSnapshot, refreshed_unix_seconds: f64) -> Collectio
             &self_node.host_name,
             self_node.dns_name.trim_end_matches('.'),
             &self_node.relay,
+            peer_probe_target(self_node).unwrap_or(""),
         ])
         .set(1.0);
     let mut report = CollectionReport::success();
@@ -638,6 +646,7 @@ fn apply(snapshot: &TailscaleSnapshot, refreshed_unix_seconds: f64) -> Collectio
                 peer.dns_name.trim_end_matches('.'),
                 &peer.os,
                 &peer.relay,
+                peer_probe_target(peer).unwrap_or(""),
             ])
             .set(1.0);
         metrics
@@ -759,6 +768,18 @@ mod tests {
             parse_ping_rtt("pong from host (100.64.0.1) via TSMP in 40ms\n"),
             Some(0.04)
         );
+    }
+
+    #[test]
+    fn prefers_tailscale_ipv4_for_peer_identity_join() {
+        let peer = StatusPeer {
+            tailscale_ips: vec![
+                "fd7a:115c:a1e0::bd01:835a".to_string(),
+                "100.101.0.1".to_string(),
+            ],
+            ..Default::default()
+        };
+        assert_eq!(peer_probe_target(&peer), Some("100.101.0.1"));
     }
 
     #[test]
