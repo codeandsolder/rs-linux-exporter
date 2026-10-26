@@ -143,7 +143,7 @@ pub enum ConfigError {
 }
 
 impl ConfigError {
-    fn static_message(&self) -> Option<&'static str> {
+    const fn static_message(&self) -> Option<&'static str> {
         match self {
             Self::IncompleteTls => {
                 Some("tls_cert and tls_key must either both be configured or both be omitted")
