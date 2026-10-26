@@ -117,6 +117,7 @@ pub enum ConfigError {
     InvalidCgroupMaxUnits,
     InvalidSccacheTimeout,
     InvalidSccacheUds(String),
+    InvalidNtpInterval,
     InvalidNtpTimeout,
     InvalidProbeTarget(String),
     InvalidProbeInterval,
@@ -152,6 +153,7 @@ impl ConfigError {
             Self::InvalidSccacheTimeout => {
                 Some("sccache_timeout_ms must be between 10 and 60000 milliseconds")
             }
+            Self::InvalidNtpInterval => Some("ntp_interval_seconds must be between 1 and 3600"),
             Self::InvalidNtpTimeout => {
                 Some("ntp_timeout_ms must be between 10 and 60000 milliseconds")
             }
@@ -434,6 +436,7 @@ pub struct AppConfig {
     pub journal_interval_seconds: u64,
     pub journal_timeout_ms: u64,
     pub ntp_binary: String,
+    pub ntp_interval_seconds: u64,
     pub ntp_timeout_ms: u64,
     pub probe_targets: Vec<ProbeTarget>,
     pub probe_interval_seconds: u64,
@@ -497,10 +500,11 @@ impl Default for AppConfig {
             journal_interval_seconds: 10,
             journal_timeout_ms: 5_000,
             ntp_binary: "chronyc".to_string(),
-            ntp_timeout_ms: 1_000,
+            ntp_interval_seconds: 30,
+            ntp_timeout_ms: 3_000,
             probe_targets: Vec::new(),
             probe_interval_seconds: 30,
-            probe_timeout_ms: 1_000,
+            probe_timeout_ms: 3_000,
             probe_traceroute_timeout_ms: 10_000,
             probe_traceroute_max_hops: 30,
             probe_ping_binary: "ping".to_string(),
@@ -515,7 +519,7 @@ impl Default for AppConfig {
             systemd_detailed_metrics: false,
             tailscale_binary: "tailscale".to_string(),
             tailscale_interval_seconds: 30,
-            tailscale_timeout_ms: 5_000,
+            tailscale_timeout_ms: 15_000,
             tailscale_ping_timeout_ms: 1_000,
             tailscale_probe_tsmp: true,
             tailscale_probe_icmp: true,
@@ -610,6 +614,9 @@ impl AppConfig {
     }
 
     fn validate_ntp_settings(&self) -> Result<(), ConfigError> {
+        if !(1..=3_600).contains(&self.ntp_interval_seconds) {
+            return Err(ConfigError::InvalidNtpInterval);
+        }
         if !(10..=60_000).contains(&self.ntp_timeout_ms) {
             return Err(ConfigError::InvalidNtpTimeout);
         }
@@ -1142,7 +1149,16 @@ mod tests {
     }
 
     #[test]
-    fn ntp_and_tailscale_timeouts_are_bounded() {
+    fn ntp_and_tailscale_intervals_and_timeouts_are_bounded() {
+        let ntp_interval = AppConfig {
+            ntp_interval_seconds: 0,
+            ..Default::default()
+        };
+        assert_eq!(
+            ntp_interval.validate_ntp_settings(),
+            Err(ConfigError::InvalidNtpInterval)
+        );
+
         let ntp = AppConfig {
             ntp_timeout_ms: 9,
             ..Default::default()

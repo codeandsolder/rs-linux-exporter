@@ -20,6 +20,7 @@ struct ProbeCache {
     refreshed: Option<Instant>,
     refreshed_unix_seconds: Option<f64>,
     snapshot: Vec<TargetSnapshot>,
+    report_pending: bool,
 }
 
 #[derive(Clone)]
@@ -201,6 +202,7 @@ static PROBE_CACHE: Mutex<ProbeCache> = Mutex::new(ProbeCache {
     refreshed: None,
     refreshed_unix_seconds: None,
     snapshot: Vec::new(),
+    report_pending: false,
 });
 
 fn metrics() -> &'static ProbeMetrics {
@@ -251,13 +253,14 @@ fn start_refresh(settings: ProbeSettings) {
         cache.snapshot = snapshot;
         cache.refreshed = Some(Instant::now());
         cache.refreshed_unix_seconds = Some(refreshed_unix_seconds);
+        cache.report_pending = true;
         cache.refreshing = false;
     });
 }
 
 pub fn update_metrics(config: &AppConfig) -> CollectionReport {
     let interval = Duration::from_secs(config.probe_interval_seconds);
-    let (snapshot, refreshed_unix_seconds, refreshing, should_refresh) = {
+    let (snapshot, refreshed_unix_seconds, refreshing, should_refresh, report_pending) = {
         let mut cache = PROBE_CACHE
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -268,11 +271,14 @@ pub fn update_metrics(config: &AppConfig) -> CollectionReport {
         if should_refresh {
             cache.refreshing = true;
         }
+        let report_pending = cache.report_pending;
+        cache.report_pending = false;
         (
             cache.snapshot.clone(),
             cache.refreshed_unix_seconds,
             cache.refreshing,
             should_refresh,
+            report_pending,
         )
     };
 
@@ -282,7 +288,12 @@ pub fn update_metrics(config: &AppConfig) -> CollectionReport {
     metrics()
         .refresh_in_progress
         .set(if refreshing { 1.0 } else { 0.0 });
-    refreshed_unix_seconds.map_or_else(CollectionReport::success, |refreshed| {
+    let report = refreshed_unix_seconds.map_or_else(CollectionReport::success, |refreshed| {
         metrics().apply(&snapshot, refreshed)
-    })
+    });
+    if report_pending {
+        report
+    } else {
+        CollectionReport::success()
+    }
 }

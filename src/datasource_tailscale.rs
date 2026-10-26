@@ -93,6 +93,7 @@ struct TailscaleCache {
     refreshed: Option<Instant>,
     refreshed_unix_seconds: Option<f64>,
     snapshot: Option<Result<TailscaleSnapshot, String>>,
+    report_pending: bool,
 }
 
 #[derive(Clone)]
@@ -375,6 +376,7 @@ static TAILSCALE_CACHE: Mutex<TailscaleCache> = Mutex::new(TailscaleCache {
     refreshed: None,
     refreshed_unix_seconds: None,
     snapshot: None,
+    report_pending: false,
 });
 
 fn metrics() -> &'static TailscaleMetrics {
@@ -707,13 +709,14 @@ fn start_refresh(settings: Settings) {
         cache.snapshot = Some(snapshot);
         cache.refreshed = Some(Instant::now());
         cache.refreshed_unix_seconds = Some(refreshed_unix_seconds);
+        cache.report_pending = true;
         cache.refreshing = false;
     });
 }
 
 pub fn update_metrics(config: &AppConfig) -> CollectionReport {
     let interval = Duration::from_secs(config.tailscale_interval_seconds);
-    let (snapshot, refreshed_unix_seconds, refreshing, should_refresh) = {
+    let (snapshot, refreshed_unix_seconds, refreshing, should_refresh, report_pending) = {
         let mut cache = TAILSCALE_CACHE
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -724,11 +727,14 @@ pub fn update_metrics(config: &AppConfig) -> CollectionReport {
         if should_refresh {
             cache.refreshing = true;
         }
+        let report_pending = cache.report_pending;
+        cache.report_pending = false;
         (
             cache.snapshot.clone(),
             cache.refreshed_unix_seconds,
             cache.refreshing,
             should_refresh,
+            report_pending,
         )
     };
     if should_refresh {
@@ -737,7 +743,7 @@ pub fn update_metrics(config: &AppConfig) -> CollectionReport {
     metrics()
         .refresh_in_progress
         .set(if refreshing { 1.0 } else { 0.0 });
-    match (snapshot, refreshed_unix_seconds) {
+    let report = match (snapshot, refreshed_unix_seconds) {
         (Some(Ok(snapshot)), Some(refreshed)) => apply(&snapshot, refreshed),
         (Some(Err(error)), _) => {
             if debug_enabled() {
@@ -746,6 +752,11 @@ pub fn update_metrics(config: &AppConfig) -> CollectionReport {
             CollectionReport::error()
         }
         _ => CollectionReport::success(),
+    };
+    if report_pending {
+        report
+    } else {
+        CollectionReport::success()
     }
 }
 

@@ -199,13 +199,14 @@ journal_timeout_ms = 5000
 
 # Chrony/NTP daemon telemetry. The datasource auto-disables if chronyc is absent.
 ntp_binary = "chronyc"
-ntp_timeout_ms = 1000
+ntp_interval_seconds = 30
+ntp_timeout_ms = 3000
 
 # Generic active network probes. Empty by default, so the exporter generates no
 # external probe traffic unless targets are explicitly configured. Expensive
 # traceroutes refresh in a background worker and never block /metrics.
 probe_interval_seconds = 30
-probe_timeout_ms = 1000
+probe_timeout_ms = 3000
 probe_traceroute_timeout_ms = 10000
 probe_traceroute_max_hops = 30
 probe_ping_binary = "ping"
@@ -222,7 +223,7 @@ traceroute = true
 # peer's current direct public endpoint when Tailscale exposes one.
 tailscale_binary = "tailscale"
 tailscale_interval_seconds = 30
-tailscale_timeout_ms = 5000
+tailscale_timeout_ms = 15000
 tailscale_ping_timeout_ms = 1000
 tailscale_probe_tsmp = true
 tailscale_probe_icmp = true

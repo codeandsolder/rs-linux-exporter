@@ -260,7 +260,7 @@ pub fn update_metrics(config: &AppConfig) -> CollectionReport {
         &[
             &cursor_arg,
             "-p",
-            "0..4",
+            "warning",
             "-o",
             "json",
             "--show-cursor",
