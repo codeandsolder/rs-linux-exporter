@@ -6,6 +6,7 @@ use prometheus::{CounterVec, Gauge, GaugeVec};
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
+use std::os::unix::net::UnixStream;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -695,13 +696,19 @@ fn dist_snapshot(info: DistInfo) -> DistSnapshot {
 
 fn run_sccache(config: &AppConfig, args: &[&str]) -> Result<String, String> {
     let mut command = Command::new(&config.sccache_binary);
-    let _command = command
-        .args(args)
-        .env(
-            "SCCACHE_SERVER_PORT",
-            config.sccache_server_port.to_string(),
-        )
-        .env_remove("SCCACHE_SERVER_UDS");
+    let _command = command.args(args);
+    if let Some(path) = config.sccache_server_uds.as_deref() {
+        let _command = command
+            .env_remove("SCCACHE_SERVER_PORT")
+            .env("SCCACHE_SERVER_UDS", path);
+    } else {
+        let _command = command
+            .env(
+                "SCCACHE_SERVER_PORT",
+                config.sccache_server_port.to_string(),
+            )
+            .env_remove("SCCACHE_SERVER_UDS");
+    }
     crate::subprocess::run_bounded(
         command,
         Duration::from_millis(config.sccache_timeout_ms),
@@ -711,6 +718,12 @@ fn run_sccache(config: &AppConfig, args: &[&str]) -> Result<String, String> {
 }
 
 fn daemon_reachable(config: &AppConfig) -> Result<(), String> {
+    if let Some(path) = config.sccache_server_uds.as_deref() {
+        return UnixStream::connect(path)
+            .map(|_| ())
+            .map_err(|error| format!("connect to sccache daemon at {path}: {error}"));
+    }
+
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, config.sccache_server_port));
     TcpStream::connect_timeout(
         &addr,

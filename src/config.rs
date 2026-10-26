@@ -116,6 +116,7 @@ pub enum ConfigError {
     InvalidCgroupRoot(String),
     InvalidCgroupMaxUnits,
     InvalidSccacheTimeout,
+    InvalidSccacheUds(String),
     InvalidNtpTimeout,
     InvalidProbeTarget(String),
     InvalidProbeInterval,
@@ -189,9 +190,13 @@ impl fmt::Display for ConfigError {
             Self::InvalidSccacheTimeout => {
                 formatter.write_str("sccache_timeout_ms must be between 10 and 60000 milliseconds")
             }
-            Self::InvalidSccachePort => {
-                formatter.write_str("sccache_server_port must be greater than zero")
-            }
+            Self::InvalidSccacheUds(value) => write!(
+                formatter,
+                "invalid sccache_server_uds {value:?}: expected an absolute Unix socket path"
+            ),
+            Self::InvalidSccachePort => formatter.write_str(
+                "sccache_server_port must be greater than zero when sccache_server_uds is unset",
+            ),
             Self::InvalidSystemdUnitInclude(value) => {
                 write!(formatter, "invalid systemd_unit_include regex {value:?}")
             }
@@ -440,6 +445,7 @@ pub struct AppConfig {
     pub probe_ping_binary: String,
     pub probe_mtr_binary: String,
     pub sccache_server_port: u16,
+    pub sccache_server_uds: Option<String>,
     pub sccache_timeout_ms: u64,
     pub sccache_collect_dist_status: bool,
     pub systemd_unit_include: String,
@@ -502,6 +508,7 @@ impl Default for AppConfig {
             probe_ping_binary: "ping".to_string(),
             probe_mtr_binary: "mtr".to_string(),
             sccache_server_port: 4226,
+            sccache_server_uds: None,
             sccache_timeout_ms: 1_000,
             sccache_collect_dist_status: false,
             systemd_unit_include: ".+".to_string(),
@@ -648,7 +655,11 @@ impl AppConfig {
     }
 
     fn validate_sccache_settings(&self) -> Result<(), ConfigError> {
-        if self.sccache_server_port == 0 {
+        if let Some(path) = self.sccache_server_uds.as_deref() {
+            if !Path::new(path).is_absolute() {
+                return Err(ConfigError::InvalidSccacheUds(path.to_string()));
+            }
+        } else if self.sccache_server_port == 0 {
             return Err(ConfigError::InvalidSccachePort);
         }
         if !(10..=60_000).contains(&self.sccache_timeout_ms) {
@@ -1030,6 +1041,7 @@ mod tests {
         let config = AppConfig::default();
         assert_eq!(config.sccache_binary, "sccache");
         assert_eq!(config.sccache_server_port, 4226);
+        assert_eq!(config.sccache_server_uds, None);
         assert_eq!(config.sccache_timeout_ms, 1_000);
         assert!(!config.sccache_collect_dist_status);
         assert_eq!(config.validate_sccache_settings(), Ok(()));
@@ -1177,6 +1189,26 @@ mod tests {
             config.validate_sccache_settings(),
             Err(ConfigError::InvalidSccachePort)
         );
+    }
+
+    #[test]
+    fn sccache_uds_must_be_absolute_and_overrides_port_requirement() {
+        let invalid = AppConfig {
+            sccache_server_port: 0,
+            sccache_server_uds: Some("sccache.sock".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            invalid.validate_sccache_settings(),
+            Err(ConfigError::InvalidSccacheUds("sccache.sock".to_string()))
+        );
+
+        let valid = AppConfig {
+            sccache_server_port: 0,
+            sccache_server_uds: Some("/run/sccache-jan/sccache.sock".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(valid.validate_sccache_settings(), Ok(()));
     }
 
     #[test]

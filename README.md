@@ -160,9 +160,11 @@ cgroup_max_units = 256
 cgroup_detailed_metrics = false
 
 # sccache collector. The exporter first verifies the supervised daemon is already
-# reachable on loopback, then reads the supported JSON stats CLI. Monitoring never
-# starts a missing daemon.
+# reachable, then reads the supported JSON stats CLI. Monitoring never starts a
+# missing daemon. Set sccache_server_uds for a managed Unix socket; when present it
+# takes precedence over the loopback TCP port.
 sccache_binary = "sccache"
+# sccache_server_uds = "/run/sccache/sccache.sock"
 sccache_server_port = 4226
 sccache_timeout_ms = 1000
 
