@@ -142,15 +142,66 @@ pub enum ConfigError {
     InvalidJournalTimeout,
 }
 
-impl fmt::Display for ConfigError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl ConfigError {
+    fn static_message(&self) -> Option<&'static str> {
         match self {
-            Self::InvalidAllowedIp(value) => {
-                write!(
-                    formatter,
-                    "invalid allowed_ip entry {value:?}: expected an IP or CIDR"
-                )
+            Self::IncompleteTls => {
+                Some("tls_cert and tls_key must either both be configured or both be omitted")
             }
+            Self::InvalidCgroupMaxUnits => Some("cgroup_max_units must be greater than zero"),
+            Self::InvalidSccacheTimeout => {
+                Some("sccache_timeout_ms must be between 10 and 60000 milliseconds")
+            }
+            Self::InvalidNtpTimeout => {
+                Some("ntp_timeout_ms must be between 10 and 60000 milliseconds")
+            }
+            Self::InvalidProbeInterval => Some("probe_interval_seconds must be between 1 and 3600"),
+            Self::InvalidProbeTimeout => Some("probe_timeout_ms must be between 10 and 60000"),
+            Self::InvalidProbeTracerouteTimeout => {
+                Some("probe_traceroute_timeout_ms must be between 100 and 120000")
+            }
+            Self::InvalidProbeMaxHops => Some("probe_traceroute_max_hops must be between 1 and 64"),
+            Self::InvalidSccachePort => Some(
+                "sccache_server_port must be greater than zero when sccache_server_uds is unset",
+            ),
+            Self::InvalidSystemdMaxUnits => Some("systemd_max_units must be greater than zero"),
+            Self::InvalidTailscaleInterval => {
+                Some("tailscale_interval_seconds must be between 1 and 3600")
+            }
+            Self::InvalidTailscaleTimeout => {
+                Some("tailscale_timeout_ms must be between 100 and 120000")
+            }
+            Self::InvalidTailscalePingTimeout => {
+                Some("tailscale_ping_timeout_ms must be between 10 and 60000")
+            }
+            Self::InvalidPushInterval => Some("push_interval_ms must be between 100 and 60000"),
+            Self::InvalidPushTimeout => Some("push_timeout_ms must be between 100 and 60000"),
+            Self::InvalidPushSpillInterval => {
+                Some("push_spill_after_seconds must be between 1 and 3600")
+            }
+            Self::InvalidPushSpoolMaxBytes => {
+                Some("push_spool_max_bytes must be greater than zero")
+            }
+            Self::InvalidSmartInterval => {
+                Some("smart_interval_seconds must be between 5 and 86400")
+            }
+            Self::InvalidSmartTimeout => Some("smartctl_timeout_ms must be between 100 and 120000"),
+            Self::InvalidJournalInterval => {
+                Some("journal_interval_seconds must be between 1 and 3600")
+            }
+            Self::InvalidJournalTimeout => {
+                Some("journal_timeout_ms must be between 100 and 120000")
+            }
+            _ => None,
+        }
+    }
+
+    fn fmt_parameterized(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidAllowedIp(value) => write!(
+                formatter,
+                "invalid allowed_ip entry {value:?}: expected an IP or CIDR"
+            ),
             Self::InvalidBind(value) => {
                 write!(
                     formatter,
@@ -161,41 +212,13 @@ impl fmt::Display for ConfigError {
                 formatter,
                 "invalid plugin_socket {value:?}: expected an absolute Unix socket path"
             ),
-            Self::IncompleteTls => formatter.write_str(
-                "tls_cert and tls_key must either both be configured or both be omitted",
-            ),
             Self::InvalidCgroupRoot(value) => write!(
                 formatter,
                 "invalid cgroup_roots entry {value:?}: expected a relative path below /sys/fs/cgroup without '..'",
             ),
-            Self::InvalidCgroupMaxUnits => {
-                formatter.write_str("cgroup_max_units must be greater than zero")
-            }
-            Self::InvalidNtpTimeout => {
-                formatter.write_str("ntp_timeout_ms must be between 10 and 60000 milliseconds")
-            }
-            Self::InvalidProbeTarget(value) => write!(formatter, "invalid probe target: {value}"),
-            Self::InvalidProbeInterval => {
-                formatter.write_str("probe_interval_seconds must be between 1 and 3600")
-            }
-            Self::InvalidProbeTimeout => {
-                formatter.write_str("probe_timeout_ms must be between 10 and 60000")
-            }
-            Self::InvalidProbeTracerouteTimeout => {
-                formatter.write_str("probe_traceroute_timeout_ms must be between 100 and 120000")
-            }
-            Self::InvalidProbeMaxHops => {
-                formatter.write_str("probe_traceroute_max_hops must be between 1 and 64")
-            }
-            Self::InvalidSccacheTimeout => {
-                formatter.write_str("sccache_timeout_ms must be between 10 and 60000 milliseconds")
-            }
             Self::InvalidSccacheUds(value) => write!(
                 formatter,
                 "invalid sccache_server_uds {value:?}: expected an absolute Unix socket path"
-            ),
-            Self::InvalidSccachePort => formatter.write_str(
-                "sccache_server_port must be greater than zero when sccache_server_uds is unset",
             ),
             Self::InvalidSystemdUnitInclude(value) => {
                 write!(formatter, "invalid systemd_unit_include regex {value:?}")
@@ -203,50 +226,25 @@ impl fmt::Display for ConfigError {
             Self::InvalidSystemdUnitExclude(value) => {
                 write!(formatter, "invalid systemd_unit_exclude regex {value:?}")
             }
-            Self::InvalidSystemdMaxUnits => {
-                formatter.write_str("systemd_max_units must be greater than zero")
-            }
-            Self::InvalidTailscaleInterval => {
-                formatter.write_str("tailscale_interval_seconds must be between 1 and 3600")
-            }
-            Self::InvalidTailscaleTimeout => {
-                formatter.write_str("tailscale_timeout_ms must be between 100 and 120000")
-            }
-            Self::InvalidTailscalePingTimeout => {
-                formatter.write_str("tailscale_ping_timeout_ms must be between 10 and 60000")
-            }
-            Self::InvalidPushInterval => {
-                formatter.write_str("push_interval_ms must be between 100 and 60000")
-            }
-            Self::InvalidPushTimeout => {
-                formatter.write_str("push_timeout_ms must be between 100 and 60000")
-            }
-            Self::InvalidPushSpillInterval => {
-                formatter.write_str("push_spill_after_seconds must be between 1 and 3600")
-            }
             Self::InvalidPushSpoolDir(value) => write!(
                 formatter,
                 "invalid push_spool_dir {value:?}: expected an absolute path"
             ),
-            Self::InvalidPushSpoolMaxBytes => {
-                formatter.write_str("push_spool_max_bytes must be greater than zero")
-            }
             Self::InvalidPushUrl(value) => write!(
                 formatter,
                 "invalid push_url {value:?}: expected an http:// or https:// URL"
             ),
-            Self::InvalidSmartInterval => {
-                formatter.write_str("smart_interval_seconds must be between 5 and 86400")
-            }
-            Self::InvalidSmartTimeout => {
-                formatter.write_str("smartctl_timeout_ms must be between 100 and 120000")
-            }
-            Self::InvalidJournalInterval => {
-                formatter.write_str("journal_interval_seconds must be between 1 and 3600")
-            }
-            Self::InvalidJournalTimeout => {
-                formatter.write_str("journal_timeout_ms must be between 100 and 120000")
-            }
+            _ => formatter.write_str("invalid configuration"),
+        }
+    }
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(message) = self.static_message() {
+            formatter.write_str(message)
+        } else {
+            self.fmt_parameterized(formatter)
         }
     }
 }
