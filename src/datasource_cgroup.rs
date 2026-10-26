@@ -246,7 +246,7 @@ impl CgroupMetrics {
             self.counter_vec(sample.key.family)
                 .with_label_values(&labels)
                 .inc_by(prometheus_u64(delta) * sample.scale);
-            seen.insert(sample.key);
+            let _first_seen = seen.insert(sample.key);
         }
 
         let stale: Vec<_> = previous
@@ -261,7 +261,8 @@ impl CgroupMetrics {
             {
                 eprintln!("cgroup: failed to remove stale counter labels {labels:?}: {error}");
             }
-            previous.remove(&key);
+            let removed = previous.remove(&key);
+            debug_assert!(removed.is_some(), "stale cgroup key must still exist");
         }
         CollectionReport::success()
     }
@@ -296,7 +297,7 @@ fn discover_service_cgroups(
             .and_then(|name| name.to_str())
             .is_some_and(|name| name.ends_with(".service"))
         {
-            found.insert(path);
+            let _newly_discovered = found.insert(path);
             if found.len() > max_units {
                 return Err(format!(
                     "discovered more than cgroup_max_units={max_units} service cgroups"
@@ -353,7 +354,9 @@ fn parse_key_values(content: &str) -> Result<HashMap<&str, u64>, String> {
         let value = raw
             .parse::<u64>()
             .map_err(|error| format!("line {}: invalid value {raw:?}: {error}", index + 1))?;
-        values.insert(key, value);
+        if values.insert(key, value).is_some() {
+            return Err(format!("line {}: duplicate key {key:?}", index + 1));
+        }
     }
     Ok(values)
 }
@@ -860,5 +863,12 @@ mod tests {
         let parsed = parse_key_values("usage_usec 12\nnr_periods 3\n").unwrap();
         assert_eq!(parsed.get("usage_usec"), Some(&12));
         assert_eq!(parsed.get("nr_periods"), Some(&3));
+    }
+
+    #[test]
+    fn key_value_file_rejects_duplicate_keys() {
+        let error = parse_key_values("usage_usec 12\nusage_usec 13\n")
+            .expect_err("duplicate cgroup keys must fail");
+        assert!(error.contains("duplicate key"), "{error}");
     }
 }

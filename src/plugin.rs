@@ -128,7 +128,9 @@ fn validate_metric(metric: &PluginMetric) -> Result<(), String> {
                 metric.name
             ));
         }
-        label_names.get_or_insert(current_names);
+        if label_names.is_none() {
+            label_names = Some(current_names);
+        }
         let identity: Vec<_> = sample
             .labels
             .iter()
@@ -184,7 +186,7 @@ fn store_snapshot(snapshot: PluginSnapshot) -> Result<(), String> {
     if !stored.contains_key(&snapshot.plugin) && stored.len() >= MAX_PLUGINS {
         return Err(format!("plugin limit of {MAX_PLUGINS} reached"));
     }
-    stored.insert(
+    let _previous_snapshot = stored.insert(
         snapshot.plugin.clone(),
         StoredSnapshot {
             snapshot,
@@ -397,7 +399,7 @@ fn prepare_socket(path: &Path) -> Result<UnixListener, String> {
 pub fn start_server(path: &Path) -> Result<(), String> {
     let listener = prepare_socket(path)?;
     let path = path.to_path_buf();
-    std::thread::Builder::new()
+    let _server_thread = std::thread::Builder::new()
         .name("rsle-plugin-socket".to_string())
         .spawn(move || {
             for connection in listener.incoming() {
@@ -452,7 +454,8 @@ mod tests {
         let mut snapshot = snapshot();
         snapshot.metrics.push(snapshot.metrics[0].clone());
         assert!(validate_snapshot(&snapshot).is_err());
-        snapshot.metrics.pop();
+        let removed = snapshot.metrics.pop();
+        assert!(removed.is_some());
         snapshot.metrics[0].samples[0].value = -1.0;
         assert!(validate_snapshot(&snapshot).is_err());
     }

@@ -419,7 +419,7 @@ fn update_diskstats(metrics: &ProcfsMetrics, stats: &[procfs::DiskStat], config:
 
 fn update_netdev(
     metrics: &ProcfsMetrics,
-    devs: &std::collections::HashMap<String, procfs::net::DeviceStatus>,
+    devs: &HashMap<String, procfs::net::DeviceStatus>,
     config: &AppConfig,
 ) {
     for (name, dev) in devs {
@@ -748,13 +748,11 @@ fn parse_sectioned_integer_table(contents: &str) -> Result<Vec<(String, i64)>, S
                     "line {line_number}: section {section:?} has values without a preceding header"
                 ));
             }
-            headers.insert(
+            let previous = headers.insert(
                 section.to_string(),
-                columns
-                    .into_iter()
-                    .map(std::string::ToString::to_string)
-                    .collect(),
+                columns.into_iter().map(ToString::to_string).collect(),
             );
+            debug_assert!(previous.is_none(), "header was absent after remove");
         }
     }
 

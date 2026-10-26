@@ -193,7 +193,7 @@ mod tests {
             262_143_328_850,
         );
         // Create subzone
-        create_rapl_zone(&zone, "intel-rapl:0:0", "core", 500_000, 262_143_328_850);
+        let _subzone = create_rapl_zone(&zone, "intel-rapl:0:0", "core", 500_000, 262_143_328_850);
 
         update_rapl_zone(&zone, "intel-rapl:0");
     }

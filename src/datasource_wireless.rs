@@ -79,7 +79,7 @@ fn parse_line(metrics: &WirelessMetrics, line: &str) -> bool {
     if fields.len() < 10 {
         return false;
     }
-    let Some(link) = parse_number(fields[1]) else {
+    let Some(link_quality) = parse_number(fields[1]) else {
         return false;
     };
     let Some(signal) = parse_number(fields[2]) else {
@@ -88,7 +88,7 @@ fn parse_line(metrics: &WirelessMetrics, line: &str) -> bool {
     metrics
         .link_quality
         .with_label_values(&[interface])
-        .set(link);
+        .set(link_quality);
     metrics
         .signal_dbm
         .with_label_values(&[interface])

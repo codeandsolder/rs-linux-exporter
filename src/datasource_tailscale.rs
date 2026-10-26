@@ -383,7 +383,7 @@ fn metrics() -> &'static TailscaleMetrics {
 
 fn run_tailscale(settings: &Settings, args: &[&str], description: &str) -> Result<String, String> {
     let mut command = Command::new(&settings.tailscale_binary);
-    command.args(args);
+    let _command = command.args(args);
     crate::subprocess::run_bounded(command, settings.timeout, 1024 * 1024, description)
 }
 
@@ -404,7 +404,7 @@ fn run_peer_ping(settings: &Settings, target: &str, kind: &'static str) -> PingS
     };
     let timeout = format!("{}ms", settings.ping_timeout.as_millis());
     let mut command = Command::new(&settings.tailscale_binary);
-    command.args(["ping", flag, "--c", "1", "--timeout", &timeout, target]);
+    let _command = command.args(["ping", flag, "--c", "1", "--timeout", &timeout, target]);
     match crate::subprocess::run_bounded(
         command,
         settings.ping_timeout + Duration::from_secs(1),
@@ -696,7 +696,7 @@ fn apply(snapshot: &TailscaleSnapshot, refreshed_unix_seconds: f64) -> Collectio
 }
 
 fn start_refresh(settings: Settings) {
-    std::thread::spawn(move || {
+    let _refresh_thread = std::thread::spawn(move || {
         let snapshot = collect(&settings);
         let refreshed_unix_seconds = SystemTime::now()
             .duration_since(UNIX_EPOCH)

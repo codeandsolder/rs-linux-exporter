@@ -119,7 +119,12 @@ fn parse_arcstats(content: &str) -> Result<BTreeMap<String, KstatValue>, String>
             })?),
             _ => continue,
         };
-        values.insert(name.to_string(), value);
+        if values.insert(name.to_string(), value).is_some() {
+            return Err(format!(
+                "line {}: duplicate numeric kstat {name:?}",
+                line_index + 3
+            ));
+        }
     }
 
     if values.is_empty() {
@@ -345,7 +350,7 @@ fn zpool_due() -> bool {
 
 fn run_zpool(args: &[&str], description: &str) -> Result<String, String> {
     let mut command = Command::new("zpool");
-    command.args(args);
+    let _command = command.args(args);
     crate::subprocess::run_bounded(
         command,
         Duration::from_secs(5),
@@ -582,6 +587,13 @@ mod tests {
     #[test]
     fn malformed_header_is_rejected() {
         assert!(parse_arcstats("broken\nname type data\nhits 4 1\n").is_err());
+    }
+
+    #[test]
+    fn duplicate_numeric_kstats_are_rejected() {
+        let input = "21 1 0x01 4 100 1 2\nname type data\nhits 4 1\nhits 4 2\n";
+        let error = parse_arcstats(input).expect_err("duplicate kstats must fail");
+        assert!(error.contains("duplicate numeric kstat"), "{error}");
     }
 
     #[test]

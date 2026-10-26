@@ -463,7 +463,7 @@ where
             let output = &output;
             let errors = &errors;
             let collect = &collect;
-            scope.spawn(move || {
+            let _worker = scope.spawn(move || {
                 loop {
                     let index = next.fetch_add(1, Ordering::Relaxed);
                     let Some(unit) = units.get(index) else {

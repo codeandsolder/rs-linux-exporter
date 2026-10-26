@@ -431,7 +431,7 @@ fn parse_activity(line: &str) -> Result<ActivitySnapshot, String> {
 
 fn run_chronyc(config: &AppConfig, args: &[&str]) -> Result<String, String> {
     let mut command = Command::new(&config.ntp_binary);
-    command.args(["-n", "-c"]).args(args);
+    let _command = command.args(["-n", "-c"]).args(args);
     crate::subprocess::run_bounded(
         command,
         Duration::from_millis(config.ntp_timeout_ms),

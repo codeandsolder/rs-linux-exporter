@@ -169,7 +169,7 @@ fn due(interval: Duration) -> bool {
 
 fn run_smartctl(config: &AppConfig, args: &[&str], description: &str) -> Result<String, String> {
     let mut command = Command::new(&config.smartctl_binary);
-    command.args(args);
+    let _command = command.args(args);
     crate::subprocess::run_bounded_allow_failure(
         command,
         Duration::from_millis(config.smartctl_timeout_ms),

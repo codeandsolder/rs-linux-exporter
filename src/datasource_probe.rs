@@ -240,7 +240,7 @@ fn collect(settings: &ProbeSettings) -> Vec<TargetSnapshot> {
 }
 
 fn start_refresh(settings: ProbeSettings) {
-    std::thread::spawn(move || {
+    let _refresh_thread = std::thread::spawn(move || {
         let snapshot = collect(&settings);
         let refreshed_unix_seconds = SystemTime::now()
             .duration_since(UNIX_EPOCH)

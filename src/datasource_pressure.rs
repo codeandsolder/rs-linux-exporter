@@ -145,7 +145,7 @@ mod tests {
             avg300: 0.5,
             total: 123,
         };
-        let gauge = prometheus::GaugeVec::new(
+        let gauge = GaugeVec::new(
             prometheus::Opts::new("test_pressure_ratio", "test"),
             &["resource", "scope", "window"],
         )

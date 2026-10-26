@@ -355,7 +355,7 @@ mod tests {
     fn test_update_metrics_from_path_handles_empty_dir() {
         let dir = TempDir::new().unwrap();
         // Empty directory - should not panic
-        update_metrics_from_path(dir.path());
+        assert!(update_metrics_from_path(dir.path()).is_success());
     }
 
     #[test]

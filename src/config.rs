@@ -173,9 +173,7 @@ impl fmt::Display for ConfigError {
             Self::InvalidNtpTimeout => {
                 formatter.write_str("ntp_timeout_ms must be between 10 and 60000 milliseconds")
             }
-            Self::InvalidProbeTarget(value) => {
-                write!(formatter, "invalid probe target: {value}")
-            }
+            Self::InvalidProbeTarget(value) => write!(formatter, "invalid probe target: {value}"),
             Self::InvalidProbeInterval => {
                 formatter.write_str("probe_interval_seconds must be between 1 and 3600")
             }
@@ -575,7 +573,7 @@ impl AppConfig {
     }
 
     pub fn disable_datasource(&mut self, datasource: Datasource) {
-        self.disabled_set.insert(datasource);
+        let _newly_disabled = self.disabled_set.insert(datasource);
     }
 
     fn build_disabled_set(&mut self) {
@@ -696,10 +694,10 @@ impl AppConfig {
         if self.systemd_max_units == 0 {
             return Err(ConfigError::InvalidSystemdMaxUnits);
         }
-        Regex::new(&self.systemd_unit_include).map_err(|_| {
+        let _include_pattern = Regex::new(&self.systemd_unit_include).map_err(|_| {
             ConfigError::InvalidSystemdUnitInclude(self.systemd_unit_include.clone())
         })?;
-        Regex::new(&self.systemd_unit_exclude).map_err(|_| {
+        let _exclude_pattern = Regex::new(&self.systemd_unit_exclude).map_err(|_| {
             ConfigError::InvalidSystemdUnitExclude(self.systemd_unit_exclude.clone())
         })?;
         Ok(())
