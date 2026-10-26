@@ -1,6 +1,6 @@
 [package]
 name = "rs-linux-exporter"
-version = "0.1.12"
+version = "0.1.13"
 edition = "2024"
 rust-version = "1.99"
 description = "Linux monitoring exporter"
@@ -28,7 +28,7 @@ zbus = { version = "5.19.0", default-features = false, features = ["tokio", "blo
 regex = "1"
 rtime-clock = "0.15.1"
 etc-os-release = { version = "0.1.1", features = ["date"] }
-lurkmoar = { git = "https://github.com/codeandsolder/lurkmoar-rs", rev = "2b7249c52cbcc5c06dc6cbdfa3f73c80032eaa3d" }
+lurkmoar = { git = "https://github.com/codeandsolder/lurkmoar-rs", rev = "eb22687dc167a86e923560935efc1234a9832e27" }
 
 [dev-dependencies]
 tempfile = "3"
