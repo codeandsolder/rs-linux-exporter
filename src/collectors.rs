@@ -95,6 +95,28 @@ fn update_time_and_network(config: &AppConfig) {
     run_if_enabled(config, Datasource::Time, datasource_time::update_metrics);
 }
 
+fn update_storage_and_memory(config: &AppConfig) {
+    run_if_enabled(
+        config,
+        Datasource::Nfs,
+        datasource_nfs::update_client_metrics,
+    );
+    run_if_enabled(
+        config,
+        Datasource::Nfsd,
+        datasource_nfs::update_server_metrics,
+    );
+    run_if_enabled(config, Datasource::Numa, datasource_numa::update_metrics);
+    run_if_enabled(
+        config,
+        Datasource::Pressure,
+        datasource_pressure::update_metrics,
+    );
+    run_if_enabled(config, Datasource::Zfs, || {
+        datasource_zfs::update_metrics(config)
+    });
+}
+
 pub fn update_metrics(config: &AppConfig) {
     run_if_enabled(config, Datasource::Systemd, || {
         datasource_systemd::update_metrics(config)
@@ -191,25 +213,7 @@ pub fn update_metrics(config: &AppConfig) {
     run_if_enabled(config, Datasource::NetdevSysfs, || {
         datasource_netdev_sysfs::update_metrics(config)
     });
-    run_if_enabled(
-        config,
-        Datasource::Nfs,
-        datasource_nfs::update_client_metrics,
-    );
-    run_if_enabled(
-        config,
-        Datasource::Nfsd,
-        datasource_nfs::update_server_metrics,
-    );
-    run_if_enabled(config, Datasource::Numa, datasource_numa::update_metrics);
-    run_if_enabled(
-        config,
-        Datasource::Pressure,
-        datasource_pressure::update_metrics,
-    );
-    run_if_enabled(config, Datasource::Zfs, || {
-        datasource_zfs::update_metrics(config)
-    });
+    update_storage_and_memory(config);
     run_if_enabled(config, Datasource::Journal, || {
         datasource_journal::update_metrics(config)
     });

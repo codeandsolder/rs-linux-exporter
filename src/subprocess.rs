@@ -13,9 +13,10 @@ fn read_child_output(
 ) -> Result<Vec<u8>, String> {
     let mut limited = (&mut reader).take(max_output_bytes.saturating_add(1));
     let mut bytes = Vec::new();
-    limited
+    let bytes_read = limited
         .read_to_end(&mut bytes)
         .map_err(|error| format!("read {description} output: {error}"))?;
+    debug_assert_eq!(bytes_read, bytes.len());
     if bytes.len() as u64 > max_output_bytes {
         return Err(format!(
             "{description} output exceeded {max_output_bytes} bytes"
@@ -124,7 +125,7 @@ mod tests {
     #[test]
     fn permissive_mode_returns_stdout_from_nonzero_exit() {
         let mut command = Command::new("sh");
-        command.args(["-c", "printf useful; exit 2"]);
+        let _command = command.args(["-c", "printf useful; exit 2"]);
         let output =
             run_bounded_allow_failure(command, Duration::from_secs(1), 1024, "nonzero command")
                 .expect("nonzero status should be permitted");
@@ -134,7 +135,7 @@ mod tests {
     #[test]
     fn returns_stdout() {
         let mut command = Command::new("sh");
-        command.args(["-c", "printf hello"]);
+        let _command = command.args(["-c", "printf hello"]);
         let output = run_bounded(command, Duration::from_secs(1), 1024, "test command")
             .expect("command should succeed");
         assert_eq!(output, "hello");
@@ -143,7 +144,7 @@ mod tests {
     #[test]
     fn enforces_timeout() {
         let mut command = Command::new("sh");
-        command.args(["-c", "sleep 1"]);
+        let _command = command.args(["-c", "sleep 1"]);
         let error = run_bounded(command, Duration::from_millis(10), 1024, "slow command")
             .expect_err("command should time out");
         assert!(error.contains("timed out"), "{error}");
@@ -152,7 +153,7 @@ mod tests {
     #[test]
     fn enforces_output_limit_without_pipe_deadlock() {
         let mut command = Command::new("sh");
-        command.args(["-c", "yes x | head -c 4096"]);
+        let _command = command.args(["-c", "yes x | head -c 4096"]);
         let error = run_bounded(command, Duration::from_secs(1), 128, "large command")
             .expect_err("command should exceed output cap");
         assert!(error.contains("exceeded 128 bytes"), "{error}");

@@ -152,6 +152,6 @@ mod tests {
         fs::create_dir_all(dir.path().join("not_nvme")).unwrap();
 
         // Should only process nvme0, not "not_nvme"
-        update_metrics_from_path(dir.path());
+        assert!(update_metrics_from_path(dir.path()).is_success());
     }
 }

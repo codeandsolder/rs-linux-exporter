@@ -33,11 +33,11 @@ fn push_json_sample(
     value: JsonValue,
 ) {
     let mut map = serde_json::Map::new();
-    map.insert("_name_".to_string(), JsonValue::from(name));
+    let _previous_name = map.insert("_name_".to_string(), JsonValue::from(name));
     for (key, value) in labels {
-        map.insert(key.clone(), JsonValue::from(value.clone()));
+        let _previous_label = map.insert(key.clone(), JsonValue::from(value.clone()));
     }
-    map.insert("_value_".to_string(), value);
+    let _previous_value = map.insert("_value_".to_string(), value);
     samples.push(map);
 }
 

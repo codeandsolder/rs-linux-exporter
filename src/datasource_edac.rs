@@ -328,16 +328,16 @@ mod tests {
     #[test]
     fn test_update_metrics_from_path_filters_non_mc() {
         let dir = TempDir::new().unwrap();
-        create_mock_mc(dir.path(), "mc0", "ie31200_edac", 0, 0, 8192);
+        let _mc = create_mock_mc(dir.path(), "mc0", "ie31200_edac", 0, 0, 8192);
         fs::create_dir_all(dir.path().join("not_mc")).unwrap();
 
-        update_metrics_from_path(dir.path());
+        assert!(update_metrics_from_path(dir.path()).is_success());
     }
 
     #[test]
     fn test_update_metrics_from_path_handles_empty_dir() {
         let dir = TempDir::new().unwrap();
-        update_metrics_from_path(dir.path());
+        assert!(update_metrics_from_path(dir.path()).is_success());
     }
 
     #[test]
@@ -357,7 +357,7 @@ mod tests {
             .with_label_values(&[STALE_LABEL])
             .set(7.0);
 
-        update_metrics_from_path(&dir.path().join("missing"));
+        assert!(!update_metrics_from_path(&dir.path().join("missing")).is_success());
         assert_eq!(
             metrics()
                 .mc_ce_count

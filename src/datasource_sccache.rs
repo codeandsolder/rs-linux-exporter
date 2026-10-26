@@ -397,7 +397,7 @@ impl SccacheMetrics {
             self.counter_vec(sample.key.family)
                 .with_label_values(&labels)
                 .inc_by(prometheus_u64(delta) * sample.scale);
-            seen.insert(sample.key);
+            let _first_seen = seen.insert(sample.key);
         }
 
         let stale: Vec<_> = previous
@@ -412,7 +412,8 @@ impl SccacheMetrics {
             {
                 eprintln!("sccache: failed to remove stale counter labels {labels:?}: {error}");
             }
-            previous.remove(&key);
+            let removed = previous.remove(&key);
+            debug_assert!(removed.is_some(), "tracked sccache key must still exist");
         }
         CollectionReport::success()
     }
@@ -440,7 +441,8 @@ impl SccacheMetrics {
                     );
                 }
             }
-            previous.remove(&key);
+            let removed = previous.remove(&key);
+            debug_assert!(removed.is_some(), "tracked sccache key must still exist");
         }
         report
     }
@@ -693,7 +695,7 @@ fn dist_snapshot(info: DistInfo) -> DistSnapshot {
 
 fn run_sccache(config: &AppConfig, args: &[&str]) -> Result<String, String> {
     let mut command = Command::new(&config.sccache_binary);
-    command
+    let _command = command
         .args(args)
         .env(
             "SCCACHE_SERVER_PORT",

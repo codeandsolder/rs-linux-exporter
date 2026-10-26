@@ -267,24 +267,24 @@ other_node 789
     #[test]
     fn test_update_metrics_from_path() {
         let dir = TempDir::new().unwrap();
-        create_mock_node(dir.path(), "node0");
-        create_mock_node(dir.path(), "node1");
-        update_metrics_from_path(dir.path());
+        let _node0 = create_mock_node(dir.path(), "node0");
+        let _node1 = create_mock_node(dir.path(), "node1");
+        assert!(update_metrics_from_path(dir.path()).is_success());
     }
 
     #[test]
     fn test_update_metrics_from_path_filters_non_nodes() {
         let dir = TempDir::new().unwrap();
-        create_mock_node(dir.path(), "node0");
+        let _node0 = create_mock_node(dir.path(), "node0");
         fs::create_dir_all(dir.path().join("not_node")).unwrap();
         fs::create_dir_all(dir.path().join("possible")).unwrap();
-        update_metrics_from_path(dir.path());
+        assert!(update_metrics_from_path(dir.path()).is_success());
     }
 
     #[test]
     fn test_update_metrics_from_path_handles_empty_dir() {
         let dir = TempDir::new().unwrap();
-        update_metrics_from_path(dir.path());
+        assert!(update_metrics_from_path(dir.path()).is_success());
     }
     #[test]
     fn vanished_numa_tree_drops_previous_node_series() {
@@ -296,7 +296,7 @@ other_node 789
             .with_label_values(&[STALE_NODE, "MemTotal"])
             .set(1.0);
 
-        update_metrics_from_path_with(&metrics, &dir.path().join("missing"));
+        assert!(!update_metrics_from_path_with(&metrics, &dir.path().join("missing")).is_success());
         assert_eq!(metrics.node_count.get(), 0.0);
         assert_eq!(
             metrics

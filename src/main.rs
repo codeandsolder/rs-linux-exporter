@@ -1,3 +1,8 @@
+//! Linux host telemetry exporter with Prometheus-compatible exposition.
+//!
+//! The binary collects bounded host metrics from procfs, sysfs, system services, and
+//! optional external tools, then serves them over HTTP for Prometheus-compatible scrapers.
+
 use crate::metric_support::RegisterMetricResultExt;
 #[macro_use]
 extern crate rocket;
@@ -247,7 +252,7 @@ const fn index() -> &'static str {
 }
 
 #[catch(404)]
-fn not_found(request: &rocket::Request<'_>) -> &'static str {
+fn not_found(request: &Request<'_>) -> &'static str {
     let config = app_config();
     if config.log_404_requests {
         let client_ip = request

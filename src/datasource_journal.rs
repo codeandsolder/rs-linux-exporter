@@ -73,7 +73,7 @@ fn metrics() -> &'static JournalMetrics {
 
 fn run_journalctl(config: &AppConfig, args: &[&str]) -> Result<String, String> {
     let mut command = Command::new(&config.journalctl_binary);
-    command.args(args);
+    let _command = command.args(args);
     crate::subprocess::run_bounded(
         command,
         Duration::from_millis(config.journal_timeout_ms),
@@ -209,6 +209,21 @@ fn initialize_cursor(config: &AppConfig) -> Result<String, String> {
     extract_cursor(&output).ok_or_else(|| "journalctl returned no cursor".to_string())
 }
 
+fn apply_json_events(output: &str, error_context: &str, apply: fn(&Value)) {
+    for line in output
+        .lines()
+        .filter(|line| line.trim_start().starts_with('{'))
+    {
+        match serde_json::from_str::<Value>(line) {
+            Ok(value) => apply(&value),
+            Err(error) if debug_enabled() => {
+                eprintln!("journal: {error_context}: {error}");
+            }
+            Err(_) => {}
+        }
+    }
+}
+
 pub fn update_metrics(config: &AppConfig) -> CollectionReport {
     let interval = Duration::from_secs(config.journal_interval_seconds);
     let Ok(mut state) = STATE.lock() else {
@@ -262,16 +277,7 @@ pub fn update_metrics(config: &AppConfig) -> CollectionReport {
         }
     };
 
-    for line in output
-        .lines()
-        .filter(|line| line.trim_start().starts_with('{'))
-    {
-        match serde_json::from_str::<Value>(line) {
-            Ok(value) => apply_event(&value),
-            Err(error) if debug_enabled() => eprintln!("journal: invalid JSON event: {error}"),
-            Err(_) => {}
-        }
-    }
+    apply_json_events(&output, "invalid JSON event", apply_event);
     if let Some(cursor) = extract_cursor(&output) {
         state.cursor = Some(cursor);
     }
@@ -290,18 +296,11 @@ pub fn update_metrics(config: &AppConfig) -> CollectionReport {
         ],
     ) {
         Ok(remote_output) => {
-            for line in remote_output
-                .lines()
-                .filter(|line| line.trim_start().starts_with('{'))
-            {
-                match serde_json::from_str::<Value>(line) {
-                    Ok(value) => apply_remote_event(&value),
-                    Err(error) if debug_enabled() => {
-                        eprintln!("journal: invalid remote syslog JSON event: {error}");
-                    }
-                    Err(_) => {}
-                }
-            }
+            apply_json_events(
+                &remote_output,
+                "invalid remote syslog JSON event",
+                apply_remote_event,
+            );
             if let Some(cursor) = extract_cursor(&remote_output) {
                 state.remote_cursor = Some(cursor);
             }

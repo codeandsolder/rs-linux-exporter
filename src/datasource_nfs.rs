@@ -886,7 +886,7 @@ where
         counter_vec(sample.key.family)
             .with_label_values(&labels)
             .inc_by(prometheus_u64(monotonic_delta(old, sample.value)));
-        seen.insert(sample.key);
+        let _first_seen = seen.insert(sample.key);
     }
     remove_stale(&mut previous, &seen, counter_vec, source)
 }
@@ -929,7 +929,8 @@ where
                 eprintln!("{source}: failed to remove stale labels {labels:?}: {error}");
             }
         }
-        previous.remove(&key);
+        let removed = previous.remove(&key);
+        debug_assert!(removed.is_some(), "stale NFS key must still exist");
     }
     report
 }

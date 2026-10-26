@@ -62,9 +62,14 @@ fn parse_ping_rtt(output: &str) -> Option<f64> {
 pub fn run_ping(binary: &str, address: &str, timeout: Duration) -> Result<PingResult, String> {
     let timeout_secs = timeout.as_secs_f64().ceil().max(1.0);
     let mut command = Command::new(binary);
-    command
-        .env("LC_ALL", "C")
-        .args(["-n", "-c", "1", "-W", &timeout_secs.to_string(), address]);
+    let _command = command.env("LC_ALL", "C").args([
+        "-n",
+        "-c",
+        "1",
+        "-W",
+        &timeout_secs.to_string(),
+        address,
+    ]);
     match crate::subprocess::run_bounded(
         command,
         timeout + Duration::from_secs(1),
@@ -131,7 +136,7 @@ pub fn run_traceroute(
 ) -> Result<TraceResult, String> {
     let target = traceroute_target(address)?;
     let mut command = Command::new(binary);
-    command.env("LC_ALL", "C").args([
+    let _command = command.env("LC_ALL", "C").args([
         "--json",
         "-n",
         "-c",

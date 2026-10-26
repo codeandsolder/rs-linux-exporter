@@ -90,7 +90,7 @@ impl SchedstatMetrics {
                     old.timeslices,
                     current.timeslices,
                 )));
-            seen.insert(cpu.cpu.clone());
+            let _first_seen = seen.insert(cpu.cpu.clone());
         }
 
         let stale = previous
@@ -113,7 +113,8 @@ impl SchedstatMetrics {
                     }
                 }
             }
-            previous.remove(&cpu);
+            let removed = previous.remove(&cpu);
+            debug_assert!(removed.is_some(), "stale schedstat CPU must still exist");
         }
         report
     }
