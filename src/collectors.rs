@@ -7,8 +7,8 @@ use crate::metric_support::RegisterMetricResultExt;
 use crate::{
     datasource_amdgpu, datasource_cgroup, datasource_conntrack, datasource_cpufreq, datasource_dmi,
     datasource_edac, datasource_filefd, datasource_filesystems, datasource_hwmon, datasource_ipmi,
-    datasource_journal, datasource_kernel_hung, datasource_lifecycle, datasource_mdraid,
-    datasource_netdev_sysfs, datasource_numa, datasource_nvme, datasource_os,
+    datasource_journal, datasource_kernel_hung, datasource_laptop, datasource_lifecycle,
+    datasource_mdraid, datasource_netdev_sysfs, datasource_numa, datasource_nvme, datasource_os,
     datasource_power_supply, datasource_pressure, datasource_probe, datasource_procfs,
     datasource_rapl, datasource_sccache, datasource_schedstat, datasource_smart,
     datasource_softnet, datasource_systemd, datasource_tailscale, datasource_thermal,
@@ -93,6 +93,19 @@ fn update_time_and_network(config: &AppConfig) {
         datasource_tailscale::update_metrics(config)
     });
     run_if_enabled(config, Datasource::Time, datasource_time::update_metrics);
+}
+
+fn update_laptop_power(config: &AppConfig) {
+    run_if_enabled(
+        config,
+        Datasource::PowerSupply,
+        datasource_power_supply::update_metrics,
+    );
+    run_if_enabled(
+        config,
+        Datasource::Laptop,
+        datasource_laptop::update_metrics,
+    );
 }
 
 fn update_storage_and_memory(config: &AppConfig) {
@@ -200,11 +213,7 @@ pub fn update_metrics(config: &AppConfig) {
         datasource_thermal::update_metrics,
     );
     run_if_enabled(config, Datasource::Rapl, datasource_rapl::update_metrics);
-    run_if_enabled(
-        config,
-        Datasource::PowerSupply,
-        datasource_power_supply::update_metrics,
-    );
+    update_laptop_power(config);
     run_if_enabled(config, Datasource::Nvme, datasource_nvme::update_metrics);
     run_if_enabled(config, Datasource::Smart, || {
         datasource_smart::update_metrics(config)

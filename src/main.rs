@@ -22,6 +22,7 @@ mod datasource_hwmon;
 mod datasource_ipmi;
 mod datasource_journal;
 mod datasource_kernel_hung;
+mod datasource_laptop;
 mod datasource_lifecycle;
 mod datasource_mdraid;
 mod datasource_netdev_sysfs;

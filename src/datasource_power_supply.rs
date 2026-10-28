@@ -19,6 +19,7 @@ struct PowerSupplyMetrics {
     charge_ah: GaugeVec,
     temperature_celsius: GaugeVec,
     cycle_count: GaugeVec,
+    charge_limit_percent: GaugeVec,
 }
 
 impl PowerSupplyMetrics {
@@ -100,6 +101,12 @@ impl PowerSupplyMetrics {
                 &["name"]
             )
             .or_exit("power_supply_cycle_count"),
+            charge_limit_percent: prometheus::register_gauge_vec!(
+                "power_supply_charge_limit_percent",
+                "Configured battery charge ceiling when exposed by power_supply sysfs",
+                &["name"]
+            )
+            .or_exit("power_supply_charge_limit_percent"),
         }
     }
 }
@@ -108,6 +115,21 @@ static POWER_SUPPLY_METRICS: OnceLock<PowerSupplyMetrics> = OnceLock::new();
 
 fn metrics() -> &'static PowerSupplyMetrics {
     POWER_SUPPLY_METRICS.get_or_init(PowerSupplyMetrics::new)
+}
+
+fn update_battery_policy(metrics: &PowerSupplyMetrics, supply_path: &Path, supply_name: &str) {
+    if let Some(cycles) = read_i64(&supply_path.join("cycle_count")) {
+        metrics
+            .cycle_count
+            .with_label_values(&[supply_name])
+            .set(prometheus_i64(cycles));
+    }
+    if let Some(limit) = read_i64(&supply_path.join("charge_control_end_threshold")) {
+        metrics
+            .charge_limit_percent
+            .with_label_values(&[supply_name])
+            .set(prometheus_i64(limit));
+    }
 }
 
 fn update_power_supply(supply_path: &Path, supply_name: &str) {
@@ -219,12 +241,7 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
             .set(prometheus_i64(charge) / 1_000_000.0);
     }
 
-    if let Some(cycles) = read_i64(&supply_path.join("cycle_count")) {
-        metrics
-            .cycle_count
-            .with_label_values(&[supply_name])
-            .set(prometheus_i64(cycles));
-    }
+    update_battery_policy(metrics, supply_path, supply_name);
 
     // Temperature (tenths of degree Celsius -> Celsius)
     if let Some(temp) = read_i64(&supply_path.join("temp")) {
@@ -250,6 +267,7 @@ pub fn update_metrics() -> CollectionReport {
     metrics.charge_ah.reset();
     metrics.temperature_celsius.reset();
     metrics.cycle_count.reset();
+    metrics.charge_limit_percent.reset();
 
     let base = Path::new("/sys/class/power_supply");
     let Ok(entries) = fs::read_dir(base) else {
@@ -361,5 +379,20 @@ mod tests {
         fs::write(supply_dir.join("capacity"), "50\n").unwrap();
 
         update_power_supply(&supply_dir, "BAT0");
+    }
+    #[test]
+    fn test_update_power_supply_with_charge_limit() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = TempDir::new()?;
+        let supply = create_battery(dir.path(), "BAT_LIMIT", 80, "Not charging");
+        fs::write(supply.join("charge_control_end_threshold"), "80\n")?;
+        update_power_supply(&supply, "BAT_LIMIT");
+        assert_eq!(
+            metrics()
+                .charge_limit_percent
+                .with_label_values(&["BAT_LIMIT"])
+                .get(),
+            80.0
+        );
+        Ok(())
     }
 }

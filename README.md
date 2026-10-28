@@ -55,7 +55,8 @@ and the software reliable.
 | `amdgpu` | AMDGPU engine busy ratio, VRAM/GTT usage, performance level and active DPM clocks from DRM sysfs |
 | `thermal` | Thermal zones and cooling devices |
 | `rapl` | Intel/AMD RAPL energy consumption (CPU, DRAM) |
-| `power_supply` | Battery and AC adapter status |
+| `power_supply` | Battery and AC adapter status, including charge ceiling when exposed |
+| `laptop` | Laptop lid/external-display state and platform-specific charge-limit mode |
 | `pressure` | Linux pressure stall information (PSI) for CPU, memory, and I/O |
 | `nvme` | NVMe device information (model, serial, state) |
 | `smart` | ATA/NVMe SMART health, temperature, lifetime counters, endurance/spare state, and ATA attributes via bounded `smartctl -j` |

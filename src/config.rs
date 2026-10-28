@@ -43,6 +43,7 @@ pub enum Datasource {
     Thermal,
     Rapl,
     PowerSupply,
+    Laptop,
     Pressure,
     Nvme,
     Smart,
@@ -87,6 +88,7 @@ impl Datasource {
             Self::Thermal => "thermal",
             Self::Rapl => "rapl",
             Self::PowerSupply => "power_supply",
+            Self::Laptop => "laptop",
             Self::Pressure => "pressure",
             Self::Nvme => "nvme",
             Self::Smart => "smart",
@@ -323,6 +325,12 @@ const SUBSYSTEM_CHECKS: &[SubsystemCheck] = &[
         name: Datasource::PowerSupply,
         path: "/sys/class/power_supply",
         description: "Power supply",
+        require_entries: true,
+    },
+    SubsystemCheck {
+        name: Datasource::Laptop,
+        path: "/proc/acpi/button/lid",
+        description: "Laptop lid and platform power state",
         require_entries: true,
     },
     SubsystemCheck {
