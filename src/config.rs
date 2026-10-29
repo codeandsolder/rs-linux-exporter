@@ -401,7 +401,7 @@ fn executable_file(path: &Path) -> bool {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ProbeTarget {
     pub name: String,
     pub address: String,
@@ -421,7 +421,7 @@ impl Default for ProbeTarget {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "independent boolean switches map directly to stable flat TOML keys"
@@ -1311,6 +1311,17 @@ mod tests {
             .expect("existing cpufreq spelling must remain valid");
         config.build_disabled_set();
         assert!(!config.is_datasource_enabled(Datasource::CpuFreq));
+    }
+
+    #[test]
+    fn unknown_config_keys_are_rejected_by_toml() {
+        assert!(toml::from_str::<AppConfig>("probe_intervaal_seconds = 5").is_err());
+        assert!(
+            toml::from_str::<AppConfig>(
+                "[[probe_targets]]\nname = \"dns\"\naddress = \"1.1.1.1\"\npign = true"
+            )
+            .is_err()
+        );
     }
 
     #[test]
