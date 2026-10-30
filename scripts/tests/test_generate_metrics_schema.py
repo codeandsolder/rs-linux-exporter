@@ -10,7 +10,7 @@ from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
 
-import generate_metrics_schema as schema
+import generate_metrics_schema as schema  # ruff: ignore[module-import-not-at-top-of-file]
 
 
 class GenerateMetricsSchemaTests(unittest.TestCase):

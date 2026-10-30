@@ -95,8 +95,7 @@ def build_panel(
     def _legend(metric: dict[str, Any]) -> str:
         labels = _metric_labels(metric)
         labels_display = ["{{__name__}}"]
-        for label in labels:
-            labels_display.append("{{" + label + "}}")
+        labels_display.extend("{{" + label + "}}" for label in labels)
         return " ".join(labels_display)
 
     def _make_target(ref_id: str, expression: str, legend: str) -> dict[str, Any]:
@@ -505,8 +504,7 @@ def list_sections(schema: dict[str, Any]) -> str:
         counts[group] = counts.get(group, 0) + 1
 
     lines = ["Available groups:"]
-    for group in sorted(counts):
-        lines.append(f"- {group}: {counts[group]}")
+    lines.extend(f"- {group}: {counts[group]}" for group in sorted(counts))
     return "\n".join(lines)
 
 
@@ -530,7 +528,7 @@ def show_help_if_no_selector(
     raise SystemExit(0)
 
 
-def render_output(data: Any, fmt: str, pretty: bool) -> str:
+def render_output(data: object, fmt: str, pretty: bool) -> str:
     if fmt == "ndjson":
         if isinstance(data, list):
             return "\n".join(json.dumps(panel, separators=(",", ":")) for panel in data)

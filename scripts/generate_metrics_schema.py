@@ -13,8 +13,11 @@ import json
 import re
 from collections import OrderedDict
 from pathlib import Path
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+SchemaObject = dict[str, Any]
 
 
 SOFTNET_FIELDS = [
@@ -105,19 +108,21 @@ def _to_snake_case(value: str) -> str:
             is_lower = char.islower()
             is_digit = char.isdigit()
             starts_new_word = (
-                is_upper
-                and (
-                    previous_is_lower
-                    or previous_is_digit
-                    or (
-                        previous_is_upper
-                        and next_char is not None
-                        and next_char.isascii()
-                        and next_char.islower()
+                (
+                    is_upper
+                    and (
+                        previous_is_lower
+                        or previous_is_digit
+                        or (
+                            previous_is_upper
+                            and next_char is not None
+                            and next_char.isascii()
+                            and next_char.islower()
+                        )
                     )
                 )
-            ) or (is_digit and (previous_is_lower or previous_is_upper)) or (
-                is_lower and previous_is_digit
+                or (is_digit and (previous_is_lower or previous_is_upper))
+                or (is_lower and previous_is_digit)
             )
             if out and starts_new_word and out[-1] != "_":
                 out.append("_")
@@ -148,16 +153,18 @@ def _resolve_metric_name(metric: str, known_names: set[str]) -> str:
     return metric
 
 
-def _parse_markdown(path: Path) -> tuple[OrderedDict[str, list[dict]], dict[str, dict]]:
+def _parse_markdown(
+    path: Path,
+) -> tuple[OrderedDict[str, list[SchemaObject]], dict[str, SchemaObject]]:
     text = path.read_text(encoding="utf-8").splitlines()
 
-    groups: OrderedDict[str, list[dict]] = OrderedDict()
-    metadata: dict[str, dict] = {}
+    groups: OrderedDict[str, list[SchemaObject]] = OrderedDict()
+    metadata: dict[str, SchemaObject] = {}
 
     in_group = False
     in_labels_section = False
     in_table = False
-    capture: dict | None = None
+    capture: SchemaObject | None = None
     current_group = ""
 
     for raw_line in text:
@@ -180,8 +187,6 @@ def _parse_markdown(path: Path) -> tuple[OrderedDict[str, list[dict]], dict[str,
                 current_group = title
                 continue
 
-            if title in groups:
-                pass
             groups.setdefault(title, [])
             current_group = title
             in_labels_section = False
@@ -333,8 +338,8 @@ def _fields_from_proc_net_pair_file(path: str) -> list[str]:
 
     fields: list[str] = []
     pending: dict[str, list[str]] = {}
-    for line in lines:
-        line = line.strip()
+    for raw_line in lines:
+        line = raw_line.strip()
         if not line or ":" not in line:
             continue
         section, rest = line.split(":", 1)
@@ -365,7 +370,7 @@ def _is_integer(value: str) -> bool:
     return True
 
 
-def _append_runtime_fields(schema: dict, args: argparse.Namespace) -> None:
+def _append_runtime_fields(schema: SchemaObject, args: argparse.Namespace) -> None:
     if not args.with_runtime_fields:
         return
 
@@ -388,7 +393,7 @@ def _append_runtime_fields(schema: dict, args: argparse.Namespace) -> None:
             break
 
 
-def _dedupe_fields(metrics: list[dict]) -> None:
+def _dedupe_fields(metrics: list[SchemaObject]) -> None:
     for metric in metrics:
         if "fields" in metric:
             metric["fields"] = list(dict.fromkeys(metric["fields"]))
@@ -404,9 +409,9 @@ def _dedupe_fields(metrics: list[dict]) -> None:
             metric["label_values"] = cleaned
 
 
-def generate_schema(markdown_path: Path, args: argparse.Namespace) -> dict:
+def generate_schema(markdown_path: Path, args: argparse.Namespace) -> SchemaObject:
     groups, metadata = _parse_markdown(markdown_path)
-    metrics: list[dict] = []
+    metrics: list[dict[str, object]] = []
 
     for group_name, group_metrics in groups.items():
         for metric in group_metrics:
