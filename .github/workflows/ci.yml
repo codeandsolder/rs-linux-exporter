@@ -48,8 +48,8 @@ jobs:
       - name: Generator tests
         run: uv run python -m unittest discover -s scripts/tests -p test_*.py -v
 
-  rust-skills2:
-    name: Strict Rust policy
+  strict-rust:
+    name: Strict Rust
     uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@260a48d4b1cf65252f892b067fe41f44f05e653a # main
     with:
       ban-python-outside-ci: false
