@@ -2,6 +2,7 @@ use crate::collection::CollectionReport;
 use crate::config::AppConfig;
 use crate::metric_support::RegisterMetricResultExt;
 use crate::metric_support::prometheus_u64;
+use crate::runtime::debug_enabled;
 use prometheus::GaugeVec;
 use rustix::fs::statvfs;
 use std::collections::HashSet;
@@ -149,9 +150,18 @@ pub fn update_metrics(config: &AppConfig) -> CollectionReport {
             continue;
         }
 
-        let Ok(stat) = statvfs(mount.fs_file.as_str()) else {
-            report.record_error();
-            continue;
+        let stat = match statvfs(mount.fs_file.as_str()) {
+            Ok(stat) => stat,
+            Err(error) => {
+                if debug_enabled() {
+                    eprintln!(
+                        "filesystems statvfs {} ({}): {error}",
+                        mount.fs_file, mount.fs_vfstype
+                    );
+                }
+                report.record_error();
+                continue;
+            }
         };
 
         let block_size = if stat.f_frsize > 0 {

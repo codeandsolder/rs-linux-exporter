@@ -4,8 +4,8 @@ use crate::metric_support::RegisterMetricResultExt;
 use crate::runtime::debug_enabled;
 use prometheus::{Gauge, GaugeVec};
 use std::process::Command;
-use std::sync::OnceLock;
-use std::time::Duration;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 const SOURCE_STATES: &[(&str, &str)] = &[
     ("*", "current"),
@@ -17,6 +17,19 @@ const SOURCE_STATES: &[(&str, &str)] = &[
 ];
 
 const SOURCE_MODES: &[(&str, &str)] = &[("^", "server"), ("=", "peer"), ("#", "local")];
+
+static NTP_LAST_ATTEMPT: Mutex<Option<Instant>> = Mutex::new(None);
+
+fn due(interval: Duration) -> bool {
+    let Ok(mut last) = NTP_LAST_ATTEMPT.lock() else {
+        return true;
+    };
+    if last.is_some_and(|instant| instant.elapsed() < interval) {
+        return false;
+    }
+    *last = Some(Instant::now());
+    true
+}
 
 #[derive(Debug, Clone, PartialEq)]
 struct TrackingSnapshot {
@@ -450,6 +463,9 @@ fn collect(
 }
 
 pub fn update_metrics(config: &AppConfig) -> CollectionReport {
+    if !due(Duration::from_secs(config.ntp_interval_seconds)) {
+        return CollectionReport::success();
+    }
     match collect(config) {
         Ok((tracking, sources, activity)) => {
             metrics().apply(&tracking, &sources, activity);
@@ -458,9 +474,6 @@ pub fn update_metrics(config: &AppConfig) -> CollectionReport {
         Err(error) => {
             if debug_enabled() {
                 eprintln!("ntp: {error}");
-            }
-            if let Some(metrics) = NTP_METRICS.get() {
-                metrics.clear();
             }
             CollectionReport::error()
         }
