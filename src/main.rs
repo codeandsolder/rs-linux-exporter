@@ -54,6 +54,7 @@ mod metric_support;
 mod plugin;
 mod probe;
 mod push;
+mod refresh;
 mod runtime;
 mod subprocess;
 mod sysfs;

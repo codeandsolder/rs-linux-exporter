@@ -1,11 +1,12 @@
 use crate::collection::CollectionReport;
 use crate::config::AppConfig;
 use crate::metric_support::RegisterMetricResultExt;
+use crate::refresh::IntervalGate;
 use crate::runtime::debug_enabled;
 use prometheus::{Gauge, GaugeVec};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 const SOURCE_STATES: &[(&str, &str)] = &[
     ("*", "current"),
@@ -18,17 +19,13 @@ const SOURCE_STATES: &[(&str, &str)] = &[
 
 const SOURCE_MODES: &[(&str, &str)] = &[("^", "server"), ("=", "peer"), ("#", "local")];
 
-static NTP_LAST_ATTEMPT: Mutex<Option<Instant>> = Mutex::new(None);
+static NTP_REFRESH: Mutex<IntervalGate> = Mutex::new(IntervalGate::new());
 
 fn due(interval: Duration) -> bool {
-    let Ok(mut last) = NTP_LAST_ATTEMPT.lock() else {
-        return true;
-    };
-    if last.is_some_and(|instant| instant.elapsed() < interval) {
-        return false;
-    }
-    *last = Some(Instant::now());
-    true
+    NTP_REFRESH
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .due(interval)
 }
 
 #[derive(Debug, Clone, PartialEq)]
