@@ -2,25 +2,17 @@ use crate::collection::CollectionReport;
 use crate::config::{AppConfig, ProbeTarget};
 use crate::metric_support::RegisterMetricResultExt;
 use crate::probe::{PingResult, TraceResult};
+use crate::refresh::AsyncRefreshCache;
 use crate::runtime::debug_enabled;
 use prometheus::GaugeVec;
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Debug)]
 struct TargetSnapshot {
     name: String,
     ping: Option<Result<PingResult, String>>,
     trace: Option<Result<TraceResult, String>>,
-}
-
-#[derive(Default)]
-struct ProbeCache {
-    refreshing: bool,
-    refreshed: Option<Instant>,
-    refreshed_unix_seconds: Option<f64>,
-    snapshot: Vec<TargetSnapshot>,
-    report_pending: bool,
 }
 
 #[derive(Clone)]
@@ -197,13 +189,8 @@ impl ProbeMetrics {
 }
 
 static PROBE_METRICS: OnceLock<ProbeMetrics> = OnceLock::new();
-static PROBE_CACHE: Mutex<ProbeCache> = Mutex::new(ProbeCache {
-    refreshing: false,
-    refreshed: None,
-    refreshed_unix_seconds: None,
-    snapshot: Vec::new(),
-    report_pending: false,
-});
+static PROBE_CACHE: Mutex<AsyncRefreshCache<Vec<TargetSnapshot>>> =
+    Mutex::new(AsyncRefreshCache::new());
 
 fn metrics() -> &'static ProbeMetrics {
     PROBE_METRICS.get_or_init(ProbeMetrics::new)
@@ -250,48 +237,30 @@ fn start_refresh(settings: ProbeSettings) {
         let mut cache = PROBE_CACHE
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        cache.snapshot = snapshot;
-        cache.refreshed = Some(Instant::now());
-        cache.refreshed_unix_seconds = Some(refreshed_unix_seconds);
-        cache.report_pending = true;
-        cache.refreshing = false;
+        cache.finish_refresh(snapshot, refreshed_unix_seconds);
     });
 }
 
 pub fn update_metrics(config: &AppConfig) -> CollectionReport {
     let interval = Duration::from_secs(config.probe_interval_seconds);
-    let (snapshot, refreshed_unix_seconds, refreshing, should_refresh, report_pending) = {
+    let refresh = {
         let mut cache = PROBE_CACHE
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let due = cache
-            .refreshed
-            .is_none_or(|refreshed| refreshed.elapsed() >= interval);
-        let should_refresh = due && !cache.refreshing;
-        if should_refresh {
-            cache.refreshing = true;
-        }
-        let report_pending = cache.report_pending;
-        cache.report_pending = false;
-        (
-            cache.snapshot.clone(),
-            cache.refreshed_unix_seconds,
-            cache.refreshing,
-            should_refresh,
-            report_pending,
-        )
+        cache.begin_scrape(interval)
     };
 
-    if should_refresh {
+    if refresh.should_refresh {
         start_refresh(ProbeSettings::from_config(config));
     }
     metrics()
         .refresh_in_progress
-        .set(if refreshing { 1.0 } else { 0.0 });
-    let report = refreshed_unix_seconds.map_or_else(CollectionReport::success, |refreshed| {
-        metrics().apply(&snapshot, refreshed)
-    });
-    if report_pending {
+        .set(if refresh.refreshing { 1.0 } else { 0.0 });
+    let report = match (refresh.snapshot, refresh.refreshed_unix_seconds) {
+        (Some(snapshot), Some(refreshed)) => metrics().apply(&snapshot, refreshed),
+        _ => CollectionReport::success(),
+    };
+    if refresh.report_pending {
         report
     } else {
         CollectionReport::success()

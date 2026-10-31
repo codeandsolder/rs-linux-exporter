@@ -2,6 +2,7 @@ use crate::collection::CollectionReport;
 use crate::config::AppConfig;
 use crate::metric_support::{RegisterMetricResultExt, prometheus_u64};
 use crate::probe::TraceResult;
+use crate::refresh::AsyncRefreshCache;
 use crate::runtime::debug_enabled;
 use prometheus::{Gauge, GaugeVec};
 use serde::Deserialize;
@@ -10,7 +11,7 @@ use std::net::SocketAddr;
 use std::process::Command;
 use std::str::FromStr;
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const PATH_STATES: &[&str] = &["direct", "peer_relay", "derp", "offline", "unknown"];
 
@@ -85,15 +86,6 @@ struct TailscaleSnapshot {
     status: TailscaleStatus,
     netcheck: Result<Netcheck, String>,
     peers: Vec<PeerSnapshot>,
-}
-
-#[derive(Default)]
-struct TailscaleCache {
-    refreshing: bool,
-    refreshed: Option<Instant>,
-    refreshed_unix_seconds: Option<f64>,
-    snapshot: Option<Result<TailscaleSnapshot, String>>,
-    report_pending: bool,
 }
 
 #[derive(Clone)]
@@ -371,13 +363,8 @@ impl TailscaleMetrics {
 }
 
 static TAILSCALE_METRICS: OnceLock<TailscaleMetrics> = OnceLock::new();
-static TAILSCALE_CACHE: Mutex<TailscaleCache> = Mutex::new(TailscaleCache {
-    refreshing: false,
-    refreshed: None,
-    refreshed_unix_seconds: None,
-    snapshot: None,
-    report_pending: false,
-});
+static TAILSCALE_CACHE: Mutex<AsyncRefreshCache<Result<TailscaleSnapshot, String>>> =
+    Mutex::new(AsyncRefreshCache::new());
 
 fn metrics() -> &'static TailscaleMetrics {
     TAILSCALE_METRICS.get_or_init(TailscaleMetrics::new)
@@ -706,44 +693,25 @@ fn start_refresh(settings: Settings) {
         let mut cache = TAILSCALE_CACHE
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        cache.snapshot = Some(snapshot);
-        cache.refreshed = Some(Instant::now());
-        cache.refreshed_unix_seconds = Some(refreshed_unix_seconds);
-        cache.report_pending = true;
-        cache.refreshing = false;
+        cache.finish_refresh(snapshot, refreshed_unix_seconds);
     });
 }
 
 pub fn update_metrics(config: &AppConfig) -> CollectionReport {
     let interval = Duration::from_secs(config.tailscale_interval_seconds);
-    let (snapshot, refreshed_unix_seconds, refreshing, should_refresh, report_pending) = {
+    let refresh = {
         let mut cache = TAILSCALE_CACHE
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let due = cache
-            .refreshed
-            .is_none_or(|refreshed| refreshed.elapsed() >= interval);
-        let should_refresh = due && !cache.refreshing;
-        if should_refresh {
-            cache.refreshing = true;
-        }
-        let report_pending = cache.report_pending;
-        cache.report_pending = false;
-        (
-            cache.snapshot.clone(),
-            cache.refreshed_unix_seconds,
-            cache.refreshing,
-            should_refresh,
-            report_pending,
-        )
+        cache.begin_scrape(interval)
     };
-    if should_refresh {
+    if refresh.should_refresh {
         start_refresh(Settings::from_config(config));
     }
     metrics()
         .refresh_in_progress
-        .set(if refreshing { 1.0 } else { 0.0 });
-    let report = match (snapshot, refreshed_unix_seconds) {
+        .set(if refresh.refreshing { 1.0 } else { 0.0 });
+    let report = match (refresh.snapshot, refresh.refreshed_unix_seconds) {
         (Some(Ok(snapshot)), Some(refreshed)) => apply(&snapshot, refreshed),
         (Some(Err(error)), _) => {
             if debug_enabled() {
@@ -753,7 +721,7 @@ pub fn update_metrics(config: &AppConfig) -> CollectionReport {
         }
         _ => CollectionReport::success(),
     };
-    if report_pending {
+    if refresh.report_pending {
         report
     } else {
         CollectionReport::success()
