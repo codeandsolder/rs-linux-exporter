@@ -642,6 +642,7 @@ mod tests {
         KNOWN_ACTIVE_STATES, RawUnit, Snapshot, UnitInfo, compile_filter, filter_units, known_u64,
         metrics, systemd_version_value, unit_class, usec_to_seconds, virtualization_label,
     };
+    use zbus_systemd::zbus::OwnedObjectPath;
 
     fn raw_unit(name: &str, load: &str, state: &str) -> RawUnit {
         (
