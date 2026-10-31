@@ -2,19 +2,17 @@ use crate::collection::CollectionReport;
 use crate::config::AppConfig;
 use crate::metric_support::{RegisterMetricResultExt, prometheus_u64};
 use crate::runtime::debug_enabled;
+use futures_util::stream::{self, StreamExt};
 use prometheus::{CounterVec, Gauge, GaugeVec};
 use regex::Regex;
 use std::collections::{BTreeMap, HashMap};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, OnceLock, PoisonError};
-use std::thread;
-use systemd_zbus::{
-    ManagerProxyBlocking, MountProxyBlocking, ServiceProxyBlocking, SocketProxyBlocking,
-    TimerProxyBlocking, UnitProxyBlocking,
+use std::future::Future;
+use std::sync::OnceLock;
+use zbus_systemd::systemd1::{
+    ManagerProxy, MountProxy, ServiceProxy, SocketProxy, TimerProxy, UnitProxy,
 };
-use zbus::blocking::Connection;
-use zbus::proxy::CacheProperties;
-use zbus::zvariant::OwnedObjectPath;
+use zbus_systemd::zbus::proxy::CacheProperties;
+use zbus_systemd::zbus::{self, Connection, OwnedObjectPath};
 
 const PROPERTY_WORKERS: usize = 16;
 const KNOWN_ACTIVE_STATES: &[&str] =
@@ -369,159 +367,161 @@ fn optional_property_error(error: &zbus::Error) -> bool {
         || message.contains("NoSuchUnit")
 }
 
-fn service_proxy<'a>(
+async fn service_proxy<'a>(
     conn: &'a Connection,
-    unit: &'a UnitInfo,
-) -> Result<ServiceProxyBlocking<'a>, zbus::Error> {
-    ServiceProxyBlocking::builder(conn)
-        .path(unit.path.clone())?
+    unit: &UnitInfo,
+) -> Result<ServiceProxy<'a>, zbus::Error> {
+    ServiceProxy::builder(conn)
+        .path(unit.path.clone())
         .cache_properties(CacheProperties::No)
         .build()
+        .await
 }
 
-fn build_service_status(conn: &Connection, unit: &UnitInfo) -> Result<ServiceStatus, zbus::Error> {
-    let proxy = service_proxy(conn, unit)?;
+async fn build_service_status(
+    conn: Connection,
+    unit: UnitInfo,
+) -> Result<ServiceStatus, zbus::Error> {
+    let proxy = service_proxy(&conn, &unit).await?;
     Ok(ServiceStatus {
-        name: unit.name.clone(),
-        restarts: u64::from(proxy.n_restarts()?),
-        service_type: proxy.kind().ok(),
+        name: unit.name,
+        restarts: u64::from(proxy.n_restarts().await?),
+        service_type: proxy.type_property().await.ok(),
     })
 }
 
-fn build_mount_status(conn: &Connection, unit: &UnitInfo) -> Result<MountStatus, zbus::Error> {
-    let proxy = MountProxyBlocking::builder(conn)
-        .path(unit.path.clone())?
+async fn build_mount_status(conn: Connection, unit: UnitInfo) -> Result<MountStatus, zbus::Error> {
+    let proxy = MountProxy::builder(&conn)
+        .path(unit.path.clone())
         .cache_properties(CacheProperties::No)
-        .build()?;
+        .build()
+        .await?;
     Ok(MountStatus {
-        name: unit.name.clone(),
-        mount_type: proxy.kind().ok(),
+        name: unit.name,
+        mount_type: proxy.type_property().await.ok(),
     })
 }
 
-fn build_service_runtime(
-    conn: &Connection,
-    unit: &UnitInfo,
+async fn build_service_runtime(
+    conn: Connection,
+    unit: UnitInfo,
 ) -> Result<ServiceRuntime, zbus::Error> {
-    let proxy = service_proxy(conn, unit)?;
-    let base = UnitProxyBlocking::builder(conn)
-        .path(unit.path.clone())?
+    let proxy = service_proxy(&conn, &unit).await?;
+    let base = UnitProxy::builder(&conn)
+        .path(unit.path.clone())
         .cache_properties(CacheProperties::No)
-        .build()?;
+        .build()
+        .await?;
     Ok(ServiceRuntime {
-        name: unit.name.clone(),
-        start_time_seconds: usec_to_seconds(base.active_enter_timestamp()?),
-        tasks_current: known_u64(proxy.tasks_current()?),
-        tasks_max: known_u64(proxy.tasks_max()?),
+        name: unit.name,
+        start_time_seconds: usec_to_seconds(base.active_enter_timestamp().await?),
+        tasks_current: known_u64(proxy.tasks_current().await?),
+        tasks_max: known_u64(proxy.tasks_max().await?),
     })
 }
 
-fn build_timer_detail(conn: &Connection, unit: &UnitInfo) -> Result<TimerDetails, zbus::Error> {
-    let proxy = TimerProxyBlocking::builder(conn)
-        .path(unit.path.clone())?
+async fn build_timer_detail(conn: Connection, unit: UnitInfo) -> Result<TimerDetails, zbus::Error> {
+    let proxy = TimerProxy::builder(&conn)
+        .path(unit.path.clone())
         .cache_properties(CacheProperties::No)
-        .build()?;
+        .build()
+        .await?;
     Ok(TimerDetails {
-        name: unit.name.clone(),
-        last_trigger_seconds: usec_to_seconds(proxy.last_trigger_usec()?).unwrap_or(0.0),
+        name: unit.name,
+        last_trigger_seconds: usec_to_seconds(proxy.last_trigger_u_sec().await?).unwrap_or(0.0),
     })
 }
 
-fn build_socket_detail(conn: &Connection, unit: &UnitInfo) -> Result<SocketDetails, zbus::Error> {
-    let proxy = SocketProxyBlocking::builder(conn)
-        .path(unit.path.clone())?
+async fn build_socket_detail(
+    conn: Connection,
+    unit: UnitInfo,
+) -> Result<SocketDetails, zbus::Error> {
+    let proxy = SocketProxy::builder(&conn)
+        .path(unit.path.clone())
         .cache_properties(CacheProperties::No)
-        .build()?;
+        .build()
+        .await?;
     Ok(SocketDetails {
-        name: unit.name.clone(),
-        accepted: u64::from(proxy.n_accepted()?),
-        current: u64::from(proxy.n_connections()?),
-        refused: u64::from(proxy.n_refused()?),
+        name: unit.name,
+        accepted: u64::from(proxy.n_accepted().await?),
+        current: u64::from(proxy.n_connections().await?),
+        refused: u64::from(proxy.n_refused().await?),
     })
 }
 
-fn parallel_collect<T, F>(
+async fn parallel_collect<T, F, Fut>(
     conn: &Connection,
     units: &[UnitInfo],
     collect: F,
 ) -> (Vec<T>, CollectionReport)
 where
-    T: Send,
-    F: Fn(&Connection, &UnitInfo) -> Result<T, zbus::Error> + Sync,
+    F: Fn(Connection, UnitInfo) -> Fut + Copy,
+    Fut: Future<Output = Result<T, zbus::Error>>,
 {
     if units.is_empty() {
         return (Vec::new(), CollectionReport::success());
     }
-    let next = AtomicUsize::new(0);
-    let output = Mutex::new(Vec::with_capacity(units.len()));
-    let errors = Mutex::new(Vec::<String>::new());
-    let workers = PROPERTY_WORKERS.min(units.len());
-    thread::scope(|scope| {
-        for _ in 0..workers {
-            let conn = conn.clone();
-            let next = &next;
-            let output = &output;
-            let errors = &errors;
-            let collect = &collect;
-            let _worker = scope.spawn(move || {
-                loop {
-                    let index = next.fetch_add(1, Ordering::Relaxed);
-                    let Some(unit) = units.get(index) else {
-                        break;
-                    };
-                    match collect(&conn, unit) {
-                        Ok(value) => output
-                            .lock()
-                            .unwrap_or_else(PoisonError::into_inner)
-                            .push(value),
-                        Err(error) if optional_property_error(&error) => {}
-                        Err(error) => errors
-                            .lock()
-                            .unwrap_or_else(PoisonError::into_inner)
-                            .push(format!("{}: {error}", unit.name)),
-                    }
-                }
-            });
-        }
-    });
 
-    let errors = errors.into_inner().unwrap_or_else(PoisonError::into_inner);
+    let workers = PROPERTY_WORKERS.min(units.len());
+    let outcomes = stream::iter(units.iter().cloned().map(|unit| {
+        let conn = conn.clone();
+        async move {
+            let name = unit.name.clone();
+            (name, collect(conn, unit).await)
+        }
+    }))
+    .buffer_unordered(workers)
+    .collect::<Vec<_>>()
+    .await;
+
+    let mut output = Vec::with_capacity(outcomes.len());
     let mut report = CollectionReport::success();
-    for error in &errors {
-        report.record_error();
-        if debug_enabled() {
-            eprintln!("systemd: property collection failed: {error}");
+    for (name, outcome) in outcomes {
+        match outcome {
+            Ok(value) => output.push(value),
+            Err(error) if optional_property_error(&error) => {}
+            Err(error) => {
+                report.record_error();
+                if debug_enabled() {
+                    eprintln!("systemd: property collection failed: {name}: {error}");
+                }
+            }
         }
     }
-    (
-        output.into_inner().unwrap_or_else(PoisonError::into_inner),
-        report,
-    )
+    (output, report)
 }
 
-fn collect_snapshot(config: &AppConfig) -> Result<(Snapshot, CollectionReport), String> {
+async fn collect_snapshot_async(
+    config: &AppConfig,
+) -> Result<(Snapshot, CollectionReport), String> {
     let include = compile_filter(&config.systemd_unit_include)
         .map_err(|error| format!("invalid systemd include regex: {error}"))?;
     let exclude = compile_filter(&config.systemd_unit_exclude)
         .map_err(|error| format!("invalid systemd exclude regex: {error}"))?;
-    let conn = Connection::system().map_err(|error| format!("connect system bus: {error}"))?;
-    let manager = ManagerProxyBlocking::builder(&conn)
+    let conn = Connection::system()
+        .await
+        .map_err(|error| format!("connect system bus: {error}"))?;
+    let manager = ManagerProxy::builder(&conn)
         .cache_properties(CacheProperties::No)
         .build()
+        .await
         .map_err(|error| format!("create systemd manager proxy: {error}"))?;
 
     let version = manager
         .version()
+        .await
         .map_err(|error| format!("read systemd version: {error}"))?;
     let virtualization = manager
         .virtualization()
+        .await
         .map_err(|error| format!("read systemd virtualization: {error}"))?;
     let system_state = manager
         .system_state()
+        .await
         .map_err(|error| format!("read systemd system state: {error}"))?;
     let raw: Vec<RawUnit> = manager
-        .inner()
-        .call("ListUnits", &())
+        .list_units()
+        .await
         .map_err(|error| format!("ListUnits: {error}"))?;
     let mut units = filter_units(raw, &include, &exclude, config.systemd_max_units)?;
 
@@ -546,8 +546,9 @@ fn collect_snapshot(config: &AppConfig) -> Result<(Snapshot, CollectionReport), 
         .cloned()
         .collect::<Vec<_>>();
 
-    let (services, mut report) = parallel_collect(&conn, &service_units, build_service_status);
-    let (mounts, mount_report) = parallel_collect(&conn, &mount_units, build_mount_status);
+    let (services, mut report) =
+        parallel_collect(&conn, &service_units, build_service_status).await;
+    let (mounts, mount_report) = parallel_collect(&conn, &mount_units, build_mount_status).await;
     report.merge(mount_report);
     let mut state_types = services
         .iter()
@@ -570,14 +571,15 @@ fn collect_snapshot(config: &AppConfig) -> Result<(Snapshot, CollectionReport), 
         }
     }
 
-    let (timers, timer_report) = parallel_collect(&conn, &timer_units, build_timer_detail);
-    let (sockets, socket_report) = parallel_collect(&conn, &socket_units, build_socket_detail);
+    let (timers, timer_report) = parallel_collect(&conn, &timer_units, build_timer_detail).await;
+    let (sockets, socket_report) =
+        parallel_collect(&conn, &socket_units, build_socket_detail).await;
     report.merge(timer_report);
     report.merge(socket_report);
 
     let service_runtime = if config.systemd_detailed_metrics {
         let (details, detail_report) =
-            parallel_collect(&conn, &service_units, build_service_runtime);
+            parallel_collect(&conn, &service_units, build_service_runtime).await;
         report.merge(detail_report);
         details
     } else {
@@ -597,6 +599,10 @@ fn collect_snapshot(config: &AppConfig) -> Result<(Snapshot, CollectionReport), 
         },
         report,
     ))
+}
+
+fn collect_snapshot(config: &AppConfig) -> Result<(Snapshot, CollectionReport), String> {
+    zbus::block_on(collect_snapshot_async(config))
 }
 
 pub fn update_metrics(config: &AppConfig) -> CollectionReport {
@@ -621,7 +627,7 @@ mod tests {
         KNOWN_ACTIVE_STATES, RawUnit, Snapshot, UnitInfo, compile_filter, filter_units, known_u64,
         metrics, systemd_version_value, unit_class, usec_to_seconds, virtualization_label,
     };
-    use zbus::zvariant::OwnedObjectPath;
+    use zbus::OwnedObjectPath;
 
     fn raw_unit(name: &str, load: &str, state: &str) -> RawUnit {
         (
