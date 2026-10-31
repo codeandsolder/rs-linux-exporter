@@ -491,6 +491,64 @@ where
     (output, report)
 }
 
+struct UnitGroups {
+    services: Vec<UnitInfo>,
+    mounts: Vec<UnitInfo>,
+    timers: Vec<UnitInfo>,
+    sockets: Vec<UnitInfo>,
+}
+
+impl UnitGroups {
+    fn from_units(units: &[UnitInfo]) -> Self {
+        let by_class = |class: &str| {
+            units
+                .iter()
+                .filter(|unit| unit.unit_class == class)
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        Self {
+            services: by_class("service"),
+            mounts: by_class("mount"),
+            timers: by_class("timer"),
+            sockets: by_class("socket"),
+        }
+    }
+}
+
+async fn collect_unit_types(
+    conn: &Connection,
+    units: &mut [UnitInfo],
+    groups: &UnitGroups,
+) -> (Vec<ServiceStatus>, CollectionReport) {
+    let (services, mut report) =
+        parallel_collect(conn, &groups.services, build_service_status).await;
+    let (mounts, mount_report) = parallel_collect(conn, &groups.mounts, build_mount_status).await;
+    report.merge(mount_report);
+
+    let mut state_types = services
+        .iter()
+        .filter_map(|status| {
+            status
+                .service_type
+                .as_deref()
+                .map(|kind| (status.name.as_str(), kind))
+        })
+        .collect::<HashMap<_, _>>();
+    state_types.extend(mounts.iter().filter_map(|status| {
+        status
+            .mount_type
+            .as_deref()
+            .map(|kind| (status.name.as_str(), kind))
+    }));
+    for unit in units {
+        if let Some(kind) = state_types.get(unit.name.as_str()) {
+            unit.state_type = (*kind).to_string();
+        }
+    }
+    (services, report)
+}
+
 async fn collect_snapshot_async(
     config: &AppConfig,
 ) -> Result<(Snapshot, CollectionReport), String> {
@@ -525,61 +583,18 @@ async fn collect_snapshot_async(
         .map_err(|error| format!("ListUnits: {error}"))?;
     let mut units = filter_units(raw, &include, &exclude, config.systemd_max_units)?;
 
-    let service_units = units
-        .iter()
-        .filter(|unit| unit.unit_class == "service")
-        .cloned()
-        .collect::<Vec<_>>();
-    let mount_units = units
-        .iter()
-        .filter(|unit| unit.unit_class == "mount")
-        .cloned()
-        .collect::<Vec<_>>();
-    let timer_units = units
-        .iter()
-        .filter(|unit| unit.unit_class == "timer")
-        .cloned()
-        .collect::<Vec<_>>();
-    let socket_units = units
-        .iter()
-        .filter(|unit| unit.unit_class == "socket")
-        .cloned()
-        .collect::<Vec<_>>();
+    let groups = UnitGroups::from_units(&units);
+    let (services, mut report) = collect_unit_types(&conn, &mut units, &groups).await;
 
-    let (services, mut report) =
-        parallel_collect(&conn, &service_units, build_service_status).await;
-    let (mounts, mount_report) = parallel_collect(&conn, &mount_units, build_mount_status).await;
-    report.merge(mount_report);
-    let mut state_types = services
-        .iter()
-        .filter_map(|status| {
-            status
-                .service_type
-                .as_deref()
-                .map(|kind| (status.name.as_str(), kind))
-        })
-        .collect::<HashMap<_, _>>();
-    state_types.extend(mounts.iter().filter_map(|status| {
-        status
-            .mount_type
-            .as_deref()
-            .map(|kind| (status.name.as_str(), kind))
-    }));
-    for unit in &mut units {
-        if let Some(kind) = state_types.get(unit.name.as_str()) {
-            unit.state_type = (*kind).to_string();
-        }
-    }
-
-    let (timers, timer_report) = parallel_collect(&conn, &timer_units, build_timer_detail).await;
+    let (timers, timer_report) = parallel_collect(&conn, &groups.timers, build_timer_detail).await;
     let (sockets, socket_report) =
-        parallel_collect(&conn, &socket_units, build_socket_detail).await;
+        parallel_collect(&conn, &groups.sockets, build_socket_detail).await;
     report.merge(timer_report);
     report.merge(socket_report);
 
     let service_runtime = if config.systemd_detailed_metrics {
         let (details, detail_report) =
-            parallel_collect(&conn, &service_units, build_service_runtime).await;
+            parallel_collect(&conn, &groups.services, build_service_runtime).await;
         report.merge(detail_report);
         details
     } else {
@@ -627,7 +642,6 @@ mod tests {
         KNOWN_ACTIVE_STATES, RawUnit, Snapshot, UnitInfo, compile_filter, filter_units, known_u64,
         metrics, systemd_version_value, unit_class, usec_to_seconds, virtualization_label,
     };
-    use zbus::OwnedObjectPath;
 
     fn raw_unit(name: &str, load: &str, state: &str) -> RawUnit {
         (
