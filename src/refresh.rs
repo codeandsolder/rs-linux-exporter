@@ -1,15 +1,15 @@
 use std::time::{Duration, Instant};
 
-pub(super) struct IntervalGate {
+pub struct IntervalGate {
     last_attempt: Option<Instant>,
 }
 
 impl IntervalGate {
-    pub(super) const fn new() -> Self {
+    pub const fn new() -> Self {
         Self { last_attempt: None }
     }
 
-    pub(super) fn due(&mut self, interval: Duration) -> bool {
+    pub fn due(&mut self, interval: Duration) -> bool {
         self.due_at(interval, Instant::now())
     }
 
@@ -25,15 +25,15 @@ impl IntervalGate {
     }
 }
 
-pub(super) struct AsyncRefreshSnapshot<T> {
-    pub(super) snapshot: Option<T>,
-    pub(super) refreshed_unix_seconds: Option<f64>,
-    pub(super) refreshing: bool,
-    pub(super) should_refresh: bool,
-    pub(super) report_pending: bool,
+pub struct AsyncRefreshSnapshot<T> {
+    pub snapshot: Option<T>,
+    pub refreshed_unix_seconds: Option<f64>,
+    pub refreshing: bool,
+    pub should_refresh: bool,
+    pub report_pending: bool,
 }
 
-pub(super) struct AsyncRefreshCache<T> {
+pub struct AsyncRefreshCache<T> {
     refreshing: bool,
     refreshed: Option<Instant>,
     refreshed_unix_seconds: Option<f64>,
@@ -42,7 +42,7 @@ pub(super) struct AsyncRefreshCache<T> {
 }
 
 impl<T> AsyncRefreshCache<T> {
-    pub(super) const fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             refreshing: false,
             refreshed: None,
@@ -52,7 +52,7 @@ impl<T> AsyncRefreshCache<T> {
         }
     }
 
-    pub(super) fn finish_refresh(&mut self, snapshot: T, refreshed_unix_seconds: f64) {
+    pub fn finish_refresh(&mut self, snapshot: T, refreshed_unix_seconds: f64) {
         self.finish_refresh_at(snapshot, refreshed_unix_seconds, Instant::now());
     }
 
@@ -66,7 +66,7 @@ impl<T> AsyncRefreshCache<T> {
 }
 
 impl<T: Clone> AsyncRefreshCache<T> {
-    pub(super) fn begin_scrape(&mut self, interval: Duration) -> AsyncRefreshSnapshot<T> {
+    pub fn begin_scrape(&mut self, interval: Duration) -> AsyncRefreshSnapshot<T> {
         self.begin_scrape_at(interval, Instant::now())
     }
 
