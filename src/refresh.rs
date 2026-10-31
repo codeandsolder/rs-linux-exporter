@@ -1,15 +1,15 @@
 use std::time::{Duration, Instant};
 
-pub(crate) struct IntervalGate {
+pub(super) struct IntervalGate {
     last_attempt: Option<Instant>,
 }
 
 impl IntervalGate {
-    pub(crate) const fn new() -> Self {
+    pub(super) const fn new() -> Self {
         Self { last_attempt: None }
     }
 
-    pub(crate) fn due(&mut self, interval: Duration) -> bool {
+    pub(super) fn due(&mut self, interval: Duration) -> bool {
         self.due_at(interval, Instant::now())
     }
 
@@ -25,15 +25,15 @@ impl IntervalGate {
     }
 }
 
-pub(crate) struct AsyncRefreshSnapshot<T> {
-    pub(crate) snapshot: Option<T>,
-    pub(crate) refreshed_unix_seconds: Option<f64>,
-    pub(crate) refreshing: bool,
-    pub(crate) should_refresh: bool,
-    pub(crate) report_pending: bool,
+pub(super) struct AsyncRefreshSnapshot<T> {
+    pub(super) snapshot: Option<T>,
+    pub(super) refreshed_unix_seconds: Option<f64>,
+    pub(super) refreshing: bool,
+    pub(super) should_refresh: bool,
+    pub(super) report_pending: bool,
 }
 
-pub(crate) struct AsyncRefreshCache<T> {
+pub(super) struct AsyncRefreshCache<T> {
     refreshing: bool,
     refreshed: Option<Instant>,
     refreshed_unix_seconds: Option<f64>,
@@ -42,7 +42,7 @@ pub(crate) struct AsyncRefreshCache<T> {
 }
 
 impl<T> AsyncRefreshCache<T> {
-    pub(crate) const fn new() -> Self {
+    pub(super) const fn new() -> Self {
         Self {
             refreshing: false,
             refreshed: None,
@@ -52,7 +52,7 @@ impl<T> AsyncRefreshCache<T> {
         }
     }
 
-    pub(crate) fn finish_refresh(&mut self, snapshot: T, refreshed_unix_seconds: f64) {
+    pub(super) fn finish_refresh(&mut self, snapshot: T, refreshed_unix_seconds: f64) {
         self.finish_refresh_at(snapshot, refreshed_unix_seconds, Instant::now());
     }
 
@@ -66,7 +66,7 @@ impl<T> AsyncRefreshCache<T> {
 }
 
 impl<T: Clone> AsyncRefreshCache<T> {
-    pub(crate) fn begin_scrape(&mut self, interval: Duration) -> AsyncRefreshSnapshot<T> {
+    pub(super) fn begin_scrape(&mut self, interval: Duration) -> AsyncRefreshSnapshot<T> {
         self.begin_scrape_at(interval, Instant::now())
     }
 
