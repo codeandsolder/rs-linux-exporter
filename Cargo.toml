@@ -28,7 +28,7 @@ zbus_systemd = { version = "0.26201.0", default-features = false, features = ["s
 regex = "1"
 rtime-clock = "0.15.1"
 etc-os-release = { version = "0.1.1", features = ["date"] }
-lurkmoar = { git = "https://github.com/codeandsolder/lurkmoar-rs", rev = "eb22687dc167a86e923560935efc1234a9832e27" }
+lurkmoar = { version = "0.1.0", git = "https://github.com/codeandsolder/lurkmoar-rs", rev = "eb22687dc167a86e923560935efc1234a9832e27" }
 
 [dev-dependencies]
 tempfile = "3"
