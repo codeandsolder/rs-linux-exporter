@@ -38,6 +38,19 @@
       "automerge": false
     },
     {
+      "description": "Keep release binaries on Ubuntu 24.04 for Debian 13 glibc compatibility",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchFileNames": [
+        ".github/workflows/release-binary.yml"
+      ],
+      "matchPackageNames": [
+        "ubuntu"
+      ],
+      "allowedVersions": "24.04"
+    },
+    {
       "description": "Package replacements stay open for the maintenance agent",
       "matchUpdateTypes": [
         "replacement"

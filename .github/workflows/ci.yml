@@ -12,7 +12,7 @@ permissions:
 jobs:
   rust-1-99:
     name: Rust 1.99 build and tests
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust 1.99
@@ -36,7 +36,7 @@ jobs:
 
   python-tooling:
     name: Python tooling
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - name: Install uv
