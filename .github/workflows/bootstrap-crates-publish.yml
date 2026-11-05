@@ -10,18 +10,24 @@ jobs:
       contents: read
     steps:
       - name: Checkout exporter v0.1.15
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: v0.1.15
           path: exporter-release
       - name: Checkout pinned lurkmoar 0.1.0
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: codeandsolder/lurkmoar-rs
           ref: eb22687dc167a86e923560935efc1234a9832e27
           path: lurkmoar-release
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: "1.99.1"
+      - name: Setup mandatory sccache
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@23b86d2eeed31f7893c34e942c32cf6555299dbb # main
+        with:
+          rust-toolchain: "1.99.1"
       - name: Publish pinned lurkmoar 0.1.0 if needed
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
@@ -55,3 +61,6 @@ jobs:
             sleep 5
           done
           exit 1
+      - name: Finalize mandatory sccache
+        if: always()
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@23b86d2eeed31f7893c34e942c32cf6555299dbb # main

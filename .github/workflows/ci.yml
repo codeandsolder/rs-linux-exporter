@@ -6,41 +6,36 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
 jobs:
-  rust-1-99:
-    name: Rust 1.99 build and tests
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install Rust 1.99
-        uses: dtolnay/rust-toolchain@1.99.0
-        with:
-          components: clippy,rustfmt
-      - uses: Swatinem/rust-cache@v2
-      - name: Format
-        run: cargo fmt --all --check
-      - name: Check
-        env:
-          CARGO_BUILD_WARNINGS: deny
-        run: cargo check --locked --all-targets
-      - name: Test
-        run: cargo test --locked
-      - name: Documentation
-        env:
-          RUSTDOCFLAGS: -D warnings
-        run: cargo doc --locked --no-deps
-
+  rust-linux:
+    name: Rust 1.99.1 Linux checks and tests
+    permissions:
+      contents: read
+    uses: codeandsolder/ci-workflows/.github/workflows/rust-sccache.yml@23b86d2eeed31f7893c34e942c32cf6555299dbb # main
+    with:
+      runner: ubuntu-26.04
+      rust-toolchain: "1.99.1"
+      rust-components: "clippy rustfmt"
+      command: |
+        cargo +1.99.1 fmt --all -- --check
+        CARGO_BUILD_WARNINGS=deny cargo +1.99.1 check --locked --all-targets
+        cargo +1.99.1 test --locked
+        RUSTDOCFLAGS='-D warnings' cargo +1.99.1 doc --locked --no-deps
 
   python-tooling:
     name: Python tooling
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "latest-known"
       - name: Ruff
@@ -50,7 +45,7 @@ jobs:
 
   strict-rust:
     name: Strict Rust
-    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@260a48d4b1cf65252f892b067fe41f44f05e653a # main
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@d3fd9e6bfeee2d9a12c90ea17ed6c650b39fad9f # main
     with:
       ban-python-outside-ci: false
       allow-test-panics: true

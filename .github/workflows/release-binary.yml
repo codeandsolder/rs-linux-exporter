@@ -12,12 +12,20 @@ jobs:
   linux-x86_64-gnu:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - name: Install Rust 1.99
-        uses: dtolnay/rust-toolchain@1.99.0
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install Rust 1.99.1
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: "1.99.1"
+      - name: Setup mandatory sccache
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@23b86d2eeed31f7893c34e942c32cf6555299dbb # main
+        with:
+          rust-toolchain: "1.99.1"
       - name: Build release binary
-        run: cargo build --release --locked
+        run: cargo +1.99.1 build --release --locked
+      - name: Finalize mandatory sccache
+        if: always()
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@23b86d2eeed31f7893c34e942c32cf6555299dbb # main
       - name: Package binary and checksum
         run: |
           install -d dist
@@ -26,7 +34,7 @@ jobs:
           cd dist
           sha256sum rs-linux-exporter-x86_64-linux-gnu > rs-linux-exporter-x86_64-linux-gnu.sha256
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: rs-linux-exporter-x86_64-linux-gnu
           path: |
@@ -35,7 +43,7 @@ jobs:
           if-no-files-found: error
       - name: Upload release assets
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@5113cdc90fd4d541c801c55356214017bf5ae34b # v3
         with:
           files: |
             dist/rs-linux-exporter-x86_64-linux-gnu
