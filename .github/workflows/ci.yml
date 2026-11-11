@@ -18,7 +18,7 @@ jobs:
     name: Rust 1.99.1 Linux checks and tests
     permissions:
       contents: read
-    uses: codeandsolder/ci-workflows/.github/workflows/rust-sccache.yml@be66a1ada16209be5b75d39724ef7383892d92cc # main
+    uses: codeandsolder/ci-workflows/.github/workflows/rust-sccache.yml@7c04e549f943d270978b0302b278771ae6e2e40d # main
     with:
       runner: ubuntu-26.04
       rust-toolchain: "1.99.1"
@@ -45,7 +45,7 @@ jobs:
 
   strict-rust:
     name: Strict Rust
-    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@432dc51cb588033b4f2836008e6814d1aedf3f55 # main
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@16c9a26e94f40c8f0d706fa6d9a4d207c1e2e78a # main
     with:
       ban-python-outside-ci: false
       allow-test-panics: true
