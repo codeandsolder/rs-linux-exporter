@@ -25,7 +25,7 @@ jobs:
         with:
           toolchain: "1.99.1"
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@7c04e549f943d270978b0302b278771ae6e2e40d # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@6b1adce9a7b2de91d50572fda04bed37c805f814 # main
         with:
           rust-toolchain: "1.99.1"
       - name: Publish pinned lurkmoar 0.1.0 if needed
@@ -63,4 +63,4 @@ jobs:
           exit 1
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@7c04e549f943d270978b0302b278771ae6e2e40d # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@6b1adce9a7b2de91d50572fda04bed37c805f814 # main
