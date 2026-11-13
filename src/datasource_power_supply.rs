@@ -62,7 +62,7 @@ impl PowerSupplyMetrics {
 
             current_amps: prometheus::register_gauge_vec!(
                 "power_supply_current_amps",
-                "Power supply current in Amps",
+                "Power supply current in Amps (batteries: positive charging, negative discharging)",
                 &["name", "measurement"]
             )
             .or_exit("power_supply_current_amps"),
@@ -117,6 +117,42 @@ fn metrics() -> &'static PowerSupplyMetrics {
     POWER_SUPPLY_METRICS.get_or_init(PowerSupplyMetrics::new)
 }
 
+fn supply_current_amps(
+    supply_type: &str,
+    status: Option<&str>,
+    current_microamps: Option<i64>,
+    power_microwatts: Option<i64>,
+    voltage_microvolts: Option<i64>,
+) -> Option<f64> {
+    if supply_type != "Battery" {
+        return current_microamps.map(|current| prometheus_i64(current) / 1_000_000.0);
+    }
+
+    // Some batteries (including the ASUS G14) provide power_now and
+    // voltage_now but no current_now. µW / µV already gives amperes.
+    let current = if let Some(current) = current_microamps {
+        prometheus_i64(current) / 1_000_000.0
+    } else if matches!(status, Some("Charging" | "Discharging")) {
+        let voltage = voltage_microvolts?;
+        if voltage <= 0 {
+            return None;
+        }
+        prometheus_i64(power_microwatts?) / prometheus_i64(voltage)
+    } else {
+        // An unsigned power_now cannot reveal direction by itself.
+        return None;
+    };
+
+    // Different battery drivers expose current_now with different polarities.
+    // The battery's status supplies the direction; retain raw readings when
+    // the kernel does not report a charging/discharging direction.
+    match status {
+        Some("Charging") => Some(current.abs()),
+        Some("Discharging") => Some(-current.abs()),
+        _ => Some(current),
+    }
+}
+
 fn update_battery_policy(metrics: &PowerSupplyMetrics, supply_path: &Path, supply_name: &str) {
     if let Some(cycles) = read_i64(&supply_path.join("cycle_count")) {
         metrics
@@ -129,6 +165,53 @@ fn update_battery_policy(metrics: &PowerSupplyMetrics, supply_path: &Path, suppl
             .charge_limit_percent
             .with_label_values(&[supply_name])
             .set(prometheus_i64(limit));
+    }
+}
+
+fn update_electrical_measurements(
+    metrics: &PowerSupplyMetrics,
+    supply_path: &Path,
+    supply_name: &str,
+    supply_type: &str,
+    status: Option<&str>,
+) {
+    // Voltage (microvolts -> volts)
+    let voltage_now = read_i64(&supply_path.join("voltage_now"));
+    if let Some(voltage) = voltage_now {
+        metrics
+            .voltage_volts
+            .with_label_values(&[supply_name, "now"])
+            .set(prometheus_i64(voltage) / 1_000_000.0);
+    }
+    if let Some(voltage) = read_i64(&supply_path.join("voltage_min_design")) {
+        metrics
+            .voltage_volts
+            .with_label_values(&[supply_name, "min_design"])
+            .set(prometheus_i64(voltage) / 1_000_000.0);
+    }
+
+    let power_now = read_i64(&supply_path.join("power_now"));
+    // Battery current is positive when charging and negative when discharging;
+    // other supplies retain the kernel's raw sign and measurement semantics.
+    if let Some(current) = supply_current_amps(
+        supply_type,
+        status,
+        read_i64(&supply_path.join("current_now")),
+        power_now,
+        voltage_now,
+    ) {
+        metrics
+            .current_amps
+            .with_label_values(&[supply_name, "now"])
+            .set(current);
+    }
+
+    // Power (microwatts -> watts)
+    if let Some(power) = power_now {
+        metrics
+            .power_watts
+            .with_label_values(&[supply_name])
+            .set(prometheus_i64(power) / 1_000_000.0);
     }
 }
 
@@ -154,7 +237,8 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
     }
 
     // Battery status (Charging, Discharging, Not charging, Full)
-    if let Some(status) = read_trimmed(&supply_path.join("status")) {
+    let status = read_trimmed(&supply_path.join("status"));
+    if let Some(status) = status.as_deref() {
         for state in ["Charging", "Discharging", "Not charging", "Full", "Unknown"] {
             metrics
                 .status
@@ -171,35 +255,13 @@ fn update_power_supply(supply_path: &Path, supply_name: &str) {
             .set(prometheus_i64(capacity));
     }
 
-    // Voltage (microvolts -> volts)
-    if let Some(voltage) = read_i64(&supply_path.join("voltage_now")) {
-        metrics
-            .voltage_volts
-            .with_label_values(&[supply_name, "now"])
-            .set(prometheus_i64(voltage) / 1_000_000.0);
-    }
-    if let Some(voltage) = read_i64(&supply_path.join("voltage_min_design")) {
-        metrics
-            .voltage_volts
-            .with_label_values(&[supply_name, "min_design"])
-            .set(prometheus_i64(voltage) / 1_000_000.0);
-    }
-
-    // Current (microamps -> amps)
-    if let Some(current) = read_i64(&supply_path.join("current_now")) {
-        metrics
-            .current_amps
-            .with_label_values(&[supply_name, "now"])
-            .set(prometheus_i64(current) / 1_000_000.0);
-    }
-
-    // Power (microwatts -> watts)
-    if let Some(power) = read_i64(&supply_path.join("power_now")) {
-        metrics
-            .power_watts
-            .with_label_values(&[supply_name])
-            .set(prometheus_i64(power) / 1_000_000.0);
-    }
+    update_electrical_measurements(
+        metrics,
+        supply_path,
+        supply_name,
+        &supply_type,
+        status.as_deref(),
+    );
 
     // Energy (microwatt-hours -> watt-hours)
     if let Some(energy) = read_i64(&supply_path.join("energy_now")) {
@@ -333,6 +395,94 @@ mod tests {
         let file = dir.path().join("current_now");
         fs::write(&file, "-500000\n").unwrap();
         assert_eq!(read_i64(&file), Some(-500_000));
+    }
+
+    #[test]
+    fn test_battery_current_direction_normalizes_both_raw_polarities() {
+        for (status, expected) in [("Charging", 1.5), ("Discharging", -1.5)] {
+            for raw in [-1_500_000, 1_500_000] {
+                assert_eq!(
+                    supply_current_amps("Battery", Some(status), Some(raw), None, None),
+                    Some(expected)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_battery_current_from_power_and_voltage() {
+        assert_eq!(
+            supply_current_amps(
+                "Battery",
+                Some("Charging"),
+                None,
+                Some(12_000_000),
+                Some(12_000_000)
+            ),
+            Some(1.0)
+        );
+        assert_eq!(
+            supply_current_amps(
+                "Battery",
+                Some("Discharging"),
+                None,
+                Some(12_000_000),
+                Some(12_000_000)
+            ),
+            Some(-1.0)
+        );
+        assert_eq!(
+            supply_current_amps(
+                "Battery",
+                Some("Discharging"),
+                None,
+                Some(12_000_000),
+                Some(0)
+            ),
+            None
+        );
+        assert_eq!(
+            supply_current_amps("Battery", None, None, Some(12_000_000), Some(12_000_000)),
+            None
+        );
+    }
+
+    #[test]
+    fn test_current_fallback_does_not_change_other_supply_semantics() {
+        assert_eq!(
+            supply_current_amps(
+                "USB",
+                Some("Discharging"),
+                Some(3_250_000),
+                Some(12_000_000),
+                Some(12_000_000)
+            ),
+            Some(3.25)
+        );
+        assert_eq!(
+            supply_current_amps("USB", None, None, Some(12_000_000), Some(12_000_000)),
+            None
+        );
+        assert_eq!(
+            supply_current_amps("Battery", None, Some(-123_000), None, None),
+            Some(-0.123)
+        );
+    }
+
+    #[test]
+    fn test_battery_current_emitted_from_sysfs_power_without_current_file() {
+        let dir = TempDir::new().unwrap();
+        let supply = create_battery(dir.path(), "BAT_SIGNED", 85, "Discharging");
+        fs::write(supply.join("voltage_now"), "12000000\n").unwrap();
+        fs::write(supply.join("power_now"), "12000000\n").unwrap();
+        update_power_supply(&supply, "BAT_SIGNED");
+        assert_eq!(
+            metrics()
+                .current_amps
+                .with_label_values(&["BAT_SIGNED", "now"])
+                .get(),
+            -1.0
+        );
     }
 
     #[test]
