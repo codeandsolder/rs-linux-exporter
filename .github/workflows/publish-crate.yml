@@ -16,7 +16,7 @@ jobs:
         with:
           toolchain: "1.99.1"
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@39f1e45632ec74fa43ef9976962c26f692c22b6e # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@77dd7bb7dcbb8450e335bbbd1c47591733dc79a4 # main
         with:
           rust-toolchain: "1.99.1"
       - name: Publish to crates.io
@@ -25,4 +25,4 @@ jobs:
         run: cargo publish
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@39f1e45632ec74fa43ef9976962c26f692c22b6e # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@77dd7bb7dcbb8450e335bbbd1c47591733dc79a4 # main
