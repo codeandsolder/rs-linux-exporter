@@ -1373,9 +1373,9 @@ dependencies = [
 
 [[package]]
 name = "rtime-clock"
-version = "0.15.1"
+version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8de872df97a9e2cecd4676906daec2c4e256f5c1ef1b963090203b3acd5435fb"
+checksum = "80464aa5425c272c1e62cb0d045fb5945ba53ebb95bc695d535cb9fec0ffe10b"
 dependencies = [
  "libc",
  "nix 0.31.3",
@@ -1385,9 +1385,9 @@ dependencies = [
 
 [[package]]
 name = "rtime-core"
-version = "0.15.1"
+version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "478b81be88c36f5d2bd784e298ad869c36a3148afcaa53052434528e93173373"
+checksum = "29750659458ad25278224e5dd6b0090a452ec61f2ae05e780dabe0ccb8487447"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
