@@ -38,6 +38,17 @@ jobs:
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "latest-known"
+      - name: Packaging and systemd unit syntax
+        run: |
+          dash -n packaging/postinst
+          dash -n packaging/prerm
+          dash -n packaging/postrm
+          unit_dir=$(mktemp -d)
+          trap 'rm -rf "$unit_dir"' EXIT
+          sed -e 's#^WorkingDirectory=.*#WorkingDirectory=/#' \
+              -e 's#^ExecStart=.*#ExecStart=/bin/true#' \
+              packaging/rs-linux-exporter.service > "$unit_dir/rs-linux-exporter.service"
+          systemd-analyze verify "$unit_dir/rs-linux-exporter.service"
       - name: Ruff
         run: uvx --from ruff==0.17.6 ruff check scripts
       - name: Generator tests

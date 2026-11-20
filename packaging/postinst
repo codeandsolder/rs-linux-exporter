@@ -1,11 +1,27 @@
 #!/bin/sh
 set -e
 
+unit=rs-linux-exporter.service
+
 case "$1" in
   configure)
     if command -v systemctl >/dev/null 2>&1; then
-      systemctl daemon-reload || true
-      systemctl enable --now rs-linux-exporter.service || true
+      if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload || true
+      fi
+
+      if [ -z "${2:-}" ]; then
+        # First install: package policy is enabled-by-default.
+        systemctl enable "$unit" || true
+        if [ -d /run/systemd/system ]; then
+          systemctl start "$unit" || true
+        fi
+      elif [ -d /run/systemd/system ] && systemctl is-active --quiet "$unit"; then
+        # Upgrade: preserve the administrator's enabled/disabled and
+        # active/inactive choices, but restart an already-running daemon so
+        # it executes the newly installed binary and unit.
+        systemctl restart "$unit" || true
+      fi
     fi
     ;;
 esac
