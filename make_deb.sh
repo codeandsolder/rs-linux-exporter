@@ -12,35 +12,37 @@ if [[ -z "${version}" ]]; then
   exit 1
 fi
 
+if [[ ! -f Dockerfile.deb ]]; then
+  echo "Missing Dockerfile.deb" >&2
+  exit 1
+fi
+
 mkdir -p dist
 
 for target in "$@"; do
   case "${target}" in
-    ubuntu2204|ubuntu2404|ubuntu2604|debian12|debian13)
-      dockerfile="Dockerfile.${target}"
-      ;;
+    ubuntu2204) base_image="ubuntu:22.04" ;;
+    ubuntu2404) base_image="ubuntu:24.04" ;;
+    ubuntu2604) base_image="ubuntu:26.04" ;;
+    debian12) base_image="debian:12" ;;
+    debian13) base_image="debian:13" ;;
     *)
       echo "Unknown target: ${target}" >&2
       exit 1
       ;;
   esac
 
-  if [[ ! -f "${dockerfile}" ]]; then
-    echo "Missing ${dockerfile}" >&2
-    exit 1
-  fi
-
   image_tag="rs-linux-exporter-deb-${target}"
 
   docker build \
+    --build-arg BASE_IMAGE="${base_image}" \
     --build-arg VERSION="${version}" \
     --build-arg DIST="${target}" \
-    -f "${dockerfile}" \
+    -f Dockerfile.deb \
     -t "${image_tag}" \
     .
 
   container_id=$(docker create "${image_tag}")
   docker cp "${container_id}:/out/." dist/
   docker rm "${container_id}" >/dev/null
-
 done
