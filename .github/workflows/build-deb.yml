@@ -4,33 +4,93 @@ on:
   workflow_dispatch:
   release:
     types: [published]
+  pull_request:
+    paths:
+      - '.github/workflows/build-deb.yml'
+      - 'make_deb.sh'
+      - 'packaging/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deb-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    runs-on: ubuntu-26.04
+    container: ${{ matrix.image }}
     strategy:
+      fail-fast: false
       matrix:
-        distro: [ubuntu2204, ubuntu2404, ubuntu2604, debian12, debian13]
+        include:
+          - { distro: ubuntu2204, image: 'ubuntu:22.04' }
+          - { distro: ubuntu2404, image: 'ubuntu:24.04' }
+          - { distro: ubuntu2604, image: 'ubuntu:26.04' }
+          - { distro: debian12, image: 'debian:12' }
+          - { distro: debian13, image: 'debian:13' }
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEBIAN_FRONTEND: noninteractive
     steps:
+      - name: Install target distribution build and test dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git build-essential pkg-config dpkg-dev systemd nodejs tar zstd
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: '1.100.0'
+      - name: Setup mandatory sccache
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@44b5080c6771a2b91fdda295e1d43886b53a4af5 # main
+        with:
+          cache-scope: deb-${{ matrix.distro }}
       - name: Build deb
         run: |
-          chmod +x ./make_deb.sh
-          ./make_deb.sh "${{ matrix.distro }}"
+          bash -n make_deb.sh
+          bash make_deb.sh
+      - name: Finalize mandatory sccache
+        if: always()
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@44b5080c6771a2b91fdda295e1d43886b53a4af5 # main
+      - name: Test package install and upgrade
+        run: |
+          dpkg -i dist/*.deb
+          systemctl is-enabled rs-linux-exporter.service
+          systemd-analyze verify rs-linux-exporter.service
+          systemctl disable rs-linux-exporter.service
+          dpkg -i dist/*.deb
+          test "$(systemctl is-enabled rs-linux-exporter.service || true)" = disabled
+          dpkg -r rs-linux-exporter
+          test -f /etc/rs-linux-exporter/config.toml
+          dpkg --purge rs-linux-exporter
       - name: Upload deb
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: rs-linux-exporter-${{ matrix.distro }}-deb
           path: dist/*.deb
           if-no-files-found: error
-      - name: Generate checksums
+
+  release:
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef3501313 # v7
+        with:
+          pattern: rs-linux-exporter-*-deb
+          merge-multiple: true
+          path: dist
+      - name: Generate combined checksums
         run: |
           cd dist
           sha256sum *.deb > SHA256SUMS
-      - name: Upload release assets (release event)
-        if: github.event_name == 'release'
+      - name: Upload release assets
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           files: |

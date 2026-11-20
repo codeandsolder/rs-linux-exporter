@@ -40,10 +40,9 @@ jobs:
           version: "latest-known"
       - name: Packaging and systemd unit syntax
         run: |
-          bash -n make_deb.sh
-          for script in packaging/postinst packaging/prerm packaging/postrm; do
-            dash -n "$script"
-          done
+          dash -n packaging/postinst
+          dash -n packaging/prerm
+          dash -n packaging/postrm
           unit_dir=$(mktemp -d)
           trap 'rm -rf "$unit_dir"' EXIT
           sed -e 's#^WorkingDirectory=.*#WorkingDirectory=/#' \

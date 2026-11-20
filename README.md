@@ -119,6 +119,13 @@ The `.deb` packages include a systemd unit and a default config file.
 
 Targets: Debian 12/13 and Ubuntu 22.04/24.04/26.04.
 
+Each release package is built natively in its target distribution using the
+shared compiler cache. To build locally, run `bash make_deb.sh` on the target
+distribution with Rust, the configured compiler cache, build-essential,
+pkg-config, git and dpkg-dev installed. Package names and dynamic library
+dependencies are derived from the actual build environment. The packaging CI
+installs, reinstalls and removes each package in a disposable container.
+
 Defaults when installed from `.deb`:
 - Service name: `rs-linux-exporter.service`
 - Auto-enabled on install
