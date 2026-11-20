@@ -26,8 +26,6 @@ jobs:
           toolchain: "1.100.0"
       - name: Setup mandatory sccache
         uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@44b5080c6771a2b91fdda295e1d43886b53a4af5 # main
-        with:
-          rust-toolchain: "1.99.1"
       - name: Publish pinned lurkmoar 0.1.0 if needed
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}

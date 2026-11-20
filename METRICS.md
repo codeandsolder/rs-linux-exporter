@@ -185,12 +185,12 @@ Traceroutes never run on the scrape path. A scrape starts a background refresh w
 | Metric | Type | Description |
 |---|---|---|
 | `tailscale_backend_state_info` | GaugeVec | Current tailscaled backend state |
-| `tailscale_self_info` | GaugeVec | Local Tailscale hostname, DNS name, and home relay |
+| `tailscale_self_info` | GaugeVec | Local Tailscale hostname, DNS name, home relay, and preferred Tailscale IP |
 | `tailscale_public_endpoint_info` | GaugeVec | Public v4/v6 address reported by Tailscale netcheck |
 | `tailscale_public_endpoint_port` | GaugeVec | Public NAT-mapped port by address family |
 | `tailscale_preferred_derp` | GaugeVec | Preferred DERP region |
 | `tailscale_derp_latency_seconds` | GaugeVec | Tailscale netcheck DERP latency by region and address family |
-| `tailscale_peer_info` | GaugeVec | Tailnet peer identity, OS, and relay metadata |
+| `tailscale_peer_info` | GaugeVec | Tailnet peer identity, OS, relay, and preferred Tailscale IP |
 | `tailscale_peer_online` | GaugeVec | Peer online state from the network map |
 | `tailscale_peer_active` | GaugeVec | Whether the peer currently has active traffic |
 | `tailscale_peer_path_state` | GaugeVec | One-hot direct/peer-relay/DERP/offline/unknown path state |
@@ -272,6 +272,7 @@ Plugin-provided metric names are dynamic and therefore are not enumerated in thi
 | `sccache_info` | GaugeVec | sccache version information |
 | `sccache_requests_total` | CounterVec | Cumulative sccache request counters by result |
 | `sccache_cache_requests_total` | CounterVec | Cumulative cache hit/miss/error counters by language |
+| `sccache_cache_requests_advanced_total` | CounterVec | Cumulative cache hit/miss/error counters by compiler/language key |
 | `sccache_cache_events_total` | CounterVec | Cumulative cache timeout/read/write/non-cacheable/recache events |
 | `sccache_compilations_total` | CounterVec | Cumulative performed and failed compilation counters |
 | `sccache_duration_seconds_total` | CounterVec | Cumulative cache read/write and compiler execution time |
@@ -544,7 +545,7 @@ python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROM
 
 ### tailscale_backend_state_info labels: `state`
 
-### tailscale_self_info labels: `hostname`, `dns_name`, `relay`
+### tailscale_self_info labels: `hostname`, `dns_name`, `relay`, `tailscale_ip`
 
 ### tailscale_public_endpoint_info labels: `family`, `address`
 
@@ -554,7 +555,7 @@ python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROM
 
 ### tailscale_derp_latency_seconds labels: `region`, `family`
 
-### tailscale_peer_info labels: `peer`, `hostname`, `dns_name`, `os`, `relay`
+### tailscale_peer_info labels: `peer`, `hostname`, `dns_name`, `os`, `relay`, `tailscale_ip`
 
 ### tailscale_peer_online labels: `peer`
 
@@ -748,6 +749,8 @@ The exporter also exposes a future/unknown systemd active state as an additive o
 
 ### sccache_duration_seconds_total labels: `operation`
 
+### sccache_cache_requests_advanced_total labels: `result`, `compiler_language`
+
 ### sccache_not_cached_total labels: `reason`
 
 ### sccache_not_cached_crate_types_total labels: `crate_type`
@@ -773,6 +776,12 @@ The exporter also exposes a future/unknown systemd active state as an additive o
 - `executed`
 
 `sccache_cache_requests_total` label values (`result`):
+
+- `error`
+- `hit`
+- `miss`
+
+`sccache_cache_requests_advanced_total` label values (`result`):
 
 - `error`
 - `hit`

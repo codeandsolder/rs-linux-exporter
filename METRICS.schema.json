@@ -836,11 +836,12 @@
       "name": "tailscale_self_info",
       "group": "tailscale",
       "type": "GaugeVec",
-      "description": "Local Tailscale hostname, DNS name, and home relay",
+      "description": "Local Tailscale hostname, DNS name, home relay, and preferred Tailscale IP",
       "labels": [
         "hostname",
         "dns_name",
-        "relay"
+        "relay",
+        "tailscale_ip"
       ]
     },
     {
@@ -885,13 +886,14 @@
       "name": "tailscale_peer_info",
       "group": "tailscale",
       "type": "GaugeVec",
-      "description": "Tailnet peer identity, OS, and relay metadata",
+      "description": "Tailnet peer identity, OS, relay, and preferred Tailscale IP",
       "labels": [
         "peer",
         "hostname",
         "dns_name",
         "os",
-        "relay"
+        "relay",
+        "tailscale_ip"
       ]
     },
     {
@@ -1348,6 +1350,23 @@
       "labels": [
         "result",
         "language"
+      ],
+      "label_values": {
+        "result": [
+          "error",
+          "hit",
+          "miss"
+        ]
+      }
+    },
+    {
+      "name": "sccache_cache_requests_advanced_total",
+      "group": "sccache",
+      "type": "CounterVec",
+      "description": "Cumulative cache hit/miss/error counters by compiler/language key",
+      "labels": [
+        "result",
+        "compiler_language"
       ],
       "label_values": {
         "result": [
@@ -3075,6 +3094,7 @@
         "sccache_info",
         "sccache_requests_total",
         "sccache_cache_requests_total",
+        "sccache_cache_requests_advanced_total",
         "sccache_cache_events_total",
         "sccache_compilations_total",
         "sccache_duration_seconds_total",

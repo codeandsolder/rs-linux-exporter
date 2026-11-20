@@ -124,8 +124,8 @@ fn snapshot(release: &OsRelease) -> OsSnapshot {
         .get_value_as_date("SUPPORT_END")
         .ok()
         .flatten()
-        .and_then(|date| date.and_hms_opt(0, 0, 0))
-        .map(|datetime| datetime.and_utc().timestamp());
+        .and_then(|date| date.to_zoned_datetime(jiff::tz::TimeZone::UTC).ok())
+        .map(|datetime| datetime.timestamp().as_second());
     OsSnapshot {
         labels: [
             value(release, "BUILD_ID"),
