@@ -15,19 +15,19 @@ permissions:
 
 jobs:
   rust-linux:
-    name: Rust 1.99.1 Linux checks and tests
+    name: Stable Rust Linux checks and tests
     permissions:
       contents: read
     uses: codeandsolder/ci-workflows/.github/workflows/rust-sccache.yml@44b5080c6771a2b91fdda295e1d43886b53a4af5 # main
     with:
       runner: ubuntu-26.04
-      rust-toolchain: "1.99.1"
+      rust-toolchain: "1.100.0"
       rust-components: "clippy rustfmt"
       command: |
-        cargo +1.99.1 fmt --all -- --check
-        CARGO_BUILD_WARNINGS=deny cargo +1.99.1 check --locked --all-targets
-        cargo +1.99.1 test --locked
-        RUSTDOCFLAGS='-D warnings' cargo +1.99.1 doc --locked --no-deps
+        cargo fmt --all -- --check
+        CARGO_BUILD_WARNINGS=deny cargo check --locked --all-targets
+        cargo test --locked
+        RUSTDOCFLAGS='-D warnings' cargo doc --locked --no-deps
 
   python-tooling:
     name: Python tooling
