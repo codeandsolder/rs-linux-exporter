@@ -45,7 +45,7 @@ jobs:
 
   strict-rust:
     name: Strict Rust
-    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@002eccf88691e7f0dddbcdd736912d9efa1843d6 # main
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@0a898b99c66ac7dabbb68f71dbd05530b19849d2 # main
     with:
       ban-python-outside-ci: false
       allow-test-panics: true
