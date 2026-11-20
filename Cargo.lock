@@ -1496,6 +1496,7 @@ dependencies = [
  "futures-util",
  "ipmi-rs",
  "ipnet",
+ "jiff",
  "lurkmoar",
  "netlink-bindings",
  "procfs",
