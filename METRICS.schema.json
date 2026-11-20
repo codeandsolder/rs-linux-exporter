@@ -836,11 +836,12 @@
       "name": "tailscale_self_info",
       "group": "tailscale",
       "type": "GaugeVec",
-      "description": "Local Tailscale hostname, DNS name, and home relay",
+      "description": "Local Tailscale hostname, DNS name, home relay, and preferred Tailscale IP",
       "labels": [
         "hostname",
         "dns_name",
-        "relay"
+        "relay",
+        "tailscale_ip"
       ]
     },
     {
@@ -885,13 +886,14 @@
       "name": "tailscale_peer_info",
       "group": "tailscale",
       "type": "GaugeVec",
-      "description": "Tailnet peer identity, OS, and relay metadata",
+      "description": "Tailnet peer identity, OS, relay, and preferred Tailscale IP",
       "labels": [
         "peer",
         "hostname",
         "dns_name",
         "os",
-        "relay"
+        "relay",
+        "tailscale_ip"
       ]
     },
     {

@@ -185,12 +185,12 @@ Traceroutes never run on the scrape path. A scrape starts a background refresh w
 | Metric | Type | Description |
 |---|---|---|
 | `tailscale_backend_state_info` | GaugeVec | Current tailscaled backend state |
-| `tailscale_self_info` | GaugeVec | Local Tailscale hostname, DNS name, and home relay |
+| `tailscale_self_info` | GaugeVec | Local Tailscale hostname, DNS name, home relay, and preferred Tailscale IP |
 | `tailscale_public_endpoint_info` | GaugeVec | Public v4/v6 address reported by Tailscale netcheck |
 | `tailscale_public_endpoint_port` | GaugeVec | Public NAT-mapped port by address family |
 | `tailscale_preferred_derp` | GaugeVec | Preferred DERP region |
 | `tailscale_derp_latency_seconds` | GaugeVec | Tailscale netcheck DERP latency by region and address family |
-| `tailscale_peer_info` | GaugeVec | Tailnet peer identity, OS, and relay metadata |
+| `tailscale_peer_info` | GaugeVec | Tailnet peer identity, OS, relay, and preferred Tailscale IP |
 | `tailscale_peer_online` | GaugeVec | Peer online state from the network map |
 | `tailscale_peer_active` | GaugeVec | Whether the peer currently has active traffic |
 | `tailscale_peer_path_state` | GaugeVec | One-hot direct/peer-relay/DERP/offline/unknown path state |
@@ -545,7 +545,7 @@ python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROM
 
 ### tailscale_backend_state_info labels: `state`
 
-### tailscale_self_info labels: `hostname`, `dns_name`, `relay`
+### tailscale_self_info labels: `hostname`, `dns_name`, `relay`, `tailscale_ip`
 
 ### tailscale_public_endpoint_info labels: `family`, `address`
 
@@ -555,7 +555,7 @@ python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROM
 
 ### tailscale_derp_latency_seconds labels: `region`, `family`
 
-### tailscale_peer_info labels: `peer`, `hostname`, `dns_name`, `os`, `relay`
+### tailscale_peer_info labels: `peer`, `hostname`, `dns_name`, `os`, `relay`, `tailscale_ip`
 
 ### tailscale_peer_online labels: `peer`
 
