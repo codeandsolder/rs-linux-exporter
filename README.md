@@ -127,6 +127,24 @@ Defaults when installed from `.deb`:
 - Bind address: `127.0.0.1:23311`
 - Allowed clients: `127.0.0.0/8`
 
+The packaged service keeps the host filesystem read-only, with systemd-managed
+writable directories `/var/lib/rs-linux-exporter` (default push spool) and
+`/run/rs-linux-exporter` (optional plugin socket). Device nodes, `/proc`, kernel
+logs, and read-only clock queries remain accessible. The capability bounding set
+retains network administration/raw sockets, privileged port binding, filesystem
+permission bypass for protected telemetry and Unix sockets, and ATA/NVMe SMART
+access (`CAP_SYS_RAWIO` and `CAP_SYS_ADMIN`); mount, module, reboot and swap
+syscalls are blocked rather than using a broad syscall allowlist.
+
+When configuring a spool or plugin socket outside these directories, create its
+parent directory and add a systemd drop-in with `ReadWritePaths=/absolute/path`.
+For a plugin publisher running outside the service, arrange a shared group via
+`Group=` (the socket is mode 0660). If intentionally using a socket in the host's
+`/tmp`, set `PrivateTmp=no` in a drop-in. Restart the service after changing the
+unit or configuration. Hosts without NVMe SMART can remove `CAP_SYS_ADMIN` from
+an overridden capability list; only drop other capabilities after disabling or
+validating the corresponding collectors.
+
 To change the bind address or allowed clients, edit `/etc/rs-linux-exporter/config.toml` and restart:
 
 ```bash

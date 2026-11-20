@@ -1,6 +1,7 @@
 [Unit]
 Description=rs-linux-exporter
-After=network.target
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=simple
@@ -8,6 +9,37 @@ WorkingDirectory=/etc/rs-linux-exporter
 ExecStart=/usr/bin/rs-linux-exporter
 Restart=on-failure
 RestartSec=2s
+
+# Default persistent push spool and optional plugin Unix socket.
+StateDirectory=rs-linux-exporter
+StateDirectoryMode=0750
+RuntimeDirectory=rs-linux-exporter
+RuntimeDirectoryMode=0755
+UMask=0077
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+
+# Read protected telemetry/socket paths, bind configured ports, query conntrack
+# and send ICMP probes, and read ATA/NVMe SMART and IPMI devices. NVMe admin
+# ioctls require CAP_SYS_ADMIN on supported kernels; block mount syscalls below.
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_RAWIO CAP_SYS_ADMIN
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+LockPersonality=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=~@mount @module @reboot @swap
+SystemCallErrorNumber=EPERM
+
+# Do not hide host device nodes, procfs, or kernel logs, or filter timex clock
+# queries: these are exporter inputs, not resources to isolate from it.
 
 [Install]
 WantedBy=multi-user.target
