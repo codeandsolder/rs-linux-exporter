@@ -27,7 +27,8 @@ futures-util = "0.3.31"
 zbus_systemd = { version = "0.26201.0", default-features = false, features = ["systemd1", "zbus-async-zruntime"] }
 regex = "1"
 rtime-clock = "0.15.1"
-etc-os-release = { version = "0.1.1", features = ["date"] }
+etc-os-release = { version = "0.2.0", features = ["date"] }
+jiff = { version = "1", default-features = false, features = ["std"] }
 lurkmoar = { version = "0.1.0", git = "https://github.com/codeandsolder/lurkmoar-rs", rev = "eb22687dc167a86e923560935efc1234a9832e27" }
 
 [dev-dependencies]
