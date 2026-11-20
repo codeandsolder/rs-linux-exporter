@@ -18,7 +18,7 @@ jobs:
     name: Rust 1.99.1 Linux checks and tests
     permissions:
       contents: read
-    uses: codeandsolder/ci-workflows/.github/workflows/rust-sccache.yml@50c4dbb544f008f87ba479324b43a1bd807672bd # main
+    uses: codeandsolder/ci-workflows/.github/workflows/rust-sccache.yml@44b5080c6771a2b91fdda295e1d43886b53a4af5 # main
     with:
       runner: ubuntu-26.04
       rust-toolchain: "1.99.1"
@@ -39,13 +39,13 @@ jobs:
         with:
           version: "latest-known"
       - name: Ruff
-        run: uvx --from ruff==0.17.5 ruff check scripts
+        run: uvx --from ruff==0.17.6 ruff check scripts
       - name: Generator tests
         run: uv run python -m unittest discover -s scripts/tests -p test_*.py -v
 
   strict-rust:
     name: Strict Rust
-    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@6ab68f64fa917fa2dc4fa859dca3ecf83f54baa5 # main
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@998dcbfa4da43cc6419474d96ee69a7102e7957c # main
     with:
       ban-python-outside-ci: false
       allow-test-panics: true
