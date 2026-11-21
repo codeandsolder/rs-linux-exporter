@@ -25,7 +25,7 @@ jobs:
         with:
           toolchain: "1.100.0"
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@079cb96347f3dee5a628baaed46e63055c80efa5 # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@2376b14a6bc8263ab77013bd744248f49384b2fa # main
       - name: Publish pinned lurkmoar 0.1.0 if needed
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
@@ -61,4 +61,4 @@ jobs:
           exit 1
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@079cb96347f3dee5a628baaed46e63055c80efa5 # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@2376b14a6bc8263ab77013bd744248f49384b2fa # main
