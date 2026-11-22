@@ -17,19 +17,6 @@
         "ubuntu"
       ],
       "allowedVersions": "24.04"
-    },
-    {
-      "description": "Keep stable compiler pins synchronized; review compiler updates",
-      "matchDatasources": [
-        "rust-version"
-      ],
-      "matchDepNames": [
-        "rust"
-      ],
-      "matchCurrentVersion": "/^\\d+\\.\\d+\\.\\d+$/",
-      "groupName": "Rust compiler",
-      "groupSlug": "rust-compiler",
-      "automerge": false
     }
   ],
   "customManagers": [
@@ -44,19 +31,6 @@
       ],
       "depNameTemplate": "ruff",
       "datasourceTemplate": "pypi"
-    },
-    {
-      "customType": "regex",
-      "description": "Track stable Rust inputs in shared CI workflows",
-      "managerFilePatterns": [
-        "/^\\.github\\/workflows\\/.*\\.ya?ml$/"
-      ],
-      "matchStrings": [
-        "(?:^|\\r?\\n)[ \\t]*rust-toolchain:[ \\t]*\"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""
-      ],
-      "depNameTemplate": "rust",
-      "datasourceTemplate": "rust-version",
-      "versioningTemplate": "rust-release-channel"
     }
   ]
 }
