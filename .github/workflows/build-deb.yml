@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/build-deb.yml'
       - 'make_deb.sh'
+      - 'rust-toolchain.toml'
       - 'packaging/**'
 
 permissions:
@@ -47,13 +48,17 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
+      - name: Resolve the native quarantined compiler
+        id: compiler
+        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@8e1f9d2c450e4761884b72a00a2f324e87a3f3cb # main
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
-          toolchain: '1.100.0'
+          toolchain: ${{ steps.compiler.outputs.channel }}
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@6d34275dcd0018efd209389b95d83a3dc9b52ba1 # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@8e1f9d2c450e4761884b72a00a2f324e87a3f3cb # main
         with:
+          rust-toolchain: ${{ steps.compiler.outputs.channel }}
           cache-scope: deb-${{ matrix.distro }}
       - name: Build deb
         run: |
@@ -61,7 +66,7 @@ jobs:
           bash make_deb.sh
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@6d34275dcd0018efd209389b95d83a3dc9b52ba1 # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@8e1f9d2c450e4761884b72a00a2f324e87a3f3cb # main
       - name: Test package install and upgrade
         run: |
           dpkg -i dist/*.deb

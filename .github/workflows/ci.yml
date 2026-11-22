@@ -15,14 +15,12 @@ permissions:
 
 jobs:
   rust-linux:
-    name: Stable Rust Linux checks and tests
+    name: Rust Linux checks and tests
     permissions:
       contents: read
-    uses: codeandsolder/ci-workflows/.github/workflows/rust-sccache.yml@2376b14a6bc8263ab77013bd744248f49384b2fa # main
+    uses: codeandsolder/ci-workflows/.github/workflows/rust-sccache.yml@8e1f9d2c450e4761884b72a00a2f324e87a3f3cb # main
     with:
       runner: ubuntu-26.04
-      rust-toolchain: "1.100.0"
-      rust-components: "clippy rustfmt"
       command: |
         cargo fmt --all -- --check
         CARGO_BUILD_WARNINGS=deny cargo check --locked --all-targets
@@ -56,7 +54,7 @@ jobs:
 
   strict-rust:
     name: Strict Rust
-    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@82886ae85915af41ea90bf225bdffb3d9d359f69 # main
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@bc1cca5a1fdae152b14fe4399341ba41b601837f # main
     with:
       ban-python-outside-ci: false
       allow-test-panics: true
