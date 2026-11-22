@@ -47,7 +47,7 @@ jobs:
       - name: Install current Node.js for shared CI actions
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: 24
+          node-version: 26
       - name: Resolve the native quarantined compiler
         id: compiler
         uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@8e1f9d2c450e4761884b72a00a2f324e87a3f3cb # main
