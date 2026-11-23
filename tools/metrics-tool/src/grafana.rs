@@ -287,6 +287,26 @@ pub fn dashboard(mut panels: Vec<Value>, opts: &Options, uid: &str) -> Value {
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)
 }
+fn render_output(output: &Value, opts: &Options) -> io::Result<String> {
+    let serialized = if opts.format == "ndjson" {
+        output.as_array().map_or_else(
+            || serde_json::to_string(output),
+            |panels| {
+                panels
+                    .iter()
+                    .map(serde_json::to_string)
+                    .collect::<Result<Vec<_>, _>>()
+                    .map(|lines| lines.join("\n"))
+            },
+        )
+    } else if opts.enabled(Switch::Pretty) {
+        serde_json::to_string_pretty(output)
+    } else {
+        serde_json::to_string(output)
+    };
+    serialized.map_err(io::Error::other)
+}
+
 pub fn generate(schema: &Schema, opts: &Options) -> io::Result<String> {
     if opts.enabled(Switch::List) {
         let mut counts = BTreeMap::new();
@@ -372,26 +392,43 @@ pub fn generate(schema: &Schema, opts: &Options) -> io::Result<String> {
             .next()
             .ok_or_else(|| invalid("No panels generated"))?
     };
-    if opts.format == "ndjson"
-        && let Some(panels) = output.as_array()
-    {
-        return panels
-            .iter()
-            .map(serde_json::to_string)
-            .collect::<Result<Vec<_>, _>>()
-            .map(|lines| lines.join("\n"))
-            .map_err(io::Error::other);
-    }
-    if opts.enabled(Switch::Pretty) {
-        serde_json::to_string_pretty(&output).map_err(io::Error::other)
-    } else {
-        serde_json::to_string(&output).map_err(io::Error::other)
-    }
+    render_output(&output, opts)
 }
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::schema;
+    #[test]
+    fn ndjson_is_compact_even_with_pretty_enabled() -> io::Result<()> {
+        let schema = schema::generate(
+            std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../METRICS.md")),
+            false,
+        )?;
+        let mut opts = Options::default();
+        opts.sections.push("procfs".to_owned());
+        opts.format = "ndjson".to_owned();
+        opts.enable(Switch::Pretty);
+        let single = generate(&schema, &opts)?;
+        assert_eq!(single.lines().count(), 1);
+        assert!(serde_json::from_str::<Value>(&single).is_ok());
+
+        opts.sections.clear();
+        opts.enable(Switch::All);
+        let lines = generate(&schema, &opts)?;
+        let groups = schema
+            .metrics
+            .iter()
+            .map(|metric| metric.group.as_str())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(lines.lines().count(), groups.len());
+        assert!(
+            lines
+                .lines()
+                .all(|line| serde_json::from_str::<Value>(line).is_ok())
+        );
+        Ok(())
+    }
+
     #[test]
     fn byte_fields_split_bits_and_non_bytes() -> io::Result<()> {
         let schema = schema::generate(
