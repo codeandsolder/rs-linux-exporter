@@ -18,19 +18,5 @@
       ],
       "allowedVersions": "24.04"
     }
-  ],
-  "customManagers": [
-    {
-      "customType": "regex",
-      "description": "Keep pinned Python CLI tools in GitHub Actions current",
-      "managerFilePatterns": [
-        "/^\\.github/workflows/.*\\.ya?ml$/"
-      ],
-      "matchStrings": [
-        "ruff==(?<currentValue>\\d+\\.\\d+\\.\\d+)"
-      ],
-      "depNameTemplate": "ruff",
-      "datasourceTemplate": "pypi"
-    }
   ]
 }

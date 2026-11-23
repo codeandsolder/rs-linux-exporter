@@ -34,7 +34,7 @@ lurkmoar = { version = "0.1.0", git = "https://github.com/codeandsolder/lurkmoar
 [dev-dependencies]
 tempfile = "3"
 
-[lints.rust]
+[workspace.lints.rust]
 unsafe_code = "forbid"
 unsafe_op_in_unsafe_fn = "deny"
 missing_debug_implementations = "warn"
@@ -44,7 +44,7 @@ unfulfilled_lint_expectations = "deny"
 unused_results = "warn"
 unused_qualifications = "warn"
 
-[lints.clippy]
+[workspace.lints.clippy]
 correctness = { level = "deny", priority = -1 }
 suspicious = { level = "deny", priority = -1 }
 style = { level = "deny", priority = -1 }
@@ -64,10 +64,18 @@ await_holding_lock = "deny"
 allow_attributes = "deny"
 allow_attributes_without_reason = "deny"
 
-[lints.rustdoc]
+[workspace.lints.rustdoc]
 broken_intra_doc_links = "deny"
 private_intra_doc_links = "warn"
 missing_crate_level_docs = "warn"
 
 [patch.crates-io]
 zlib-rs = { git = "https://github.com/codeandsolder/zlib-rs-fast.git", rev = "1ec3a5612ee28803a7756fa52bd013389507a2db" }
+
+[workspace]
+members = ["tools/metrics-tool"]
+default-members = ["."]
+resolver = "3"
+
+[lints]
+workspace = true

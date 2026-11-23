@@ -23,19 +23,15 @@ jobs:
       runner: ubuntu-26.04
       command: |
         cargo fmt --all -- --check
-        CARGO_BUILD_WARNINGS=deny cargo check --locked --all-targets
-        cargo test --locked
-        RUSTDOCFLAGS='-D warnings' cargo doc --locked --no-deps
+        CARGO_BUILD_WARNINGS=deny cargo check --locked --workspace --all-targets
+        cargo test --locked --workspace
+        RUSTDOCFLAGS='-D warnings' cargo doc --locked --workspace --no-deps
 
-  python-tooling:
-    name: Python tooling
+  packaging-syntax:
+    name: Packaging and systemd syntax
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Install uv
-        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
-        with:
-          version: "latest-known"
       - name: Packaging and systemd unit syntax
         run: |
           dash -n packaging/postinst
@@ -47,14 +43,10 @@ jobs:
               -e 's#^ExecStart=.*#ExecStart=/bin/true#' \
               packaging/rs-linux-exporter.service > "$unit_dir/rs-linux-exporter.service"
           systemd-analyze verify "$unit_dir/rs-linux-exporter.service"
-      - name: Ruff
-        run: uvx --from ruff==0.17.6 ruff check scripts
-      - name: Generator tests
-        run: uv run python -m unittest discover -s scripts/tests -p test_*.py -v
 
   strict-rust:
     name: Strict Rust
     uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@1f3c1fab9972ecc4c85329c9651dfbed138e6736 # main
     with:
-      ban-python-outside-ci: false
+      ban-python-outside-ci: true
       allow-test-panics: true
