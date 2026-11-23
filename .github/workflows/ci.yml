@@ -18,7 +18,7 @@ jobs:
     name: Rust Linux checks and tests
     permissions:
       contents: read
-    uses: codeandsolder/ci-workflows/.github/workflows/rust-sccache.yml@8ec18b20d3af776db1eb8013ab1649acf35a289f # main
+    uses: codeandsolder/ci-workflows/.github/workflows/rust-sccache.yml@916e8206e47b807a32c4a2e5cc11fddf97d6d8ca # main
     with:
       runner: ubuntu-26.04
       command: |
