@@ -11,7 +11,7 @@ fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)
 }
 
-fn help() -> &'static str {
+const fn help() -> &'static str {
     "Usage: cargo run -p rs-linux-exporter-metrics-tool -- <schema|grafana> [OPTIONS]\n\
 schema: --source METRICS.md --with-runtime-fields --pretty --output FILE\n\
 grafana: --schema METRICS.schema.json --list --section NAME --metric NAME\n\
@@ -24,14 +24,15 @@ grafana: --schema METRICS.schema.json --list --section NAME --metric NAME\n\
 Repeat --section and --metric to select multiple values."
 }
 
-fn parse() -> io::Result<(
-    String,
-    Option<PathBuf>,
-    Option<PathBuf>,
-    bool,
-    bool,
-    grafana::Options,
-)> {
+struct CommandLine {
+    mode: String,
+    source: Option<PathBuf>,
+    output: Option<PathBuf>,
+    runtime: bool,
+    options: grafana::Options,
+}
+
+fn parse() -> io::Result<CommandLine> {
     let mut args = std::env::args().skip(1);
     let mode = args.next().ok_or_else(|| invalid(help()))?;
     if mode == "--help" || mode == "-h" {
@@ -44,7 +45,6 @@ fn parse() -> io::Result<(
     let mut source = None;
     let mut output = None;
     let mut with_runtime_fields = false;
-    let mut pretty = false;
     let mut opts = grafana::Options::default();
 
     while let Some(argument) = args.next() {
@@ -84,42 +84,52 @@ fn parse() -> io::Result<(
             "--source" if mode == "schema" => source = Some(PathBuf::from(value)),
             "--output" => output = Some(PathBuf::from(value)),
             "--with-runtime-fields" if mode == "schema" => with_runtime_fields = true,
-            "--pretty" => pretty = true,
-            "--schema" if mode == "grafana" => opts.schema = value.to_owned(),
-            "--datasource" if mode == "grafana" => opts.datasource = value.to_owned(),
-            "--datasource-type" if mode == "grafana" => opts.datasource_type = value.to_owned(),
-            "--instance-var" if mode == "grafana" => opts.instance_var = value.to_owned(),
-            "--job-var" if mode == "grafana" => opts.job_var = value.to_owned(),
+            "--pretty" => opts.enable(grafana::Switch::Pretty),
+            "--schema" if mode == "grafana" => value.clone_into(&mut opts.schema),
+            "--datasource" if mode == "grafana" => value.clone_into(&mut opts.datasource),
+            "--datasource-type" if mode == "grafana" => value.clone_into(&mut opts.datasource_type),
+            "--instance-var" if mode == "grafana" => value.clone_into(&mut opts.instance_var),
+            "--job-var" if mode == "grafana" => value.clone_into(&mut opts.job_var),
             "--section" if mode == "grafana" => opts.sections.push(value.to_owned()),
             "--metric" if mode == "grafana" => opts.metrics.push(value.to_owned()),
             "--metric-regex" if mode == "grafana" => opts.metric_regex = Some(value.to_owned()),
-            "--list" if mode == "grafana" => opts.list = true,
-            "--all" if mode == "grafana" => opts.all = true,
-            "--dashboard" if mode == "grafana" => opts.dashboard = true,
-            "--dashboard-title" if mode == "grafana" => opts.dashboard_title = value.to_owned(),
-            "--time-from" if mode == "grafana" => opts.time_from = value.to_owned(),
-            "--time-to" if mode == "grafana" => opts.time_to = value.to_owned(),
-            "--dashboard-refresh" if mode == "grafana" => opts.dashboard_refresh = value.to_owned(),
-            "--rate-window" if mode == "grafana" => opts.rate_window = value.to_owned(),
-            "--disable-auto-rate" if mode == "grafana" => opts.disable_auto_rate = true,
-            "--datasource-literal" if mode == "grafana" => opts.datasource_literal = true,
+            "--list" if mode == "grafana" => opts.enable(grafana::Switch::List),
+            "--all" if mode == "grafana" => opts.enable(grafana::Switch::All),
+            "--dashboard" if mode == "grafana" => opts.enable(grafana::Switch::Dashboard),
+            "--dashboard-title" if mode == "grafana" => value.clone_into(&mut opts.dashboard_title),
+            "--time-from" if mode == "grafana" => value.clone_into(&mut opts.time_from),
+            "--time-to" if mode == "grafana" => value.clone_into(&mut opts.time_to),
+            "--dashboard-refresh" if mode == "grafana" => {
+                value.clone_into(&mut opts.dashboard_refresh);
+            }
+            "--rate-window" if mode == "grafana" => value.clone_into(&mut opts.rate_window),
+            "--disable-auto-rate" if mode == "grafana" => opts.enable(grafana::Switch::DisableRate),
+            "--datasource-literal" if mode == "grafana" => {
+                opts.enable(grafana::Switch::LiteralDatasource);
+            }
             "--panel-width" if mode == "grafana" => {
-                opts.panel_width = value.parse().map_err(|_| invalid("Invalid panel width"))?
+                opts.panel_width = value.parse().map_err(|_| invalid("Invalid panel width"))?;
             }
             "--panel-height" if mode == "grafana" => {
-                opts.panel_height = value.parse().map_err(|_| invalid("Invalid panel height"))?
+                opts.panel_height = value.parse().map_err(|_| invalid("Invalid panel height"))?;
             }
             "--format" if mode == "grafana" => {
                 if !matches!(value, "paste" | "array" | "ndjson") {
                     return Err(invalid("Format must be paste, array or ndjson"));
                 }
-                opts.format = value.to_owned();
+                value.clone_into(&mut opts.format);
             }
-            "--title-prefix" if mode == "grafana" => opts.title_prefix = value.to_owned(),
+            "--title-prefix" if mode == "grafana" => value.clone_into(&mut opts.title_prefix),
             _ => return Err(invalid(&format!("Unknown option for {mode}: {option}"))),
         }
     }
-    Ok((mode, source, output, with_runtime_fields, pretty, opts))
+    Ok(CommandLine {
+        mode,
+        source,
+        output,
+        runtime: with_runtime_fields,
+        options: opts,
+    })
 }
 
 fn write_output(output: Option<&Path>, contents: &str) -> io::Result<()> {
@@ -132,13 +142,17 @@ fn write_output(output: Option<&Path>, contents: &str) -> io::Result<()> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (mode, source, output, runtime, pretty, mut options) = parse()?;
+    let CommandLine {
+        mode,
+        source,
+        output,
+        runtime,
+        options,
+    } = parse()?;
     if mode == "schema" {
-        let source = source.unwrap_or_else(|| {
-            PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../METRICS.md"))
-        });
+        let source = source.unwrap_or_else(|| PathBuf::from("METRICS.md"));
         let result = schema::generate(&source, runtime)?;
-        let text = if pretty {
+        let text = if options.enabled(grafana::Switch::Pretty) {
             serde_json::to_string_pretty(&result)?
         } else {
             serde_json::to_string(&result)?
@@ -147,7 +161,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         let text = fs::read_to_string(&options.schema)?;
         let schema = serde_json::from_str::<schema::Schema>(&text)?;
-        options.pretty = pretty;
         write_output(output.as_deref(), &grafana::generate(&schema, &options)?)?;
     }
     Ok(())

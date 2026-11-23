@@ -2,11 +2,24 @@ use super::schema::{Metric, Schema};
 use regex::Regex;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write as _;
 use std::io;
 
 const DOLLAR: char = '$';
+#[repr(u8)]
+#[derive(Clone, Copy, Debug)]
+pub enum Switch {
+    List = 1,
+    All = 2,
+    Dashboard = 4,
+    DisableRate = 8,
+    LiteralDatasource = 16,
+    Pretty = 32,
+}
+
 #[derive(Debug)]
 pub struct Options {
+    pub flags: u8,
     pub schema: String,
     pub datasource: String,
     pub datasource_type: String,
@@ -15,26 +28,21 @@ pub struct Options {
     pub sections: Vec<String>,
     pub metrics: Vec<String>,
     pub metric_regex: Option<String>,
-    pub list: bool,
-    pub all: bool,
-    pub dashboard: bool,
     pub dashboard_title: String,
     pub time_from: String,
     pub time_to: String,
     pub dashboard_refresh: String,
     pub rate_window: String,
-    pub disable_auto_rate: bool,
-    pub datasource_literal: bool,
     pub panel_width: i64,
     pub panel_height: i64,
     pub format: String,
     pub title_prefix: String,
-    pub pretty: bool,
 }
 impl Default for Options {
     fn default() -> Self {
         Self {
-            schema: concat!(env!("CARGO_MANIFEST_DIR"), "/../../METRICS.schema.json").to_owned(),
+            flags: 0,
+            schema: "METRICS.schema.json".to_owned(),
             datasource: "DS_PROMETHEUS".to_owned(),
             datasource_type: "prometheus".to_owned(),
             instance_var: "instance".to_owned(),
@@ -42,24 +50,28 @@ impl Default for Options {
             sections: Vec::new(),
             metrics: Vec::new(),
             metric_regex: None,
-            list: false,
-            all: false,
-            dashboard: false,
             dashboard_title: "Linux Exporter Metrics".to_owned(),
             time_from: "now-1h".to_owned(),
             time_to: "now".to_owned(),
             dashboard_refresh: String::new(),
             rate_window: "5m".to_owned(),
-            disable_auto_rate: false,
-            datasource_literal: false,
             panel_width: 12,
             panel_height: 8,
             format: "paste".to_owned(),
             title_prefix: String::new(),
-            pretty: false,
         }
     }
 }
+impl Options {
+    pub const fn enabled(&self, flag: Switch) -> bool {
+        self.flags & flag as u8 != 0
+    }
+
+    pub const fn enable(&mut self, flag: Switch) {
+        self.flags |= flag as u8;
+    }
+}
+
 fn datasource(kind: &str, uid: &str) -> Value {
     json!({"type": kind, "uid": uid})
 }
@@ -84,7 +96,7 @@ fn legend(metric: &Metric) -> String {
     );
     parts.join(" ")
 }
-fn target(index: usize, expr: String, legend: &str, opts: &Options, uid: &str) -> Value {
+fn target(index: usize, expr: &str, legend: &str, opts: &Options, uid: &str) -> Value {
     let ref_id = if index < 26 {
         char::from(b'A' + u8::try_from(index).unwrap_or(0)).to_string()
     } else {
@@ -97,7 +109,7 @@ fn target(index: usize, expr: String, legend: &str, opts: &Options, uid: &str) -
     })
 }
 fn auto_rate(metric: &Metric, opts: &Options) -> bool {
-    !opts.disable_auto_rate
+    !opts.enabled(Switch::DisableRate)
         && (metric.name.ends_with("_total")
             || metric.kind.starts_with("Counter")
             || matches!(
@@ -137,7 +149,7 @@ pub fn panel(title: &str, metrics: &[&Metric], opts: &Options, uid: &str) -> Val
                             .iter()
                             .any(|part| lower.contains(part))
                     })
-                    .map(|field| field.as_str())
+                    .map(String::as_str)
                     .collect::<BTreeSet<_>>();
                 if !bytes.is_empty() {
                     let escaped = bytes
@@ -151,7 +163,7 @@ pub fn panel(title: &str, metrics: &[&Metric], opts: &Options, uid: &str) -> Val
                     let byte_expr = format!("rate({byte_sel}[{}]) * 8", opts.rate_window);
                     targets.push(target(
                         targets.len(),
-                        byte_expr,
+                        &byte_expr,
                         &format!("{legend} (bits/s)"),
                         opts,
                         uid,
@@ -166,7 +178,7 @@ pub fn panel(title: &str, metrics: &[&Metric], opts: &Options, uid: &str) -> Val
                             format!("{},field!~\"{matcher}\"}}", select.trim_end_matches('}'));
                         targets.push(target(
                             targets.len(),
-                            format!("rate({other_sel}[{}])", opts.rate_window),
+                            &format!("rate({other_sel}[{}])", opts.rate_window),
                             &legend,
                             opts,
                             uid,
@@ -177,13 +189,13 @@ pub fn panel(title: &str, metrics: &[&Metric], opts: &Options, uid: &str) -> Val
             }
             targets.push(target(
                 targets.len(),
-                format!("rate({select}[{}])", opts.rate_window),
+                &format!("rate({select}[{}])", opts.rate_window),
                 &legend,
                 opts,
                 uid,
             ));
         } else {
-            targets.push(target(targets.len(), select, &legend, opts, uid));
+            targets.push(target(targets.len(), &select, &legend, opts, uid));
         }
     }
     json!({
@@ -220,7 +232,7 @@ fn variables(opts: &Options, uid: &str) -> Vec<Value> {
     }
     let mut label_filter = "__name__=~\".+\"".to_owned();
     if !opts.job_var.is_empty() {
-        label_filter.push_str(&format!(",job=~\"{DOLLAR}{{{}}}\"", opts.job_var));
+        let _ = write!(label_filter, ",job=~\"{DOLLAR}{{{}}}\"", opts.job_var);
     }
     let query = format!("label_values({{{label_filter}}}, instance)");
     vars.push(json!({
@@ -276,21 +288,21 @@ fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)
 }
 pub fn generate(schema: &Schema, opts: &Options) -> io::Result<String> {
-    if opts.list {
+    if opts.enabled(Switch::List) {
         let mut counts = BTreeMap::new();
         for metric in &schema.metrics {
             *counts.entry(metric.group.as_str()).or_insert(0_usize) += 1;
         }
         let mut result = String::from("Available groups:");
         for (name, count) in counts {
-            result.push_str(&format!("\n- {name}: {count}"));
+            let _ = write!(result, "\n- {name}: {count}");
         }
         return Ok(result);
     }
     if opts.sections.is_empty()
         && opts.metrics.is_empty()
         && opts.metric_regex.is_none()
-        && !opts.all
+        && !opts.enabled(Switch::All)
     {
         return Err(invalid(
             "No section or metric selector provided (--all, --section, --metric, --metric-regex)",
@@ -329,12 +341,12 @@ pub fn generate(schema: &Schema, opts: &Options) -> io::Result<String> {
     if selected.is_empty() {
         return Err(invalid("No metrics matched the selection"));
     }
-    if selected.len() > 1 && !opts.all {
+    if selected.len() > 1 && !opts.enabled(Switch::All) {
         return Err(invalid(
             "Multiple sections selected; use --all or --section to return one section only",
         ));
     }
-    let uid = if opts.datasource_literal {
+    let uid = if opts.enabled(Switch::LiteralDatasource) {
         opts.datasource.clone()
     } else {
         format!("{DOLLAR}{{{}}}", opts.datasource)
@@ -350,9 +362,9 @@ pub fn generate(schema: &Schema, opts: &Options) -> io::Result<String> {
             panel(&title, &metrics, opts, &uid)
         })
         .collect::<Vec<_>>();
-    let output = if opts.dashboard {
+    let output = if opts.enabled(Switch::Dashboard) {
         dashboard(panels, opts, &uid)
-    } else if opts.all && opts.format != "paste" {
+    } else if opts.enabled(Switch::All) && opts.format != "paste" {
         Value::Array(panels)
     } else {
         panels
@@ -360,17 +372,17 @@ pub fn generate(schema: &Schema, opts: &Options) -> io::Result<String> {
             .next()
             .ok_or_else(|| invalid("No panels generated"))?
     };
-    if opts.format == "ndjson" {
-        if let Some(panels) = output.as_array() {
-            return panels
-                .iter()
-                .map(serde_json::to_string)
-                .collect::<Result<Vec<_>, _>>()
-                .map(|lines| lines.join("\n"))
-                .map_err(io::Error::other);
-        }
+    if opts.format == "ndjson"
+        && let Some(panels) = output.as_array()
+    {
+        return panels
+            .iter()
+            .map(serde_json::to_string)
+            .collect::<Result<Vec<_>, _>>()
+            .map(|lines| lines.join("\n"))
+            .map_err(io::Error::other);
     }
-    if opts.pretty {
+    if opts.enabled(Switch::Pretty) {
         serde_json::to_string_pretty(&output).map_err(io::Error::other)
     } else {
         serde_json::to_string(&output).map_err(io::Error::other)
@@ -388,7 +400,7 @@ mod tests {
         )?;
         let mut opts = Options::default();
         opts.sections.push("procfs".to_owned());
-        opts.all = true;
+        opts.enable(Switch::All);
         opts.format = "array".to_owned();
         let generated: Value =
             serde_json::from_str(&generate(&schema, &opts)?).map_err(io::Error::other)?;

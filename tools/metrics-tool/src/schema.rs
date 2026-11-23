@@ -23,13 +23,13 @@ pub struct Metric {
     pub fields_detected: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Group {
     pub name: String,
     pub metrics: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Schema {
     pub version: String,
     pub source_file: String,
@@ -130,11 +130,95 @@ fn table_row(line: &str) -> Option<(&str, &str, String)> {
     let mut cells = inner.split('|');
     let metric = cells.next()?.trim().trim_matches(TICK);
     let kind = cells.next()?.trim();
-    let description = cells.collect::<Vec<_>>().join(" | ").trim().to_owned();
-    if metric.is_empty() || metric.chars().any(char::is_whitespace) || kind.is_empty() {
+    let description_cells = cells.map(str::trim).collect::<Vec<_>>();
+    if metric.is_empty()
+        || metric.chars().any(char::is_whitespace)
+        || kind.is_empty()
+        || description_cells.is_empty()
+    {
         return None;
     }
+    let description = description_cells.join(" | ").trim().to_owned();
     Some((metric, kind, description))
+}
+
+fn parse_catalog_line(
+    line: &str,
+    metadata: &mut HashMap<String, Metadata>,
+    capture: &mut Option<Capture>,
+) {
+    let trimmed = line.trim();
+    if let Some(heading) = line.strip_prefix("### ") {
+        *capture = None;
+        if let Some((raw_metric, body)) = heading.trim().split_once(" labels:") {
+            let name = known_metric_name(raw_metric.trim_matches(TICK), metadata);
+            let labels = inline_codes(body);
+            if !labels.is_empty() {
+                metadata.entry(name).or_default().labels = labels;
+            }
+        }
+        return;
+    }
+
+    if let Some(rest) = trimmed.strip_prefix(TICK) {
+        if let Some((raw_metric, body)) = rest.split_once("\x60:") {
+            let name = known_metric_name(raw_metric, metadata);
+            let labels = inline_codes(body);
+            if !labels.is_empty() {
+                metadata.entry(name).or_default().labels = labels;
+            }
+            *capture = None;
+            return;
+        }
+        if let Some((raw_metric, suffix)) = rest.split_once("\x60 label values")
+            && suffix.ends_with(':')
+        {
+            let name = known_metric_name(raw_metric, metadata);
+            let label = inline_codes(suffix)
+                .into_iter()
+                .last()
+                .unwrap_or_else(|| "value".to_owned());
+            let _ = metadata.entry(name.clone()).or_default();
+            *capture = Some(Capture::LabelValues(name, label));
+            return;
+        }
+        if let Some((raw_metric, suffix)) = rest.split_once("\x60 field values ")
+            && suffix.ends_with(':')
+            && (suffix.starts_with("include") || suffix.starts_with("are generated from"))
+        {
+            let name = known_metric_name(raw_metric, metadata);
+            let _ = metadata.entry(name.clone()).or_default();
+            *capture = Some(Capture::Fields(name));
+            return;
+        }
+    }
+
+    if !trimmed.is_empty() && !line.starts_with('-') {
+        *capture = None;
+    }
+    if let (Some(kind), Some(item)) = (capture.as_ref(), trimmed.strip_prefix('-')) {
+        let value = inline_codes(item)
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| item.trim_matches('-').trim().to_owned());
+        if value.is_empty() {
+            return;
+        }
+        match kind {
+            Capture::Fields(name) => {
+                metadata.entry(name.clone()).or_default().fields.push(value);
+            }
+            Capture::LabelValues(name, label) => {
+                metadata
+                    .entry(name.clone())
+                    .or_default()
+                    .label_values
+                    .entry(label.clone())
+                    .or_default()
+                    .push(value);
+            }
+        }
+    }
 }
 
 fn parse_markdown(contents: &str) -> Schema {
@@ -206,78 +290,7 @@ fn parse_markdown(contents: &str) -> Schema {
             continue;
         }
 
-        if let Some(heading) = line.strip_prefix("### ") {
-            capture = None;
-            if let Some((raw_metric, body)) = heading.trim().split_once(" labels:") {
-                let name = known_metric_name(raw_metric.trim_matches(TICK), &metadata);
-                let labels = inline_codes(body);
-                if !labels.is_empty() {
-                    metadata.entry(name).or_default().labels = labels;
-                }
-            }
-            continue;
-        }
-
-        if let Some(rest) = trimmed.strip_prefix(TICK) {
-            if let Some((raw_metric, body)) = rest.split_once("\x60:") {
-                let name = known_metric_name(raw_metric, &metadata);
-                let labels = inline_codes(body);
-                if !labels.is_empty() {
-                    metadata.entry(name).or_default().labels = labels;
-                }
-                capture = None;
-                continue;
-            }
-            if let Some((raw_metric, suffix)) = rest.split_once("\x60 label values") {
-                if suffix.ends_with(':') {
-                    let name = known_metric_name(raw_metric, &metadata);
-                    let label = inline_codes(suffix)
-                        .into_iter()
-                        .last()
-                        .unwrap_or_else(|| "value".to_owned());
-                    let _ = metadata.entry(name.clone()).or_default();
-                    capture = Some(Capture::LabelValues(name, label));
-                    continue;
-                }
-            }
-            if let Some((raw_metric, suffix)) = rest.split_once("\x60 field values ") {
-                if suffix.ends_with(':')
-                    && (suffix.starts_with("include") || suffix.starts_with("are generated from"))
-                {
-                    let name = known_metric_name(raw_metric, &metadata);
-                    let _ = metadata.entry(name.clone()).or_default();
-                    capture = Some(Capture::Fields(name));
-                    continue;
-                }
-            }
-        }
-
-        if !trimmed.is_empty() && !line.starts_with('-') {
-            capture = None;
-        }
-        if let (Some(kind), Some(item)) = (&capture, trimmed.strip_prefix('-')) {
-            let value = inline_codes(item)
-                .into_iter()
-                .next()
-                .unwrap_or_else(|| item.trim_matches('-').trim().to_owned());
-            if value.is_empty() {
-                continue;
-            }
-            match kind {
-                Capture::Fields(name) => {
-                    metadata.entry(name.clone()).or_default().fields.push(value)
-                }
-                Capture::LabelValues(name, label) => {
-                    metadata
-                        .entry(name.clone())
-                        .or_default()
-                        .label_values
-                        .entry(label.clone())
-                        .or_default()
-                        .push(value);
-                }
-            }
-        }
+        parse_catalog_line(line, &mut metadata, &mut capture);
     }
 
     for metric in &mut metrics {
@@ -303,8 +316,24 @@ fn parse_markdown(contents: &str) -> Schema {
 fn key_value_fields(input: &str) -> Vec<String> {
     input
         .lines()
-        .filter_map(|line| line.split_once(':'))
-        .filter_map(|(key, _)| (!key.trim().is_empty()).then(|| to_snake_case(key.trim())))
+        .filter_map(|line| {
+            let key = if let Some((key, _)) = line.split_once(':') {
+                key
+            } else {
+                let mut columns = line.split_whitespace();
+                let key = columns.next()?;
+                let _ = columns.next()?.parse::<i128>().ok()?;
+                if columns.next().is_some() {
+                    return None;
+                }
+                key
+            };
+            if key.trim().is_empty() {
+                None
+            } else {
+                Some(to_snake_case(key.trim()))
+            }
+        })
         .collect()
 }
 
@@ -417,11 +446,11 @@ fn append_runtime_fields(schema: &mut Schema) -> io::Result<()> {
         ),
     ];
     for (name, fields) in runtime {
-        if let Some(metric) = schema.metrics.iter_mut().find(|metric| metric.name == name) {
-            if !fields.is_empty() {
-                metric.fields_detected = fields;
-                dedupe(&mut metric.fields_detected);
-            }
+        if let Some(metric) = schema.metrics.iter_mut().find(|metric| metric.name == name)
+            && !fields.is_empty()
+        {
+            metric.fields_detected = fields;
+            dedupe(&mut metric.fields_detected);
         }
     }
     Ok(())
@@ -429,12 +458,17 @@ fn append_runtime_fields(schema: &mut Schema) -> io::Result<()> {
 
 pub fn generate(source: &Path, runtime: bool) -> io::Result<Schema> {
     let mut schema = parse_markdown(&fs::read_to_string(source)?);
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()?;
     let abs = source.canonicalize()?;
-    schema.source_file = abs.strip_prefix(root).map_or_else(
-        |_| abs.display().to_string(),
+    let roots = [
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
+        std::env::current_dir()?,
+    ];
+    let relative = roots
+        .iter()
+        .filter_map(|root| root.canonicalize().ok())
+        .find_map(|root| abs.strip_prefix(root).ok().map(Path::to_path_buf));
+    schema.source_file = relative.map_or_else(
+        || source.display().to_string(),
         |path| path.display().to_string(),
     );
     if runtime {
@@ -446,6 +480,15 @@ pub fn generate(source: &Path, runtime: bool) -> io::Result<Schema> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn table_requires_three_columns_and_preserves_embedded_bars() {
+        assert!(table_row("| name | Counter |").is_none());
+        assert_eq!(
+            table_row("| `metric_total` | Counter | first | second |"),
+            Some(("metric_total", "Counter", "first | second".to_owned()))
+        );
+    }
 
     #[test]
     fn snake_case_matches_exporter() {
@@ -462,6 +505,15 @@ mod tests {
         }
         assert_eq!(kernel_counter_field_name("Ip", "ReasmOKs"), "ip_reasm_oks");
         assert_eq!(kernel_counter_field_name("Ip", "FragOKs"), "ip_frag_oks");
+    }
+
+    #[test]
+    fn proc_counter_fields_support_colon_and_whitespace_tables() {
+        let contents = "MemTotal: 5678 kB\nVmStatCase 1234\nVmStatNegative -1\nmalformed notanumber\ninvalid 1 other\n";
+        assert_eq!(
+            key_value_fields(contents),
+            ["mem_total", "vm_stat_case", "vm_stat_negative"]
+        );
     }
 
     #[test]
@@ -499,6 +551,21 @@ mod tests {
             Some("mem_total")
         );
         assert!(!schema.metrics[0].label_values.contains_key("meminfo"));
+    }
+
+    #[test]
+    fn committed_catalog_matches_documentation() -> io::Result<()> {
+        let root = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+        let generated = generate(&root.join("METRICS.md"), false)?;
+        let mut committed: Schema =
+            serde_json::from_str(&fs::read_to_string(root.join("METRICS.schema.json"))?)
+                .map_err(io::Error::other)?;
+        for metric in &mut committed.metrics {
+            metric.fields_detected.clear();
+        }
+        assert_eq!(generated.groups, committed.groups);
+        assert_eq!(generated.metrics, committed.metrics);
+        Ok(())
     }
 
     #[test]
