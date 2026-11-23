@@ -98,7 +98,7 @@ pub fn kernel_counter_field_name(section: &str, field: &str) -> String {
         ("Ip", "FragOKs") => "frag_oks".to_owned(),
         _ => to_snake_case(field),
     };
-    format!("{}_{}", to_snake_case(section), field_name)
+    format!("{}_{field_name}", to_snake_case(section))
 }
 
 fn known_metric_name(name: &str, meta: &HashMap<String, Metadata>) -> String {
