@@ -5,7 +5,7 @@ This file lists all metrics currently exported by the service, grouped by collec
 ## Automated parsing contract (important for future edits)
 
 If you add or edit sections for this file, keep these formatting rules or the
-`scripts/generate_metrics_schema.py` parser will miss data:
+`tools/metrics-tool/src/schema.rs` parser will miss data:
 
 - Metric groups must remain as `## <Group Name>` sections.
 - Group metric tables must keep the exact table form:
@@ -464,12 +464,12 @@ Plugin-provided metric names are dynamic and therefore are not enumerated in thi
 | `thermal_zone_count` | Gauge | Number of thermal zones |
 | `thermal_cooling_device_count` | Gauge | Number of cooling devices |
 
-## Schema generation for Python tooling
+## Metric schema and Grafana tooling
 
 `METRICS.md` now includes enough structured content for tooling to parse. Use:
 
 ```bash
-python3 scripts/generate_metrics_schema.py --with-runtime-fields --output METRICS.schema.json --pretty
+cargo run --locked -p rs-linux-exporter-metrics-tool -- schema --with-runtime-fields --output METRICS.schema.json --pretty
 ```
 
 The command writes a machine-readable `METRICS.schema.json` using current `/proc` field discovery for raw metric families (`vmstat`, `snmp`, `netstat`, `meminfo`, etc.).
@@ -477,7 +477,7 @@ The command writes a machine-readable `METRICS.schema.json` using current `/proc
 Grafana panel generation:
 
 ```bash
-python3 scripts/generate_grafana_panel.py --section procfs --datasource DS_PROMETHEUS --instance-var instance
+cargo run --locked -p rs-linux-exporter-metrics-tool -- grafana --section procfs --datasource DS_PROMETHEUS --instance-var instance
 ```
 
 The generator now applies common operational defaults:
@@ -489,20 +489,20 @@ The generator now applies common operational defaults:
 - If you want to use a literal datasource UID/name (`VictoriaMetrics`), pass `--datasource-literal`.
 - If you use Grafana datasource variables, keep passing `--datasource DS_...` and set the datasource variable in Grafana.
 
-Run without section/metric flags to get interactive help and examples.
+Use --help for the command reference.
 
 Generate an importable dashboard JSON:
 
 Most used:
 
 ```bash
-python3 scripts/generate_grafana_panel.py --all --dashboard --datasource VictoriaMetrics --datasource-literal --instance-var instance --output dashboard.json --pretty
+cargo run --locked -p rs-linux-exporter-metrics-tool -- grafana --all --dashboard --datasource VictoriaMetrics --datasource-literal --instance-var instance --output dashboard.json --pretty
 ```
 
 Alternative (datasource variable mode):
 
 ```bash
-python3 scripts/generate_grafana_panel.py --all --dashboard --datasource DS_PROMETHEUS --instance-var instance --output dashboard.json --pretty
+cargo run --locked -p rs-linux-exporter-metrics-tool -- grafana --all --dashboard --datasource DS_PROMETHEUS --instance-var instance --output dashboard.json --pretty
 ```
 
 ## Metric labels and field catalogs
