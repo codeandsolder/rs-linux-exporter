@@ -81,6 +81,9 @@ private_intra_doc_links = "warn"
 missing_crate_level_docs = "warn"
 
 [patch.crates-io]
+prometheus = { git = "https://github.com/codeandsolder/cargo-patches.git", branch = "generated/prometheus-text" }
+ipmi-rs = { git = "https://github.com/codeandsolder/cargo-patches.git", branch = "generated/ipmi-transports" }
+ipmi-rs-core = { git = "https://github.com/codeandsolder/cargo-patches.git", branch = "generated/ipmi-transports" }
 zlib-rs = { git = "https://github.com/codeandsolder/zlib-rs-fast.git", rev = "98f76b3a242099f2229b048360eeb4707246a68f" }
 
 [workspace]
