@@ -123,7 +123,8 @@ Each release package is built natively in its target distribution using the
 shared compiler cache. To build locally, run `bash make_deb.sh` on the target
 distribution with Rust, the configured compiler cache, build-essential,
 pkg-config, git, dpkg-dev, CMake 3.22 or newer, Clang and libclang development
-headers installed. Package names and dynamic library
+headers installed. BTLS and its C++ runtime are linked statically; the packaging
+checks reject accidental dynamic TLS or C++ runtime linkage. Package names and dynamic library
 dependencies are derived from the actual build environment. The packaging CI
 installs, reinstalls and removes each package in a disposable container.
 
