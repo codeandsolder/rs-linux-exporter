@@ -11,7 +11,7 @@ keywords = ["prometheus", "exporter", "linux", "metrics", "monitoring"]
 categories = ["command-line-utilities", "network-programming"]
 
 [dependencies]
-prometheus = "0.14"
+prometheus = { version = "0.14", default-features = false }
 procfs = { version = "0.18", default-features = false }
 bytes = "1"
 http-body-util = "0.1"

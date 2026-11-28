@@ -1,13 +1,11 @@
+use prometheus::TextEncoder;
 use prometheus::proto::{MetricFamily, MetricType};
-use prometheus::{Encoder, TextEncoder};
 use serde_json::Value as JsonValue;
 use std::fmt;
-use std::string::FromUtf8Error;
 
 #[derive(Debug)]
 pub enum RenderError {
     Prometheus(prometheus::Error),
-    Utf8(FromUtf8Error),
     Json(serde_json::Error),
 }
 
@@ -15,10 +13,6 @@ impl fmt::Display for RenderError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Prometheus(err) => write!(formatter, "Prometheus encoding failed: {err}"),
-            Self::Utf8(err) => write!(
-                formatter,
-                "Prometheus encoding produced invalid UTF-8: {err}"
-            ),
             Self::Json(err) => write!(formatter, "JSON encoding failed: {err}"),
         }
     }
@@ -59,47 +53,65 @@ fn json_from_families(families: Vec<MetricFamily>) -> Result<String, RenderError
                     &mut samples,
                     name,
                     &base_labels,
-                    JsonValue::from(metric.get_counter().value()),
+                    JsonValue::from(metric.get_counter().get_value()),
                 ),
                 MetricType::GAUGE => push_json_sample(
                     &mut samples,
                     name,
                     &base_labels,
-                    JsonValue::from(metric.get_gauge().value()),
+                    JsonValue::from(metric.get_gauge().get_value()),
                 ),
-                MetricType::UNTYPED => {
-                    if let Some(untyped) = metric.untyped.as_ref() {
-                        push_json_sample(
-                            &mut samples,
-                            name,
-                            &base_labels,
-                            JsonValue::from(untyped.value()),
-                        );
-                    }
-                }
+                MetricType::UNTYPED => push_json_sample(
+                    &mut samples,
+                    name,
+                    &base_labels,
+                    JsonValue::from(metric.get_untyped().get_value()),
+                ),
                 MetricType::HISTOGRAM => {
                     let histogram = metric.get_histogram();
+                    let bucket_name = format!("{name}_bucket");
+                    let mut has_inf = false;
                     for bucket in histogram.get_bucket() {
+                        let upper_bound = bucket.upper_bound();
+                        let is_inf = upper_bound.is_infinite() && upper_bound.is_sign_positive();
+                        has_inf |= is_inf;
                         let mut labels = base_labels.clone();
-                        labels.push(("le".to_string(), bucket.upper_bound().to_string()));
+                        labels.push((
+                            "le".to_string(),
+                            if is_inf {
+                                "+Inf".to_string()
+                            } else {
+                                upper_bound.to_string()
+                            },
+                        ));
                         push_json_sample(
                             &mut samples,
-                            &format!("{name}_bucket"),
+                            &bucket_name,
                             &labels,
                             JsonValue::from(bucket.cumulative_count()),
+                        );
+                    }
+                    if !has_inf {
+                        let mut labels = base_labels.clone();
+                        labels.push(("le".to_string(), "+Inf".to_string()));
+                        push_json_sample(
+                            &mut samples,
+                            &bucket_name,
+                            &labels,
+                            JsonValue::from(histogram.get_sample_count()),
                         );
                     }
                     push_json_sample(
                         &mut samples,
                         &format!("{name}_sum"),
                         &base_labels,
-                        JsonValue::from(histogram.sample_sum()),
+                        JsonValue::from(histogram.get_sample_sum()),
                     );
                     push_json_sample(
                         &mut samples,
                         &format!("{name}_count"),
                         &base_labels,
-                        JsonValue::from(histogram.sample_count()),
+                        JsonValue::from(histogram.get_sample_count()),
                     );
                 }
                 MetricType::SUMMARY => {
@@ -148,40 +160,38 @@ pub fn render_json() -> Result<String, RenderError> {
 }
 
 pub fn render_text() -> Result<String, RenderError> {
-    let encoder = TextEncoder::new();
-    let metric_families = gather_all();
-    let mut buffer = Vec::new();
-    encoder
-        .encode(&metric_families, &mut buffer)
-        .map_err(RenderError::Prometheus)?;
-    String::from_utf8(buffer).map_err(RenderError::Utf8)
+    TextEncoder::new()
+        .encode_to_string(&gather_all())
+        .map_err(RenderError::Prometheus)
 }
 
 #[cfg(test)]
 mod tests {
     use super::json_from_families;
-    use prometheus::proto::{Metric, MetricFamily, MetricType, Quantile, Summary, Untyped};
+    use prometheus::proto::{
+        Bucket, Histogram, Metric, MetricFamily, MetricType, Quantile, Summary, Untyped,
+    };
     use serde_json::Value;
 
     fn family(name: &str, metric_type: MetricType, metric: Metric) -> MetricFamily {
-        let mut family = MetricFamily::new();
+        let mut family = MetricFamily::default();
         family.set_name(name.to_string());
         family.set_field_type(metric_type);
-        family.metric.push(metric);
+        family.set_metric(vec![metric]);
         family
     }
 
     #[test]
     fn summary_quantiles_use_base_name_and_quantile_label() {
-        let mut quantile = Quantile::new();
+        let mut quantile = Quantile::default();
         quantile.set_quantile(0.5);
         quantile.set_value(12.5);
-        let mut summary = Summary::new();
+        let mut summary = Summary::default();
         summary.set_sample_count(4);
         summary.set_sample_sum(50.0);
-        summary.quantile.push(quantile);
-        let mut metric = Metric::new();
-        metric.summary = Some(summary).into();
+        summary.set_quantile(vec![quantile]);
+        let mut metric = Metric::default();
+        metric.set_summary(summary);
 
         let body = json_from_families(vec![family("latency_seconds", MetricType::SUMMARY, metric)])
             .expect("serialize summary");
@@ -198,11 +208,46 @@ mod tests {
     }
 
     #[test]
+    fn histogram_infinity_bucket_matches_text_exposition() {
+        for explicit_infinity in [false, true] {
+            let mut finite = Bucket::default();
+            finite.set_upper_bound(1.0);
+            finite.set_cumulative_count(2);
+            let mut buckets = vec![finite];
+            if explicit_infinity {
+                let mut infinite = Bucket::default();
+                infinite.set_upper_bound(f64::INFINITY);
+                infinite.set_cumulative_count(4);
+                buckets.push(infinite);
+            }
+            let mut histogram = Histogram::default();
+            histogram.set_sample_count(4);
+            histogram.set_sample_sum(9.0);
+            histogram.set_bucket(buckets);
+            let mut metric = Metric::default();
+            metric.set_histogram(histogram);
+            let body = json_from_families(vec![family(
+                "latency_seconds",
+                MetricType::HISTOGRAM,
+                metric,
+            )])
+            .expect("serialize histogram");
+            let rows: Vec<Value> = serde_json::from_str(&body).expect("parse JSON");
+            let infinities: Vec<_> = rows
+                .iter()
+                .filter(|row| row["_name_"] == "latency_seconds_bucket" && row["le"] == "+Inf")
+                .collect();
+            assert_eq!(infinities.len(), 1);
+            assert_eq!(infinities[0]["_value_"], 4);
+        }
+    }
+
+    #[test]
     fn untyped_metrics_are_not_silently_dropped() {
-        let mut untyped = Untyped::new();
+        let mut untyped = Untyped::default();
         untyped.set_value(7.25);
-        let mut metric = Metric::new();
-        metric.untyped = Some(untyped).into();
+        let mut metric = Metric::default();
+        metric.set_untyped(untyped);
 
         let body = json_from_families(vec![family("legacy_value", MetricType::UNTYPED, metric)])
             .expect("serialize untyped metric");

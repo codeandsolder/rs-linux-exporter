@@ -198,41 +198,45 @@ fn store_snapshot(snapshot: PluginSnapshot) -> Result<(), String> {
 }
 
 fn label_pair(name: &str, value: &str) -> LabelPair {
-    let mut pair = LabelPair::new();
+    let mut pair = LabelPair::default();
     pair.set_name(name.to_string());
     pair.set_value(value.to_string());
     pair
 }
 
-fn proto_metric(sample: &PluginSample, metric_type: PluginMetricType) -> Metric {
-    let mut metric = Metric::new();
-    metric.label = sample
-        .labels
-        .iter()
-        .map(|(name, value)| label_pair(name, value))
-        .collect();
+fn build_metric(sample: &PluginSample, metric_type: PluginMetricType) -> Metric {
+    let mut metric = Metric::from_label(
+        sample
+            .labels
+            .iter()
+            .map(|(name, value)| label_pair(name, value))
+            .collect(),
+    );
     match metric_type {
         PluginMetricType::Counter => {
-            let mut counter = Counter::new();
+            let mut counter = Counter::default();
             counter.set_value(sample.value);
-            metric.counter = Some(counter).into();
+            metric.set_counter(counter);
         }
         PluginMetricType::Gauge => {
-            let mut gauge = Gauge::new();
+            let mut gauge = Gauge::default();
             gauge.set_value(sample.value);
-            metric.gauge = Some(gauge).into();
+            metric.set_gauge(gauge);
         }
         PluginMetricType::Untyped => {
-            let mut untyped = Untyped::new();
+            let mut untyped = Untyped::default();
             untyped.set_value(sample.value);
-            metric.untyped = Some(untyped).into();
+            metric.set_untyped(untyped);
         }
     }
     metric
 }
 
-fn metric_family(plugin: &str, metric: &PluginMetric) -> MetricFamily {
-    let mut family = MetricFamily::new();
+fn metric_family(plugin: &str, metric: &PluginMetric) -> Option<MetricFamily> {
+    if metric.samples.is_empty() {
+        return None;
+    }
+    let mut family = MetricFamily::default();
     family.set_name(format!("{plugin}_{}", metric.name));
     family.set_help(metric.help.clone());
     family.set_field_type(match metric.metric_type {
@@ -240,30 +244,33 @@ fn metric_family(plugin: &str, metric: &PluginMetric) -> MetricFamily {
         PluginMetricType::Gauge => MetricType::GAUGE,
         PluginMetricType::Untyped => MetricType::UNTYPED,
     });
-    family.metric = metric
-        .samples
-        .iter()
-        .map(|sample| proto_metric(sample, metric.metric_type))
-        .collect();
-    family
+    family.set_metric(
+        metric
+            .samples
+            .iter()
+            .map(|sample| build_metric(sample, metric.metric_type))
+            .collect(),
+    );
+    Some(family)
 }
 
 fn health_family(name: &str, help: &str, samples: Vec<(&str, f64)>) -> MetricFamily {
-    let mut family = MetricFamily::new();
+    let mut family = MetricFamily::default();
     family.set_name(name.to_string());
     family.set_help(help.to_string());
     family.set_field_type(MetricType::GAUGE);
-    family.metric = samples
-        .into_iter()
-        .map(|(plugin, value)| {
-            let mut metric = Metric::new();
-            metric.label.push(label_pair("plugin", plugin));
-            let mut gauge = Gauge::new();
-            gauge.set_value(value);
-            metric.gauge = Some(gauge).into();
-            metric
-        })
-        .collect();
+    family.set_metric(
+        samples
+            .into_iter()
+            .map(|(plugin, value)| {
+                let mut metric = Metric::from_label(vec![label_pair("plugin", plugin)]);
+                let mut gauge = Gauge::default();
+                gauge.set_value(value);
+                metric.set_gauge(gauge);
+                metric
+            })
+            .collect(),
+    );
     family
 }
 
@@ -290,7 +297,7 @@ pub fn metric_families() -> Vec<MetricFamily> {
                     .snapshot
                     .metrics
                     .iter()
-                    .map(|metric| metric_family(plugin, metric)),
+                    .filter_map(|metric| metric_family(plugin, metric)),
             );
         }
     }
@@ -444,9 +451,31 @@ mod tests {
     fn validates_and_namespaces_snapshots() {
         let snapshot = snapshot();
         validate_snapshot(&snapshot).unwrap();
-        let family = metric_family(&snapshot.plugin, &snapshot.metrics[0]);
+        let family =
+            metric_family(&snapshot.plugin, &snapshot.metrics[0]).expect("nonempty metric");
         assert_eq!(family.name(), "searxrs2_requests_total");
-        assert_eq!(family.get_metric()[0].get_counter().value(), 42.0);
+        assert_eq!(family.get_metric()[0].get_counter().get_value(), 42.0);
+    }
+
+    #[test]
+    fn native_model_encodes_untyped_plugin_samples() {
+        let mut snapshot = snapshot();
+        let metric = &mut snapshot.metrics[0];
+        metric.metric_type = PluginMetricType::Untyped;
+        metric.samples[0].value = -7.25;
+        let family = metric_family(&snapshot.plugin, metric).expect("nonempty metric");
+        let text = prometheus::TextEncoder::new()
+            .encode_to_string(&[family])
+            .expect("encode untyped metric");
+        assert!(text.contains("# TYPE searxrs2_requests_total untyped\n"));
+        assert!(text.contains("searxrs2_requests_total{engine=\"brave\"} -7.25\n"));
+    }
+
+    #[test]
+    fn empty_plugin_series_does_not_produce_an_empty_metric_family() {
+        let mut snapshot = snapshot();
+        snapshot.metrics[0].samples.clear();
+        assert!(metric_family(&snapshot.plugin, &snapshot.metrics[0]).is_none());
     }
 
     #[test]
