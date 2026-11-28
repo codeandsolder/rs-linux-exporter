@@ -147,10 +147,10 @@ fn json_from_families(families: Vec<MetricFamily>) -> Result<String, RenderError
                     JsonValue::from(metric.get_untyped().get_value()),
                 ),
                 MetricType::HISTOGRAM => {
-                    push_json_histogram(&mut samples, name, &base_labels, metric.get_histogram())
+                    push_json_histogram(&mut samples, name, &base_labels, metric.get_histogram());
                 }
                 MetricType::SUMMARY => {
-                    push_json_summary(&mut samples, name, &base_labels, metric.get_summary())
+                    push_json_summary(&mut samples, name, &base_labels, metric.get_summary());
                 }
             }
         }
