@@ -122,7 +122,7 @@ Targets: Debian 12/13 and Ubuntu 22.04/24.04/26.04.
 Each release package is built natively in its target distribution using the
 shared compiler cache. To build locally, run `bash make_deb.sh` on the target
 distribution with Rust, the configured compiler cache, build-essential,
-pkg-config, git and dpkg-dev installed. Package names and dynamic library
+pkg-config, git, dpkg-dev, CMake 3.22 or newer, Clang and libclang development headers installed. Package names and dynamic library
 dependencies are derived from the actual build environment. The packaging CI
 installs, reinstalls and removes each package in a disposable container.
 
