@@ -3,6 +3,7 @@ name = "rs-linux-exporter"
 version = "0.1.16"
 edition = "2024"
 rust-version = "1.100"
+publish = false
 description = "Linux monitoring exporter"
 repository = "https://github.com/nuclearcat/rs-linux-exporter"
 readme = "README.md"
@@ -18,6 +19,7 @@ http-body-util = "0.1"
 hyper = { version = "1", features = ["server", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["server-auto", "tokio"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "signal", "time"] }
+# Keep both BTLS revisions identical to the Wreq revision selected by lurkmoar.
 btls = { git = "https://github.com/codeandsolder/btls-fast.git", rev = "53c46285a85742dc8c3ab48fbb66613da6b4a297" }
 tokio-btls = { git = "https://github.com/codeandsolder/btls-fast.git", rev = "53c46285a85742dc8c3ab48fbb66613da6b4a297" }
 netlink-bindings = { version = "0.3.5", features = ["conntrack"] }

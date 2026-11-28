@@ -122,7 +122,8 @@ Targets: Debian 12/13 and Ubuntu 22.04/24.04/26.04.
 Each release package is built natively in its target distribution using the
 shared compiler cache. To build locally, run `bash make_deb.sh` on the target
 distribution with Rust, the configured compiler cache, build-essential,
-pkg-config, git, dpkg-dev, CMake 3.22 or newer, Clang and libclang development headers installed. Package names and dynamic library
+pkg-config, git, dpkg-dev, CMake 3.22 or newer, Clang and libclang development
+headers installed. Package names and dynamic library
 dependencies are derived from the actual build environment. The packaging CI
 installs, reinstalls and removes each package in a disposable container.
 
@@ -580,6 +581,16 @@ scrape_configs:
 ```
 
 ## Contributing
+
+The fork is distributed as GitHub release binaries and distribution packages,
+or built from its locked Git checkout. It is not published to crates.io because
+its first-party Git dependencies and workspace patches must be preserved.
+
+The direct BTLS and Tokio-BTLS pins must match the BTLS source revision in
+Wreq, which is pinned by lurkmoar. Advance this dependency chain together;
+updating BTLS directly to its latest commit can create conflicting native
+library identities. The Rust CI gate validates the resolved dependency graph.
+
 Please check dependency freshness and binary size when submitting changes.
 
 To install helper tools:

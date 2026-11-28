@@ -17,6 +17,22 @@
         "ubuntu"
       ],
       "allowedVersions": "24.04"
+    },
+    {
+      "description": "BTLS native identity is dictated by the Wreq revision pinned by lurkmoar; update direct BTLS pins together with that dependency chain, not to independent BTLS main",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchDatasources": [
+        "git-refs"
+      ],
+      "matchPackageNames": [
+        "/^https:\\/\\/github\\.com\\/codeandsolder\\/btls-fast(?:\\.git)?$/"
+      ],
+      "matchUpdateTypes": [
+        "digest"
+      ],
+      "enabled": false
     }
   ]
 }
