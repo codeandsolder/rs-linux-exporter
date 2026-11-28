@@ -2,7 +2,7 @@
 name = "rs-linux-exporter"
 version = "0.1.16"
 edition = "2024"
-rust-version = "1.99"
+rust-version = "1.100"
 description = "Linux monitoring exporter"
 repository = "https://github.com/nuclearcat/rs-linux-exporter"
 readme = "README.md"
@@ -12,21 +12,21 @@ categories = ["command-line-utilities", "network-programming"]
 
 [dependencies]
 prometheus = "0.14"
-procfs = "0.18"
+procfs = { version = "0.18", default-features = false }
 bytes = "1"
 http-body-util = "0.1"
 hyper = { version = "1", features = ["server", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["server-auto", "tokio"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "signal", "time"] }
-btls = { git = "https://github.com/codeandsolder/btls-fast.git", rev = "91fb0b88c9895f97c37f39a2db265742575a8096" }
-tokio-btls = { git = "https://github.com/codeandsolder/btls-fast.git", rev = "91fb0b88c9895f97c37f39a2db265742575a8096" }
+btls = { git = "https://github.com/codeandsolder/btls-fast.git", rev = "53c46285a85742dc8c3ab48fbb66613da6b4a297" }
+tokio-btls = { git = "https://github.com/codeandsolder/btls-fast.git", rev = "53c46285a85742dc8c3ab48fbb66613da6b4a297" }
 netlink-bindings = { version = "0.3.5", features = ["conntrack"] }
 rustix = { version = "1.1", features = ["fs", "net", "system"] }
 toml = "1.0.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 ipnet = "2"
-ipmi-rs = "0.6.0"
+ipmi-rs = { version = "0.6.0", default-features = false, features = ["unix-file"] }
 subtle = "2.6"
 wait-timeout = "0.2.1"
 futures-util = "0.3.31"
@@ -35,7 +35,7 @@ regex = "1"
 rtime-clock = "0.16.0"
 etc-os-release = { version = "0.2.0", features = ["date"] }
 jiff = { version = "1", default-features = false, features = ["std"] }
-lurkmoar = { version = "0.1.0", git = "https://github.com/codeandsolder/lurkmoar-rs", rev = "eb22687dc167a86e923560935efc1234a9832e27" }
+lurkmoar = { version = "0.1.0", git = "https://github.com/codeandsolder/lurkmoar-rs", rev = "3cdf30cf748beffd2cec9078a8821d78f4912bef" }
 
 [dev-dependencies]
 tempfile = "3"
@@ -76,7 +76,7 @@ private_intra_doc_links = "warn"
 missing_crate_level_docs = "warn"
 
 [patch.crates-io]
-zlib-rs = { git = "https://github.com/codeandsolder/zlib-rs-fast.git", rev = "1ec3a5612ee28803a7756fa52bd013389507a2db" }
+zlib-rs = { git = "https://github.com/codeandsolder/zlib-rs-fast.git", rev = "98f76b3a242099f2229b048360eeb4707246a68f" }
 
 [workspace]
 members = ["tools/metrics-tool"]
