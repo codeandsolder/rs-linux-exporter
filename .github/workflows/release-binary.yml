@@ -27,7 +27,9 @@ jobs:
         with:
           rust-toolchain: ${{ steps.compiler.outputs.channel }}
       - name: Build release binary
-        run: cargo build --release --locked
+        run: |
+          cargo build --release --locked
+          bash packaging/check-binary-linkage.sh target/release/rs-linux-exporter
       - name: Finalize mandatory sccache
         if: always()
         uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@1293f1c247f07a14a85859f908b4f6b7e2553922 # main

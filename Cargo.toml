@@ -3,6 +3,7 @@ name = "rs-linux-exporter"
 version = "0.1.16"
 edition = "2024"
 rust-version = "1.100"
+publish = false
 description = "Linux monitoring exporter"
 repository = "https://github.com/nuclearcat/rs-linux-exporter"
 readme = "README.md"
@@ -11,14 +12,15 @@ keywords = ["prometheus", "exporter", "linux", "metrics", "monitoring"]
 categories = ["command-line-utilities", "network-programming"]
 
 [dependencies]
-prometheus = "0.14"
+prometheus = { version = "0.14", default-features = false }
 procfs = { version = "0.18", default-features = false }
 bytes = "1"
 http-body-util = "0.1"
 hyper = { version = "1", features = ["server", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["server-auto", "tokio"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "signal", "time"] }
-btls = { git = "https://github.com/codeandsolder/btls-fast.git", rev = "53c46285a85742dc8c3ab48fbb66613da6b4a297" }
+# Keep both BTLS revisions identical to the Wreq revision selected by lurkmoar.
+btls = { git = "https://github.com/codeandsolder/btls-fast.git", rev = "53c46285a85742dc8c3ab48fbb66613da6b4a297", features = ["static-cxx-runtime"] }
 tokio-btls = { git = "https://github.com/codeandsolder/btls-fast.git", rev = "53c46285a85742dc8c3ab48fbb66613da6b4a297" }
 netlink-bindings = { version = "0.3.5", features = ["conntrack"] }
 rustix = { version = "1.1", features = ["fs", "net", "system"] }
@@ -38,7 +40,10 @@ jiff = { version = "1", default-features = false, features = ["std"] }
 lurkmoar = { version = "0.1.0", git = "https://github.com/codeandsolder/lurkmoar-rs", rev = "3cdf30cf748beffd2cec9078a8821d78f4912bef" }
 
 [dev-dependencies]
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+hyper = { version = "1", features = ["client"] }
 tempfile = "3"
+tokio = { version = "1", features = ["sync"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -76,6 +81,9 @@ private_intra_doc_links = "warn"
 missing_crate_level_docs = "warn"
 
 [patch.crates-io]
+prometheus = { git = "https://github.com/codeandsolder/cargo-patches.git", branch = "generated/prometheus-text" }
+ipmi-rs = { git = "https://github.com/codeandsolder/cargo-patches.git", branch = "generated/ipmi-transports" }
+ipmi-rs-core = { git = "https://github.com/codeandsolder/cargo-patches.git", branch = "generated/ipmi-transports" }
 zlib-rs = { git = "https://github.com/codeandsolder/zlib-rs-fast.git", rev = "98f76b3a242099f2229b048360eeb4707246a68f" }
 
 [workspace]

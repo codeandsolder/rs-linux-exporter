@@ -21,6 +21,7 @@ trap 'rm -rf "$root"' EXIT
 pkg="$root/pkg"
 target_dir=$(realpath -m "${CARGO_TARGET_DIR:-target}")
 cargo build --release --locked --target-dir "$target_dir"
+bash packaging/check-binary-linkage.sh "$target_dir/release/rs-linux-exporter"
 install -d "$pkg/DEBIAN" "$pkg/usr/bin" "$pkg/etc/rs-linux-exporter" "$pkg/lib/systemd/system" "$root/debian" dist
 install -m 0755 "$target_dir/release/rs-linux-exporter" "$pkg/usr/bin/rs-linux-exporter"
 install -m 0640 packaging/config.toml "$pkg/etc/rs-linux-exporter/config.toml"
