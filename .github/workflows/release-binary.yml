@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install native TLS build dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake clang libclang-dev
       - name: Resolve the native quarantined compiler
         id: compiler
         uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@5991b873ab28ec8fae36c2c8ef944a3f67f5f9b3 # main

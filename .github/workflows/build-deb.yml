@@ -5,11 +5,6 @@ on:
   release:
     types: [published]
   pull_request:
-    paths:
-      - '.github/workflows/build-deb.yml'
-      - 'make_deb.sh'
-      - 'rust-toolchain.toml'
-      - 'packaging/**'
 
 permissions:
   contents: read
@@ -19,7 +14,36 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    runs-on: ubuntu-26.04
+    outputs:
+      required: ${{ steps.detect.outputs.required }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+      - name: Determine whether distribution builds are needed
+        id: detect
+        shell: bash
+        run: |
+          if [[ '${{ github.event_name }}' != 'pull_request' ]]; then
+            echo 'required=true' >> "$GITHUB_OUTPUT"
+          else
+            status=0
+            git diff --quiet '${{ github.event.pull_request.base.sha }}' '${{ github.event.pull_request.head.sha }}' -- \
+              Cargo.toml Cargo.lock ':(glob)**/Cargo.toml' ':(glob)**/build.rs' \
+              .cargo make_deb.sh rust-toolchain.toml packaging .github/workflows/build-deb.yml || status=$?
+            case "$status" in
+              0) echo 'required=false' >> "$GITHUB_OUTPUT" ;;
+              1) echo 'required=true' >> "$GITHUB_OUTPUT" ;;
+              *) exit "$status" ;;
+            esac
+          fi
+
   build:
+    needs: changes
+    if: needs.changes.outputs.required == 'true'
     runs-on: ubuntu-26.04
     container: ${{ matrix.image }}
     strategy:
@@ -40,7 +64,7 @@ jobs:
       - name: Install target distribution build and test dependencies
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl git build-essential pkg-config dpkg-dev systemd tar zstd
+          apt-get install -y --no-install-recommends ca-certificates curl git build-essential pkg-config dpkg-dev systemd tar zstd cmake clang libclang-dev
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Trust the mounted checkout in the container
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -90,6 +114,22 @@ jobs:
           name: rs-linux-exporter-${{ matrix.distro }}-deb
           path: dist/*.deb
           if-no-files-found: error
+
+  validate:
+    name: Debian package validation
+    if: always()
+    needs: [changes, build]
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Verify the required distribution build result
+        shell: bash
+        run: |
+          test '${{ needs.changes.result }}' = success
+          case '${{ needs.changes.outputs.required }}' in
+            true) test '${{ needs.build.result }}' = success ;;
+            false) test '${{ needs.build.result }}' = skipped ;;
+            *) exit 1 ;;
+          esac
 
   release:
     if: github.event_name == 'release'

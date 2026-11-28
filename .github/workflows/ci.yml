@@ -21,6 +21,7 @@ jobs:
     uses: codeandsolder/ci-workflows/.github/workflows/rust-sccache.yml@5991b873ab28ec8fae36c2c8ef944a3f67f5f9b3 # main
     with:
       runner: ubuntu-26.04
+      apt-packages: cmake clang libclang-dev
       strict-suites: |
         [{"name":"workspace","allow-test-panics":true}]
       command: |

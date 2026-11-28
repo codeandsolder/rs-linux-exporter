@@ -4,8 +4,6 @@
 //! optional external tools, then serves them over HTTP for Prometheus-compatible scrapers.
 
 use crate::metric_support::RegisterMetricResultExt;
-#[macro_use]
-extern crate rocket;
 
 mod collection;
 mod collectors;
@@ -61,32 +59,11 @@ mod sysfs;
 
 use crate::config::AppConfig;
 use crate::exposition::RenderError;
+use hyper::StatusCode;
 use prometheus::IntCounter;
-use rocket::Config;
-use rocket::config::TlsConfig;
-use rocket::http::{ContentType, Status};
-use rocket::request::{FromRequest, Outcome, Request};
-use rocket::response::status;
-use rocket::tokio::task::spawn_blocking;
-use std::net::IpAddr;
-use std::sync::Mutex;
-use std::time::Instant;
-
-/// Extracts Bearer token from Authorization header
-struct BearerToken<'r>(Option<&'r str>);
-
-#[rocket::async_trait]
-impl<'r> FromRequest<'r> for BearerToken<'r> {
-    type Error = ();
-
-    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let token = request
-            .headers()
-            .get_one("Authorization")
-            .and_then(|header| header.strip_prefix("Bearer "));
-        Outcome::Success(Self(token))
-    }
-}
+use std::{net::IpAddr, sync::Mutex, time::Instant};
+use tokio::task::spawn_blocking;
+mod http_server;
 use std::sync::OnceLock;
 
 static METRICS_REQUESTS_TOTAL: OnceLock<IntCounter> = OnceLock::new();
@@ -140,7 +117,7 @@ fn app_config() -> &'static AppConfig {
 /// Runs on the blocking pool: collectors do synchronous filesystem and netlink
 /// I/O, and `statvfs` on an unresponsive network mount or an IPMI controller
 /// that is slow to answer can block for seconds. Doing that directly in the
-/// handler would tie up a Rocket worker thread for the duration.
+/// handler would tie up an async worker thread for the duration.
 #[expect(
     clippy::significant_drop_tightening,
     reason = "the scrape mutex must cover rendering so another refresh cannot reset metric vectors mid-encoding"
@@ -177,15 +154,15 @@ fn render_text_with_push_health() -> Result<String, RenderError> {
     Ok(text)
 }
 
-const fn collection_failed() -> status::Custom<&'static str> {
-    status::Custom(Status::InternalServerError, "collection failed")
+const fn collection_failed() -> (StatusCode, &'static str) {
+    (StatusCode::INTERNAL_SERVER_ERROR, "collection failed")
 }
 
 fn authorize_metrics_request(
     endpoint: &'static str,
     client_ip: Option<IpAddr>,
     token: Option<&str>,
-) -> Result<(), status::Custom<&'static str>> {
+) -> Result<(), (StatusCode, &'static str)> {
     let config = app_config();
     if !config.is_token_valid(token) {
         if config.log_denied_requests {
@@ -195,7 +172,7 @@ fn authorize_metrics_request(
             );
         }
         metrics_requests_denied_total().inc();
-        return Err(status::Custom(Status::Unauthorized, "unauthorized"));
+        return Err((StatusCode::UNAUTHORIZED, "unauthorized"));
     }
 
     if !client_ip.is_some_and(|ip| config.is_metrics_ip_allowed(ip)) {
@@ -206,17 +183,16 @@ fn authorize_metrics_request(
             );
         }
         metrics_requests_denied_total().inc();
-        return Err(status::Custom(Status::Forbidden, "access denied"));
+        return Err((StatusCode::FORBIDDEN, "access denied"));
     }
     Ok(())
 }
 
 async fn collect_and_render(
     renderer: fn() -> Result<String, RenderError>,
-    content_type: ContentType,
-) -> Result<(ContentType, String), status::Custom<&'static str>> {
+) -> Result<String, (StatusCode, &'static str)> {
     match spawn_blocking(move || refresh_and_render(renderer)).await {
-        Ok(Ok(body)) => Ok((content_type, body)),
+        Ok(Ok(body)) => Ok(body),
         Ok(Err(err)) => {
             eprintln!("Metrics rendering failed: {err}");
             Err(collection_failed())
@@ -228,51 +204,24 @@ async fn collect_and_render(
     }
 }
 
-#[get("/metrics")]
-async fn metrics(
-    client_ip: Option<IpAddr>,
-    token: BearerToken<'_>,
-) -> Result<(ContentType, String), status::Custom<&'static str>> {
-    metrics_requests_total().inc();
-    authorize_metrics_request("/metrics", client_ip, token.0)?;
-    collect_and_render(render_text_with_push_health, ContentType::Plain).await
-}
-
-#[get("/metrics.json")]
-async fn metrics_json(
-    client_ip: Option<IpAddr>,
-    token: BearerToken<'_>,
-) -> Result<(ContentType, String), status::Custom<&'static str>> {
-    metrics_requests_total().inc();
-    authorize_metrics_request("/metrics.json", client_ip, token.0)?;
-    collect_and_render(exposition::render_json, ContentType::JSON).await
-}
-
-#[get("/")]
-const fn index() -> &'static str {
-    "rs-linux-exporter: /metrics"
-}
-
-#[catch(404)]
-fn not_found(request: &Request<'_>) -> &'static str {
-    let config = app_config();
-    if config.log_404_requests {
-        let client_ip = request
-            .client_ip()
-            .map_or_else(|| "<unknown>".to_string(), |ip| ip.to_string());
-        let method = request.method();
-        let uri = request.uri();
-        eprintln!("404 {method} {uri} from {client_ip}");
-    }
-    "Not Found"
-}
-
-#[launch]
-fn rocket() -> _ {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     runtime::init();
     let config = app_config();
     let _ = metrics_requests_total();
     let _ = metrics_requests_denied_total();
+    let bind = config.bind_addr().unwrap_or_else(|err| {
+        eprintln!("Invalid runtime configuration: {err}");
+        std::process::exit(78);
+    });
+    let tls = config
+        .tls_config()
+        .unwrap_or_else(|err| {
+            eprintln!("Invalid runtime configuration: {err}");
+            std::process::exit(78);
+        })
+        .map(|(cert, key)| http_server::load_tls(cert, key))
+        .transpose()?;
     if let Some(path) = config.plugin_socket.as_deref()
         && let Err(error) = plugin::start_server(std::path::Path::new(path))
     {
@@ -286,53 +235,41 @@ fn rocket() -> _ {
     if runtime::debug_enabled() {
         eprintln!("Debug logging enabled.");
     }
-    let bind = match config.bind_addr() {
-        Ok(bind) => bind,
-        Err(err) => {
-            eprintln!("Invalid runtime configuration: {err}");
-            std::process::exit(78);
-        }
-    };
-    let mut figment = Config::figment()
-        .merge(("address", bind.ip().to_string()))
-        .merge(("port", bind.port()))
-        .merge(("ip_header", false));
-
-    match config.tls_config() {
-        Ok(Some((cert, key))) => {
-            figment = figment.merge(("tls", TlsConfig::from_paths(cert, key)));
-            eprintln!("TLS enabled with cert: {cert}");
-        }
-        Ok(None) => {}
-        Err(err) => {
-            eprintln!("Invalid runtime configuration: {err}");
-            std::process::exit(78);
-        }
-    }
-
-    rocket::custom(figment)
-        .mount("/", routes![index, metrics, metrics_json])
-        .register("/", catchers![not_found])
+    http_server::serve(bind, tls).await?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ScrapeState, rocket};
-    use rocket::http::Status;
-    use rocket::local::blocking::Client;
+    use super::{ScrapeState, http_server::handle_request};
+    use http_body_util::BodyExt as _;
+    use hyper::{Request, StatusCode, header};
     use std::net::SocketAddr;
     use std::time::Instant;
 
-    #[test]
-    fn index_returns_hint() {
-        let client = Client::tracked(rocket()).expect("valid rocket instance");
-        let response = client.get("/").dispatch();
+    async fn request(path: &str, peer: SocketAddr) -> super::http_server::HttpResponse {
+        handle_request(
+            Request::builder().uri(path).body(()).expect("request"),
+            peer,
+        )
+        .await
+    }
 
-        assert_eq!(response.status(), Status::Ok);
-        assert_eq!(
-            response.into_string().unwrap_or_default(),
-            "rs-linux-exporter: /metrics"
-        );
+    async fn response_text(response: super::http_server::HttpResponse) -> String {
+        let bytes = response
+            .into_body()
+            .collect()
+            .await
+            .expect("response body")
+            .to_bytes();
+        String::from_utf8(bytes.to_vec()).expect("UTF-8 response")
+    }
+
+    #[tokio::test]
+    async fn index_returns_hint() {
+        let response = request("/", metrics_remote_addr()).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response_text(response).await, "rs-linux-exporter: /metrics");
     }
 
     #[test]
@@ -351,107 +288,64 @@ mod tests {
         assert!(state.needs_refresh(later_request));
     }
 
-    #[test]
-    fn metrics_endpoint_returns_ok() {
-        let client = Client::tracked(rocket()).expect("valid rocket instance");
-        let response = client
-            .get("/metrics")
-            .remote(metrics_remote_addr())
-            .dispatch();
-
-        assert_eq!(response.status(), Status::Ok);
+    #[tokio::test]
+    async fn metrics_endpoint_returns_ok() {
+        assert_eq!(
+            request("/metrics", metrics_remote_addr()).await.status(),
+            StatusCode::OK
+        );
     }
 
-    #[test]
-    fn metrics_endpoint_exposes_prometheus_text() {
-        let client = Client::tracked(rocket()).expect("valid rocket instance");
-        let response = client
-            .get("/metrics")
-            .remote(metrics_remote_addr())
-            .dispatch();
-
-        let body = response.into_string().unwrap_or_default();
+    #[tokio::test]
+    async fn metrics_endpoint_exposes_prometheus_text() {
+        let body = response_text(request("/metrics", metrics_remote_addr()).await).await;
         assert!(body.contains("metrics_requests_total"));
     }
 
-    #[test]
-    fn metrics_endpoint_contains_help_and_type() {
-        let client = Client::tracked(rocket()).expect("valid rocket instance");
-        let response = client
-            .get("/metrics")
-            .remote(metrics_remote_addr())
-            .dispatch();
-
-        let body = response.into_string().unwrap_or_default();
-        // Prometheus format requires HELP and TYPE lines
+    #[tokio::test]
+    async fn metrics_endpoint_contains_help_and_type() {
+        let body = response_text(request("/metrics", metrics_remote_addr()).await).await;
         assert!(body.contains("# HELP"));
         assert!(body.contains("# TYPE"));
     }
 
-    #[test]
-    fn metrics_endpoint_increments_counter() {
-        let client = Client::tracked(rocket()).expect("valid rocket instance");
-
-        // First request
-        let response1 = client
-            .get("/metrics")
-            .remote(metrics_remote_addr())
-            .dispatch();
-        let body1 = response1.into_string().unwrap_or_default();
-
-        // Find metrics_requests_total value
+    #[tokio::test]
+    async fn metrics_endpoint_increments_counter() {
+        let body1 = response_text(request("/metrics", metrics_remote_addr()).await).await;
         let count1 = extract_counter_value(&body1, "metrics_requests_total");
-
-        // Second request
-        let response2 = client
-            .get("/metrics")
-            .remote(metrics_remote_addr())
-            .dispatch();
-        let body2 = response2.into_string().unwrap_or_default();
-
+        let body2 = response_text(request("/metrics", metrics_remote_addr()).await).await;
         let count2 = extract_counter_value(&body2, "metrics_requests_total");
-
-        // Counter should have incremented
         assert!(
             count2 > count1,
             "Counter should increment: {count1} -> {count2}"
         );
     }
 
-    #[test]
-    fn metrics_endpoint_has_correct_content_type() {
-        let client = Client::tracked(rocket()).expect("valid rocket instance");
-        let response = client
-            .get("/metrics")
-            .remote(metrics_remote_addr())
-            .dispatch();
-
-        let content_type = response.content_type();
-        assert!(content_type.is_some());
+    #[tokio::test]
+    async fn metrics_endpoint_has_correct_content_type() {
+        let response = request("/metrics", metrics_remote_addr()).await;
         assert_eq!(
-            content_type.unwrap().to_string(),
-            "text/plain; charset=utf-8"
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok()),
+            Some("text/plain; charset=utf-8")
         );
     }
 
-    #[test]
-    fn unknown_endpoint_returns_404() {
-        let client = Client::tracked(rocket()).expect("valid rocket instance");
-        let response = client.get("/unknown").dispatch();
-
-        assert_eq!(response.status(), Status::NotFound);
+    #[tokio::test]
+    async fn unknown_endpoint_returns_404() {
+        assert_eq!(
+            request("/unknown", metrics_remote_addr()).await.status(),
+            StatusCode::NOT_FOUND
+        );
     }
 
-    #[test]
-    fn metrics_endpoint_denies_unlisted_ip() {
-        let client = Client::tracked(rocket()).expect("valid rocket instance");
-        let response = client
-            .get("/metrics")
-            .remote("10.0.0.1:1234".parse().unwrap())
-            .dispatch();
-
-        assert_eq!(response.status(), Status::Forbidden);
-        assert_eq!(response.into_string().unwrap_or_default(), "access denied");
+    #[tokio::test]
+    async fn metrics_endpoint_denies_unlisted_ip() {
+        let response = request("/metrics", "10.0.0.1:1234".parse().unwrap()).await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(response_text(response).await, "access denied");
     }
 
     fn metrics_remote_addr() -> SocketAddr {
