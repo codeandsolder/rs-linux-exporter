@@ -24,7 +24,7 @@ use crate::{
     metrics_requests_total, render_text_with_push_health, runtime,
 };
 
-pub(super) type HttpResponse = Response<Full<Bytes>>;
+pub type HttpResponse = Response<Full<Bytes>>;
 
 fn response(
     status: StatusCode,
@@ -40,7 +40,7 @@ fn response(
     response
 }
 
-pub(super) async fn handle_request<B>(request: Request<B>, peer: SocketAddr) -> HttpResponse {
+pub async fn handle_request<B>(request: Request<B>, peer: SocketAddr) -> HttpResponse {
     let path = request.uri().path();
     if matches!(*request.method(), Method::GET | Method::HEAD) {
         match path {
@@ -101,7 +101,7 @@ pub(super) async fn handle_request<B>(request: Request<B>, peer: SocketAddr) -> 
     )
 }
 
-pub(super) fn load_tls(cert: &str, key: &str) -> Result<SslAcceptor, Box<dyn std::error::Error>> {
+pub fn load_tls(cert: &str, key: &str) -> Result<SslAcceptor, Box<dyn std::error::Error>> {
     let mut chain = X509::stack_from_pem(&std::fs::read(cert)?)?.into_iter();
     let leaf = chain
         .next()
@@ -129,7 +129,7 @@ async fn serve_connection<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         Ok::<_, Infallible>(handle_request(request, peer).await)
     });
     let mut builder = Builder::new(TokioExecutor::new());
-    builder
+    let _ = builder
         .http1()
         .timer(TokioTimer::new())
         .header_read_timeout(Duration::from_secs(30));
@@ -171,7 +171,7 @@ async fn accept_connection(stream: TcpStream, peer: SocketAddr, acceptor: Option
     }
 }
 
-pub(super) async fn serve(bind: SocketAddr, tls: Option<SslAcceptor>) -> io::Result<()> {
+pub async fn serve(bind: SocketAddr, tls: Option<SslAcceptor>) -> io::Result<()> {
     let listener = TcpListener::bind(bind).await?;
     eprintln!(
         "Listening on {} ({})",
