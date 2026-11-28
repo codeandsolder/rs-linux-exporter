@@ -1,5 +1,5 @@
 use prometheus::TextEncoder;
-use prometheus::proto::{MetricFamily, MetricType};
+use prometheus::proto::{Histogram, MetricFamily, MetricType, Summary};
 use serde_json::Value as JsonValue;
 use std::fmt;
 
@@ -35,6 +35,85 @@ fn push_json_sample(
     samples.push(map);
 }
 
+fn push_json_histogram(
+    samples: &mut Vec<serde_json::Map<String, JsonValue>>,
+    name: &str,
+    base_labels: &[(String, String)],
+    histogram: &Histogram,
+) {
+    let bucket_name = format!("{name}_bucket");
+    let mut has_inf = false;
+    for bucket in histogram.get_bucket() {
+        let upper_bound = bucket.upper_bound();
+        let is_inf = upper_bound.is_infinite() && upper_bound.is_sign_positive();
+        has_inf |= is_inf;
+        let mut labels = base_labels.to_vec();
+        labels.push((
+            "le".to_string(),
+            if is_inf {
+                "+Inf".to_string()
+            } else {
+                upper_bound.to_string()
+            },
+        ));
+        push_json_sample(
+            samples,
+            &bucket_name,
+            &labels,
+            JsonValue::from(bucket.cumulative_count()),
+        );
+    }
+    if !has_inf {
+        let mut labels = base_labels.to_vec();
+        labels.push(("le".to_string(), "+Inf".to_string()));
+        push_json_sample(
+            samples,
+            &bucket_name,
+            &labels,
+            JsonValue::from(histogram.get_sample_count()),
+        );
+    }
+    push_json_sample(
+        samples,
+        &format!("{name}_sum"),
+        base_labels,
+        JsonValue::from(histogram.get_sample_sum()),
+    );
+    push_json_sample(
+        samples,
+        &format!("{name}_count"),
+        base_labels,
+        JsonValue::from(histogram.get_sample_count()),
+    );
+}
+
+fn push_json_summary(
+    samples: &mut Vec<serde_json::Map<String, JsonValue>>,
+    name: &str,
+    base_labels: &[(String, String)],
+    summary: &Summary,
+) {
+    for quantile in summary.get_quantile() {
+        let mut labels = base_labels.to_vec();
+        labels.push(("quantile".to_string(), quantile.quantile().to_string()));
+        // Prometheus summaries use the base metric name with a
+        // `quantile` label; only _sum/_count use suffixes.
+        push_json_sample(samples, name, &labels, JsonValue::from(quantile.value()));
+    }
+    push_json_sample(
+        samples,
+        &format!("{name}_sum"),
+        base_labels,
+        JsonValue::from(summary.sample_sum()),
+    );
+    push_json_sample(
+        samples,
+        &format!("{name}_count"),
+        base_labels,
+        JsonValue::from(summary.sample_count()),
+    );
+}
+
 fn json_from_families(families: Vec<MetricFamily>) -> Result<String, RenderError> {
     let mut samples = Vec::new();
 
@@ -68,78 +147,10 @@ fn json_from_families(families: Vec<MetricFamily>) -> Result<String, RenderError
                     JsonValue::from(metric.get_untyped().get_value()),
                 ),
                 MetricType::HISTOGRAM => {
-                    let histogram = metric.get_histogram();
-                    let bucket_name = format!("{name}_bucket");
-                    let mut has_inf = false;
-                    for bucket in histogram.get_bucket() {
-                        let upper_bound = bucket.upper_bound();
-                        let is_inf = upper_bound.is_infinite() && upper_bound.is_sign_positive();
-                        has_inf |= is_inf;
-                        let mut labels = base_labels.clone();
-                        labels.push((
-                            "le".to_string(),
-                            if is_inf {
-                                "+Inf".to_string()
-                            } else {
-                                upper_bound.to_string()
-                            },
-                        ));
-                        push_json_sample(
-                            &mut samples,
-                            &bucket_name,
-                            &labels,
-                            JsonValue::from(bucket.cumulative_count()),
-                        );
-                    }
-                    if !has_inf {
-                        let mut labels = base_labels.clone();
-                        labels.push(("le".to_string(), "+Inf".to_string()));
-                        push_json_sample(
-                            &mut samples,
-                            &bucket_name,
-                            &labels,
-                            JsonValue::from(histogram.get_sample_count()),
-                        );
-                    }
-                    push_json_sample(
-                        &mut samples,
-                        &format!("{name}_sum"),
-                        &base_labels,
-                        JsonValue::from(histogram.get_sample_sum()),
-                    );
-                    push_json_sample(
-                        &mut samples,
-                        &format!("{name}_count"),
-                        &base_labels,
-                        JsonValue::from(histogram.get_sample_count()),
-                    );
+                    push_json_histogram(&mut samples, name, &base_labels, metric.get_histogram())
                 }
                 MetricType::SUMMARY => {
-                    let summary = metric.get_summary();
-                    for quantile in summary.get_quantile() {
-                        let mut labels = base_labels.clone();
-                        labels.push(("quantile".to_string(), quantile.quantile().to_string()));
-                        // Prometheus summaries use the base metric name with a
-                        // `quantile` label; only _sum/_count use suffixes.
-                        push_json_sample(
-                            &mut samples,
-                            name,
-                            &labels,
-                            JsonValue::from(quantile.value()),
-                        );
-                    }
-                    push_json_sample(
-                        &mut samples,
-                        &format!("{name}_sum"),
-                        &base_labels,
-                        JsonValue::from(summary.sample_sum()),
-                    );
-                    push_json_sample(
-                        &mut samples,
-                        &format!("{name}_count"),
-                        &base_labels,
-                        JsonValue::from(summary.sample_count()),
-                    );
+                    push_json_summary(&mut samples, name, &base_labels, metric.get_summary())
                 }
             }
         }
