@@ -117,7 +117,7 @@ pub fn load_tls(cert: &str, key: &str) -> Result<SslAcceptor, Box<dyn std::error
     acceptor.check_private_key()?;
     acceptor.set_alpn_select_callback(|_, offered| {
         select_next_proto(b"\x02h2\x08http/1.1", offered).ok_or(AlpnError::NOACK)
-    });
+    })?;
     Ok(acceptor.build())
 }
 
