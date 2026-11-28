@@ -43,6 +43,7 @@ lurkmoar = { version = "0.1.0", git = "https://github.com/codeandsolder/lurkmoar
 flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 hyper = { version = "1", features = ["client"] }
 tempfile = "3"
+tokio = { version = "1", features = ["sync"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

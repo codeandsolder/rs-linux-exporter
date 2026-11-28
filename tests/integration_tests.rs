@@ -426,6 +426,7 @@ async fn push_delivers_timestamped_gzip_without_a_scrape() {
             }
         });
         http1::Builder::new()
+            .keep_alive(false)
             .serve_connection(TokioIo::new(connection), service)
             .await
     });
@@ -449,6 +450,11 @@ async fn push_delivers_timestamped_gzip_without_a_scrape() {
         .await
         .expect("push delivery deadline")
         .expect("receiver closed");
+    tokio::time::timeout(Duration::from_secs(5), receiver_task)
+        .await
+        .expect("receiver response deadline")
+        .expect("receiver task")
+        .expect("send acknowledgement");
     assert_eq!(parts.method, Method::POST);
     assert_eq!(parts.uri.path(), "/api/v1/import/prometheus");
     assert_eq!(parts.headers["content-encoding"], "gzip");
@@ -471,7 +477,6 @@ async fn push_delivers_timestamped_gzip_without_a_scrape() {
                 .is_none(),
         "successful delivery must not write spool files"
     );
-    receiver_task.abort();
 }
 
 #[test]
