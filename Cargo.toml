@@ -40,6 +40,7 @@ jiff = { version = "1", default-features = false, features = ["std"] }
 lurkmoar = { version = "0.1.0", git = "https://github.com/codeandsolder/lurkmoar-rs", rev = "3cdf30cf748beffd2cec9078a8821d78f4912bef" }
 
 [dev-dependencies]
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 hyper = { version = "1", features = ["client"] }
 tempfile = "3"
 

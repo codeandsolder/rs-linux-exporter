@@ -400,6 +400,80 @@ async fn https_negotiates_http1_and_http2_and_enforces_auth() {
     .expect("HTTPS regression exceeded deadline");
 }
 
+#[tokio::test]
+async fn push_delivers_timestamped_gzip_without_a_scrape() {
+    use bytes::Bytes;
+    use http_body_util::{BodyExt as _, Empty};
+    use hyper::{Method, Response, StatusCode, server::conn::http1, service::service_fn};
+    use hyper_util::rt::TokioIo;
+
+    let receiver = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind push receiver");
+    let receiver_port = receiver.local_addr().expect("receiver address").port();
+    let (send, mut received) = tokio::sync::mpsc::channel(1);
+    let receiver_task = tokio::spawn(async move {
+        let (connection, _) = receiver.accept().await.expect("accept push");
+        let service = service_fn(|request: hyper::Request<hyper::body::Incoming>| {
+            let send = send.clone();
+            async move {
+                let (parts, body) = request.into_parts();
+                let body = body.collect().await?.to_bytes();
+                let _ = send.try_send((parts, body));
+                let mut response = Response::new(Empty::<Bytes>::new());
+                *response.status_mut() = StatusCode::NO_CONTENT;
+                Ok::<_, hyper::Error>(response)
+            }
+        });
+        http1::Builder::new()
+            .serve_connection(TokioIo::new(connection), service)
+            .await
+    });
+    let dir = TempDir::new().expect("tempdir");
+    let port = free_port();
+    let spool = dir.path().join("spool");
+    write_config(
+        dir.path(),
+        port,
+        &format!(
+            "push_url = \"http://127.0.0.1:{receiver_port}/api/v1/import/prometheus\"\n\
+             push_interval_ms = 1000\n\
+             push_timeout_ms = 10000\n\
+             push_spill_after_seconds = 10\n\
+             push_spool_dir = {spool:?}\n"
+        ),
+    );
+    let _server = spawn_server(dir, port);
+    // No HTTP scrape is made: the push sampler must collect independently.
+    let (parts, compressed) = tokio::time::timeout(Duration::from_secs(30), received.recv())
+        .await
+        .expect("push delivery deadline")
+        .expect("receiver closed");
+    assert_eq!(parts.method, Method::POST);
+    assert_eq!(parts.uri.path(), "/api/v1/import/prometheus");
+    assert_eq!(parts.headers["content-encoding"], "gzip");
+    let mut decoder = flate2::read::GzDecoder::new(compressed.as_ref());
+    let mut text = String::new();
+    let _read = decoder.read_to_string(&mut text).expect("decode gzip");
+    let uptime = text
+        .lines()
+        .find(|line| line.starts_with("uptime_seconds "))
+        .expect("uptime sample");
+    let fields: Vec<_> = uptime.split_ascii_whitespace().collect();
+    assert_eq!(fields.len(), 3);
+    assert!(fields[1].parse::<f64>().expect("uptime") >= 0.0);
+    assert!(fields[2].parse::<u64>().expect("timestamp") > 0);
+    assert!(
+        !spool.exists()
+            || std::fs::read_dir(&spool)
+                .expect("read spool directory")
+                .next()
+                .is_none(),
+        "successful delivery must not write spool files"
+    );
+    receiver_task.abort();
+}
+
 #[test]
 fn unparseable_config_is_fatal() {
     let dir = TempDir::new().expect("tempdir");
